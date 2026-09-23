@@ -1,0 +1,7 @@
+# Never upload local env files or tool state; Vercel injects env vars itself.
+.env*
+!.env.example
+.neon
+.claude
+.idea
+openspec

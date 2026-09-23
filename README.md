@@ -104,6 +104,32 @@ The browser session is an `HttpOnly`, `SameSite=Lax` cookie named `session` (`Se
 
 **Known limitation:** email changes take effect immediately and aren't verified by email, because the app doesn't send email yet. There's also no password reset.
 
+## Deployment
+
+Production runs on [Vercel](https://vercel.com), with the database on [Neon](https://neon.com) (project `empty-firefly-03102623`, branch `production`).
+
+### One-time setup
+
+1. Install the CLIs and log in: `npm i -g neon vercel`, then `neon login` and `vercel login`.
+2. Link the Neon project: `neon link --project-id empty-firefly-03102623 --branch production -y`. This writes the Neon connection strings into `.env`. Move `DATABASE_URL`, `DATABASE_URL_UNPOOLED` and `NEON_BRANCH` into a new `.env.neon`, and put the local `DATABASE_URL` back in `.env`. Otherwise local development and migrations will run against production.
+3. Link the Vercel project: `vercel link`.
+4. Set these Vercel environment variables (`vercel env add <NAME> production`):
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | Neon's **pooled** connection string (`DATABASE_URL` in `.env.neon`) |
+| `BETTER_AUTH_SECRET` | A fresh secret, e.g. `openssl rand -base64 32`. Never the local placeholder. |
+| `BETTER_AUTH_URL` | The production URL, e.g. `https://<project>.vercel.app` |
+
+Preview deployments can leave `BETTER_AUTH_URL` unset; the app falls back to the deployment's own URL (`VERCEL_URL`).
+
+### Deploying
+
+1. If the schema changed, apply the migrations to Neon first: `./scripts/db-migrate-neon.sh`. It uses the direct (unpooled) connection string from `.env.neon`. Migrations don't run during the Vercel build, so that a preview build can't change the production database.
+2. Deploy: `vercel --prod` (or push to the branch connected to Vercel).
+
+`neon.ts` holds the Neon project policy; apply changes to it with `neon deploy --no-env-pull`. The `--no-env-pull` flag keeps it from overwriting `.env`.
+
 ## API
 
 The app is a JSON API. Protected endpoints take `Authorization: Bearer <token>`, where the token comes from `POST /api/auth/login`.
