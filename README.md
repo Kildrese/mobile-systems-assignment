@@ -28,8 +28,6 @@ This will:
 4. apply pending migrations,
 5. start the dev server at <http://localhost:3000>.
 
-The home page shows a list of notes and a form for adding one. It's a small demo that proves the app can read from and write to the database.
-
 ### Individual scripts
 
 All scripts can be run from any directory.
@@ -65,6 +63,15 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5433/app
 
 Then restart the database with `./scripts/db-down.sh && ./scripts/db-up.sh`.
 
+Authentication uses two more variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `BETTER_AUTH_SECRET` | Signs session tokens. The value in `.env.example` is a local-only placeholder; generate a real one (`openssl rand -base64 32`) for any deployed environment. |
+| `BETTER_AUTH_URL` | The app's base URL, `http://localhost:3000` locally. |
+
+If you created `.env` before these were added, copy them over from `.env.example`.
+
 ### Without the scripts
 
 The scripts are thin wrappers around these commands (run from the repo root):
@@ -80,6 +87,44 @@ docker compose down          # stop Postgres (keep data)
 docker compose down -v       # stop Postgres and delete data
 npm run typecheck            # type-check the project
 ```
+
+## API
+
+The app is a JSON API. Protected endpoints take `Authorization: Bearer <token>`, where the token comes from `POST /api/auth/login`.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| GET | `/healthz` | no | Liveness check, returns `{ "status": "ok" }` |
+| POST | `/api/auth/register` | no | Create an account |
+| POST | `/api/auth/login` | no | Get a bearer token |
+| GET | `/api/auth/me` | yes | The logged-in user |
+| GET / PATCH / DELETE | `/api/users/:id` | yes | Read, rename or delete your own account |
+
+### API docs
+
+- <http://localhost:3000/docs>: an interactive reference (Scalar). Log in with "Try it", then paste the token under the bearer auth settings to call protected endpoints.
+- <http://localhost:3000/api/openapi.json>: the OpenAPI 3.1 document.
+
+The document is generated from the Zod contracts in `src/lib/api/contracts.ts`, which also validate requests and shape responses. A copy is committed at `openapi/openapi.json` so API changes show up in diffs:
+
+| Script | What it does |
+| --- | --- |
+| `npm run openapi:generate` | Rewrite `openapi/openapi.json` from the contracts (no server or database needed) |
+| `npm run openapi:check` | Fail if `openapi/openapi.json` is out of date |
+
+Run `npm run openapi:generate` and commit the result whenever you change a contract.
+
+`scripts/api-smoke.sh` exercises every endpoint and security rule with curl against the running dev server (needs `jq`).
+
+### Security decisions
+
+The API enforces three rules. Each one is enforced in a single shared place, so a new route can't silently skip it:
+
+1. **Password hashes are never returned.** Hashes live only in `account.password`, never on `user`. Every response goes through `handle()` (`src/lib/api/handler.ts`), which parses the handler's result through the contract's response schema. The `User` schema is an allow-list (`id`, `email`, `firstName`, `lastName`, `createdAt`, `updatedAt`), and Zod strips every other key. So even if a handler passes a raw database row or Better Auth's user object, nothing else leaves the server. Validation errors report only the field path and rule, never the submitted value. Unexpected errors return a generic `500` with no message or stack trace.
+2. **A missing, bad or expired token returns `401`.** `handle()` resolves the session for every protected route. It accepts only a well-formed `Authorization: Bearer <token>` header and passes just that header to Better Auth, so the API is bearer-only and cookies are ignored. Unknown, expired or revoked tokens, and the token of a deleted user, all return `401`, never `200` or `500`.
+3. **You can't touch another user's account; we return `404`, not `403`.** `GET`, `PATCH` and `DELETE /api/users/:id` compare `:id` with the caller's own id before any database access. Another user's id, an id that doesn't exist, and a value that isn't a UUID all get the same `404 NOT_FOUND` body. A `403` would confirm that the id belongs to a real account, letting anyone with a token probe which user ids exist. With `404`, "not yours" and "doesn't exist" can't be told apart, by content or by timing, since no lookup happens in either case.
+
+Sessions last Better Auth's default of 7 days, and the expiry is extended as the token is used. Deleting an account cascades to its credentials and sessions, so its tokens stop working immediately. Better Auth's own HTTP routes are not mounted: our endpoints call its server API directly, so the endpoints above are the whole public surface. Login rate limiting is not implemented yet.
 
 ## Working with OpenSpec
 
