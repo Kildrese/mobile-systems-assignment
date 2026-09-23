@@ -21,6 +21,13 @@ function createAuth() {
       autoSignIn: false,
       minPasswordLength: 8,
     },
+    session: {
+      // Better Auth rejects `changePassword` for sessions older than
+      // `freshAge` (default 1 day) with SESSION_NOT_FRESH. We ask for the
+      // current password instead, which is a stronger check than session age.
+      // `changePassword` is the only "sensitive" endpoint we call.
+      freshAge: 0,
+    },
     user: {
       additionalFields: {
         firstName: { type: "string", required: true, input: true },
@@ -37,11 +44,10 @@ function createAuth() {
 export type Auth = ReturnType<typeof createAuth>;
 
 // Built lazily (like getDb) so importing this module doesn't need env vars,
-// e.g. during `next build`. Reused across hot reloads in development.
+// e.g. during `next build`. One instance per process, also across hot reloads.
 const globalForAuth = globalThis as unknown as { auth?: Auth };
 
 export function getAuth(): Auth {
-  const auth = globalForAuth.auth ?? createAuth();
-  if (process.env.NODE_ENV !== "production") globalForAuth.auth = auth;
-  return auth;
+  globalForAuth.auth ??= createAuth();
+  return globalForAuth.auth;
 }
