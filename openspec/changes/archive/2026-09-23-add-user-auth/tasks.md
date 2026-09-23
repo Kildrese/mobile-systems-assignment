@@ -63,5 +63,5 @@
 - [x] 10.2 Run `scripts/start.sh` on a fresh DB, then run `scripts/api-smoke.sh` until it passes
 - [x] 10.3 Confirm that every `route.ts` under `src/app/api/` (except `openapi.json`) exports only `handle(...)`-wrapped handlers. Use grep for direct `Response.json`/`NextResponse` usage
 - [x] 10.4 Run `npm run lint`, `npm run typecheck`, `npm run build` and `npm run openapi:check`, all of which must pass
-- [ ] 10.5 Open `/docs`, log in via the "Try it" panel using a token, and call `/api/auth/me` successfully
+- [x] 10.5 Open `/docs`, log in via the "Try it" panel using a token, and call `/api/auth/me` successfully
 - [x] 10.6 Run `openspec validate add-user-auth --strict`

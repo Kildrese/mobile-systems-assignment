@@ -3,9 +3,7 @@
 ## Purpose
 
 Shell scripts to start/stop the database, run migrations, and start the dev server, including a single command for the full local stack.
-
 ## Requirements
-
 ### Requirement: Scripts work from any directory
 All shell scripts in `scripts/` SHALL be executable, use strict bash mode, and resolve the repository root themselves so they behave the same regardless of the current working directory.
 
@@ -58,8 +56,9 @@ All shell scripts in `scripts/` SHALL be executable, use strict bash mode, and r
 
 #### Scenario: Fresh clone
 - **WHEN** a developer on a fresh clone (with Docker and Node.js installed) runs `scripts/start.sh`
-- **THEN** `.env` is created, dependencies are installed, the database starts, migrations are applied, and the app is reachable at `http://localhost:3000` showing the notes page
+- **THEN** `.env` is created (including the auth variables), dependencies are installed, the database starts, migrations are applied, and the app is reachable at `http://localhost:3000`, with `GET /healthz` returning `{ "status": "ok" }`
 
 #### Scenario: Failure stops the chain
 - **WHEN** any step (e.g. starting the database) fails
 - **THEN** the script stops immediately with a non-zero status and does not start the dev server
+
