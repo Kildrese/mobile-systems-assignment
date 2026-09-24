@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
-import { registerAction } from "@/app/(auth)/actions";
+import { registerAction } from "@/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -40,7 +40,7 @@ export function SignupForm({ next }: { next: string }) {
                 <FieldError errors={asErrors(errors.firstName)} />
               </Field>
               <Field data-invalid={!!errors.lastName}>
-                <FieldLabel htmlFor="lastName">Last name</FieldLabel>
+                <FieldLabel htmlFor="lastName">Last name (optional)</FieldLabel>
                 <Input
                   id="lastName"
                   name="lastName"
@@ -48,10 +48,27 @@ export function SignupForm({ next }: { next: string }) {
                   defaultValue={state.values?.lastName}
                   aria-invalid={!!errors.lastName}
                   maxLength={100}
-                  required
-                />
+                                  />
                 <FieldError errors={asErrors(errors.lastName)} />
               </Field>
+            </Field>
+            <Field data-invalid={!!errors.username}>
+              <FieldLabel htmlFor="username">Username</FieldLabel>
+              <Input
+                id="username"
+                name="username"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                defaultValue={state.values?.username}
+                aria-invalid={!!errors.username}
+                minLength={3}
+                maxLength={30}
+                pattern="[a-zA-Z0-9_.]+"
+                required
+              />
+              <FieldDescription>3-30 letters, digits, _ or . You can sign in with it.</FieldDescription>
+              <FieldError errors={asErrors(errors.username)} />
             </Field>
             <Field data-invalid={!!errors.email}>
               <FieldLabel htmlFor="email">Email</FieldLabel>

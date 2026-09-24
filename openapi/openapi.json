@@ -87,7 +87,7 @@
             }
           },
           "409": {
-            "description": "The email is already registered.",
+            "description": "The email (EMAIL_TAKEN) or username (USERNAME_TAKEN) is already registered.",
             "content": {
               "application/json": {
                 "schema": {
@@ -148,7 +148,7 @@
             }
           },
           "401": {
-            "description": "Unknown email or wrong password (indistinguishable).",
+            "description": "Unknown email or username, or wrong password (indistinguishable).",
             "content": {
               "application/json": {
                 "schema": {
@@ -488,7 +488,7 @@
       },
       "patch": {
         "operationId": "updateUser",
-        "summary": "Update your own name",
+        "summary": "Update your own username or name",
         "tags": [
           "Users"
         ],
@@ -554,6 +554,16 @@
           },
           "404": {
             "description": "The id is not your own. Same response whether it belongs to someone else, doesn't exist or isn't a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The username is already taken by another user.",
             "content": {
               "application/json": {
                 "schema": {
@@ -648,6 +658,13 @@
             "format": "email",
             "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
           },
+          "username": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 30,
+            "pattern": "^[a-zA-Z0-9_.]+$",
+            "description": "3-30 letters, digits, `_` or `.`. Case-insensitive; stored lowercased."
+          },
           "password": {
             "type": "string",
             "minLength": 8,
@@ -660,26 +677,33 @@
           },
           "lastName": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 100
           }
         },
         "required": [
-          "email",
-          "password",
-          "firstName",
-          "lastName"
-        ],
-        "additionalProperties": false
+          "password"
+        ]
       },
       "LoginBody": {
         "type": "object",
         "properties": {
-          "email": {
+          "identifier": {
+            "description": "Your email or your username.",
             "type": "string",
-            "maxLength": 254,
-            "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "minLength": 1,
+            "maxLength": 254
+          },
+          "email": {
+            "description": "Same as `identifier`.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 254
+          },
+          "username": {
+            "description": "Same as `identifier`.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 254
           },
           "password": {
             "type": "string",
@@ -688,7 +712,6 @@
           }
         },
         "required": [
-          "email",
           "password"
         ]
       },
@@ -709,8 +732,7 @@
         "required": [
           "currentPassword",
           "newPassword"
-        ],
-        "additionalProperties": false
+        ]
       },
       "ChangeEmailBody": {
         "type": "object",
@@ -730,12 +752,18 @@
         "required": [
           "newEmail",
           "currentPassword"
-        ],
-        "additionalProperties": false
+        ]
       },
       "UpdateUserBody": {
         "type": "object",
         "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 30,
+            "pattern": "^[a-zA-Z0-9_.]+$",
+            "description": "3-30 letters, digits, `_` or `.`. Case-insensitive; stored lowercased."
+          },
           "firstName": {
             "type": "string",
             "minLength": 1,
@@ -743,11 +771,9 @@
           },
           "lastName": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 100
           }
-        },
-        "additionalProperties": false
+        }
       },
       "Health": {
         "type": "object",
@@ -801,6 +827,7 @@
           "INVALID_CREDENTIALS",
           "NOT_FOUND",
           "EMAIL_TAKEN",
+          "USERNAME_TAKEN",
           "INVALID_PASSWORD",
           "INTERNAL"
         ]
@@ -840,9 +867,15 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "email": {
-            "type": "string",
-            "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "description": "`null` if the user registered without an email.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "email"
+          },
+          "username": {
+            "type": "string"
           },
           "firstName": {
             "type": "string"
@@ -862,6 +895,7 @@
         "required": [
           "id",
           "email",
+          "username",
           "firstName",
           "lastName",
           "createdAt",

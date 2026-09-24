@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
-import { signInAction } from "@/app/(auth)/actions";
+import { signInAction } from "@/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -18,26 +18,27 @@ export function LoginForm({ next }: { next: string }) {
     <Card>
       <CardHeader className="text-center">
         <CardTitle className="text-xl">Welcome back</CardTitle>
-        <CardDescription>Sign in with your email and password</CardDescription>
+        <CardDescription>Sign in with your email or username</CardDescription>
       </CardHeader>
       <CardContent>
         <form action={action}>
           <input type="hidden" name="next" value={next} />
           <FieldGroup>
             {state.formError && <FieldError>{state.formError}</FieldError>}
-            <Field data-invalid={!!errors.email}>
-              <FieldLabel htmlFor="email">Email</FieldLabel>
+            <Field data-invalid={!!errors.identifier}>
+              <FieldLabel htmlFor="identifier">Email or username</FieldLabel>
               <Input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                placeholder="m@example.com"
-                defaultValue={state.values?.email}
-                aria-invalid={!!errors.email}
+                id="identifier"
+                name="identifier"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                defaultValue={state.values?.identifier}
+                aria-invalid={!!errors.identifier}
+                maxLength={254}
                 required
               />
-              <FieldError errors={asErrors(errors.email)} />
+              <FieldError errors={asErrors(errors.identifier)} />
             </Field>
             <Field data-invalid={!!errors.password}>
               <FieldLabel htmlFor="password">Password</FieldLabel>

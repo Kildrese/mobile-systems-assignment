@@ -5,14 +5,9 @@
 //   - responses are parsed through the contract's allow-list schema, so fields
 //     like password hashes can never leak
 //   - unexpected errors become an opaque 500
-import { APIError } from "better-auth/api";
 import type { z } from "zod";
-import { getAuth, type Auth } from "@/lib/auth";
+import { getSessionByToken, type Session } from "@/lib/auth";
 import type { Contract, ErrorCode, ErrorResponse } from "./contracts";
-
-export type Session = NonNullable<
-  Awaited<ReturnType<Auth["api"]["getSession"]>>
->;
 
 type Responses<C extends Contract> = C["responses"];
 type Status<C extends Contract> = keyof Responses<C> & number;
@@ -36,7 +31,7 @@ type RouteContext = { params: Promise<Record<string, string | string[] | undefin
 
 type ErrorBody = z.input<typeof ErrorResponse>;
 
-export function errorBody(
+function errorBody(
   code: z.output<typeof ErrorCode>,
   message: string,
   details?: NonNullable<ErrorBody["error"]["details"]>,
@@ -44,11 +39,18 @@ export function errorBody(
   return { error: { code, message, ...(details ? { details } : {}) } };
 }
 
-// Shared so every "not yours / doesn't exist / not a UUID" case is identical.
-export const NOT_FOUND = errorBody("NOT_FOUND", "Not found");
-
-const UNAUTHORIZED = errorBody("UNAUTHORIZED", "Authentication required");
-const INTERNAL = errorBody("INTERNAL", "Internal server error");
+// Every error body a route returns, so the same case always gets the same
+// message. NOT_FOUND is shared by "not yours / doesn't exist / not a UUID".
+export const ERRORS = {
+  NOT_FOUND: errorBody("NOT_FOUND", "Not found"),
+  UNAUTHORIZED: errorBody("UNAUTHORIZED", "Authentication required"),
+  // Same body for an unknown email or username and a wrong password.
+  INVALID_CREDENTIALS: errorBody("INVALID_CREDENTIALS", "Invalid email, username or password"),
+  INVALID_PASSWORD: errorBody("INVALID_PASSWORD", "Current password is incorrect"),
+  EMAIL_TAKEN: errorBody("EMAIL_TAKEN", "Email is already registered"),
+  USERNAME_TAKEN: errorBody("USERNAME_TAKEN", "Username is already taken"),
+  INTERNAL: errorBody("INTERNAL", "Internal server error"),
+};
 
 function json(status: number, body: unknown): Response {
   return Response.json(body, {
@@ -70,16 +72,7 @@ function validationError(message: string, issues: z.core.$ZodIssue[] = []) {
 // Bearer-only: cookies and every other header are ignored.
 async function resolveSession(req: Request): Promise<Session | null> {
   const match = /^Bearer ([^\s]+)$/i.exec(req.headers.get("authorization") ?? "");
-  if (!match) return null;
-
-  try {
-    return await getAuth().api.getSession({
-      headers: new Headers({ authorization: `Bearer ${match[1]}` }),
-    });
-  } catch (err) {
-    if (err instanceof APIError) return null;
-    throw err;
-  }
+  return match ? getSessionByToken(match[1]) : null;
 }
 
 async function readJson(req: Request): Promise<{ ok: true; value: unknown } | { ok: false }> {
@@ -101,14 +94,14 @@ export function handle<const C extends Contract>(contract: C) {
       let session: Session | null = null;
       if (contract.auth) {
         session = await resolveSession(req);
-        if (!session) return json(401, UNAUTHORIZED);
+        if (!session) return json(401, ERRORS.UNAUTHORIZED);
       }
 
       let params: unknown = undefined;
       if (contract.params) {
         const parsed = contract.params.safeParse(await ctx.params);
         // The only path param is a user id; an invalid one can't be yours.
-        if (!parsed.success) return json(404, NOT_FOUND);
+        if (!parsed.success) return json(404, ERRORS.NOT_FOUND);
         params = parsed.data;
       }
 
@@ -137,7 +130,7 @@ export function handle<const C extends Contract>(contract: C) {
     } catch (err) {
       // Log the error, never the request body.
       console.error(`[api] ${contract.method.toUpperCase()} ${contract.path} failed:`, err);
-      return json(500, INTERNAL);
+      return json(500, ERRORS.INTERNAL);
     }
     };
 }

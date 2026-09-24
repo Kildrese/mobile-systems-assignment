@@ -15,6 +15,13 @@
       "when": 1790194008610,
       "tag": "0001_thin_nebula",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790216989018,
+      "tag": "0002_funny_dexter_bennett",
+      "breakpoints": true
     }
   ]
 }

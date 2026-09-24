@@ -6,12 +6,7 @@
 // It also passes the current path and query to Server Components as the
 // `x-pathname` request header, so `requireSession()` can build `next`.
 import { NextResponse, type NextRequest } from "next/server";
-
-// Kept in sync with `SESSION_COOKIE` in `src/lib/session.ts`, which is
-// server-only and can't be imported here.
-const SESSION_COOKIE = "session";
-
-const PUBLIC_PAGES = new Set(["/login", "/register"]);
+import { PUBLIC_PAGES, SESSION_COOKIE } from "@/lib/app";
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

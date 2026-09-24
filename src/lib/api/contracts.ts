@@ -1,6 +1,7 @@
 // The API contract: one Zod schema per request body, path params and response
-// status. The same schemas validate requests, shape responses (unknown keys are
-// stripped) and generate the OpenAPI document.
+// status. The same schemas validate requests, shape responses and generate the
+// OpenAPI document. Unknown keys are dropped, in requests and responses alike,
+// so clients may send extra fields but they are never stored or returned.
 //
 // This module must only import `zod` and `zod-openapi` so the OpenAPI script
 // can load it without a database, env vars or Next.js.
@@ -18,11 +19,41 @@ const Timestamp = z.date().meta({
 });
 
 const Name = z.string().trim().min(1).max(100);
+// A last name may be empty: not everyone has one.
+const LastName = z.string().trim().max(100);
+
+// Better Auth needs an email on every user, so users who register without one
+// get `<username>@no-email.invalid`. `.invalid` is a reserved top-level domain
+// (RFC 2606), so it can never be a real address. Responses show it as `null`.
+export const NO_EMAIL_DOMAIN = "no-email.invalid";
+export const hasEmail = (email: string) => !email.endsWith(`@${NO_EMAIL_DOMAIN}`);
+
+const Email = z
+  .email()
+  .max(254)
+  .refine(hasEmail, `Addresses at ${NO_EMAIL_DOMAIN} are reserved`);
+
+// Same rules as Better Auth's username plugin (see `@/lib/auth`).
+const Username = z
+  .string()
+  .trim()
+  .min(3)
+  .max(30)
+  .regex(/^[a-zA-Z0-9_.]+$/, "Use only letters, digits, underscores and periods")
+  .toLowerCase()
+  .meta({ description: "3-30 letters, digits, `_` or `.`. Case-insensitive; stored lowercased." });
 
 export const User = z
   .object({
     id: z.uuid(),
-    email: z.email(),
+    email: z
+      .string()
+      .transform((email) => (hasEmail(email) ? email : null))
+      .meta({
+        override: { type: ["string", "null"], format: "email" },
+        description: "`null` if the user registered without an email.",
+      }),
+    username: z.string(),
     firstName: z.string(),
     lastName: z.string(),
     createdAt: Timestamp,
@@ -37,6 +68,7 @@ export const ErrorCode = z
     "INVALID_CREDENTIALS",
     "NOT_FOUND",
     "EMAIL_TAKEN",
+    "USERNAME_TAKEN",
     "INVALID_PASSWORD",
     "INTERNAL",
   ])
@@ -64,19 +96,40 @@ export const Health = z
   .object({ status: z.literal("ok") })
   .meta({ id: "Health" });
 
+// Only a password and a username or an email are required. Without a username
+// one is derived from the email; without names, `firstName` is the username
+// and `lastName` is empty.
 export const RegisterBody = z
-  .strictObject({
-    email: z.email().max(254),
+  .object({
+    email: Email.optional(),
+    username: Username.optional(),
     password: z.string().min(8).max(128),
-    firstName: Name,
-    lastName: Name,
+    firstName: Name.optional(),
+    lastName: LastName.optional(),
+  })
+  .refine((b) => b.email !== undefined || b.username !== undefined, {
+    message: "Provide a username, an email or both",
   })
   .meta({ id: "RegisterBody" });
 
+const Identifier = z.string().trim().min(1).max(254);
+
+// Clients may name the login field `identifier`, `email` or `username`; all
+// three accept either an email or a username.
 export const LoginBody = z
   .object({
-    email: z.email().max(254),
+    identifier: Identifier.optional().meta({ description: "Your email or your username." }),
+    email: Identifier.optional().meta({ description: "Same as `identifier`." }),
+    username: Identifier.optional().meta({ description: "Same as `identifier`." }),
     password: z.string().min(1).max(128),
+  })
+  .transform(({ identifier, email, username, password }, ctx) => {
+    const value = identifier ?? email ?? username;
+    if (value === undefined) {
+      ctx.addIssue({ code: "custom", message: "Provide identifier, email or username" });
+      return z.NEVER;
+    }
+    return { identifier: value, password };
   })
   .meta({ id: "LoginBody" });
 
@@ -90,17 +143,18 @@ export const LoginResponse = z
   .meta({ id: "LoginResponse" });
 
 export const UpdateUserBody = z
-  .strictObject({
+  .object({
+    username: Username.optional(),
     firstName: Name.optional(),
-    lastName: Name.optional(),
+    lastName: LastName.optional(),
   })
-  .refine((b) => b.firstName !== undefined || b.lastName !== undefined, {
-    message: "Provide at least one of firstName or lastName",
+  .refine((b) => Object.values(b).some((v) => v !== undefined), {
+    message: "Provide at least one of username, firstName or lastName",
   })
   .meta({ id: "UpdateUserBody" });
 
 export const ChangePasswordBody = z
-  .strictObject({
+  .object({
     currentPassword: z.string().min(1).max(128),
     newPassword: z.string().min(8).max(128),
   })
@@ -115,8 +169,8 @@ export const ChangePasswordResponse = z
   .meta({ id: "ChangePasswordResponse" });
 
 export const ChangeEmailBody = z
-  .strictObject({
-    newEmail: z.email().max(254),
+  .object({
+    newEmail: Email,
     currentPassword: z.string().min(1).max(128),
   })
   .meta({ id: "ChangeEmailBody" });
@@ -188,7 +242,7 @@ export const register = defineContract({
   responses: {
     201: { description: "The created user. No token; log in next.", schema: User },
     400: badRequest,
-    409: error("The email is already registered."),
+    409: error("The email (EMAIL_TAKEN) or username (USERNAME_TAKEN) is already registered."),
     500: internal,
   },
 });
@@ -204,7 +258,7 @@ export const login = defineContract({
   responses: {
     200: { description: "A bearer token and the user.", schema: LoginResponse },
     400: badRequest,
-    401: error("Unknown email or wrong password (indistinguishable)."),
+    401: error("Unknown email or username, or wrong password (indistinguishable)."),
     500: internal,
   },
 });
@@ -298,7 +352,7 @@ export const updateUser = defineContract({
   method: "patch",
   path: "/api/users/{id}",
   operationId: "updateUser",
-  summary: "Update your own name",
+  summary: "Update your own username or name",
   tags: ["Users"],
   auth: true,
   params: UserIdParams,
@@ -308,6 +362,7 @@ export const updateUser = defineContract({
     400: badRequest,
     401: unauthorized,
     404: notFound,
+    409: error("The username is already taken by another user."),
     500: internal,
   },
 });

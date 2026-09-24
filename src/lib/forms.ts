@@ -32,7 +32,9 @@ function message(issue: z.core.$ZodIssue): string {
     case "too_big":
       return `Must be at most ${issue.maximum} characters`;
     case "invalid_format":
-      return issue.format === "email" ? "Enter a valid email address" : "Invalid value";
+      if (issue.format === "email") return "Enter a valid email address";
+      // Our regex checks carry their own human-readable message.
+      return issue.format === "regex" ? issue.message : "Invalid value";
     case "invalid_type":
       return "Required";
     default:

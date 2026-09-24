@@ -2,7 +2,7 @@
 
 import { LogOutIcon, UserIcon } from "lucide-react";
 import Link from "next/link";
-import { signOutAction } from "@/app/(app)/actions";
+import { signOutAction } from "@/actions/session";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,9 +14,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-type Props = { firstName: string; lastName: string; email: string };
+type Props = { username: string; firstName: string; lastName: string; email: string | null };
 
-export function UserMenu({ firstName, lastName, email }: Props) {
+export function UserMenu({ username, firstName, lastName, email }: Props) {
   const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
 
   return (
@@ -32,9 +32,10 @@ export function UserMenu({ firstName, lastName, email }: Props) {
       <DropdownMenuContent align="end" className="min-w-56">
         <DropdownMenuLabel className="flex flex-col font-normal">
           <span className="font-medium text-foreground">
-            {firstName} {lastName}
+            {[firstName, lastName].filter(Boolean).join(" ")}
           </span>
-          <span className="truncate text-xs text-muted-foreground">{email}</span>
+          <span className="truncate text-xs text-muted-foreground">@{username}</span>
+          {email && <span className="truncate text-xs text-muted-foreground">{email}</span>}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
