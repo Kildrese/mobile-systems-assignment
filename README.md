@@ -163,7 +163,11 @@ To migrate or deploy by hand, run `./scripts/db-migrate-neon.sh` (uses the direc
 
 The app is a JSON API. Protected endpoints take `Authorization: Bearer <token>`, where the token comes from `POST /api/auth/login`.
 
-Every user has an email and a username, and can log in with either. Usernames are 3-30 letters, digits, `_` or `.`, case-insensitive and stored lowercased (Better Auth's `username` plugin rules). A login `identifier` containing `@` is treated as an email, anything else as a username.
+Every user has a username and usually an email, and can log in with either. Usernames are 3-30 letters, digits, `_` or `.`, case-insensitive and stored lowercased (Better Auth's `username` plugin rules).
+
+- **Register** needs a `password` plus a `username`, an `email` or both. `firstName` and `lastName` are optional. Without a username, one is derived from the email. A user without an email is shown with `"email": null`.
+- **Log in** with `{ "identifier": …, "password": … }`. `email` or `username` work in place of `identifier`, and each accepts either an email or a username: a value containing `@` is treated as an email.
+- **Extra keys are ignored.** Request bodies may contain keys an endpoint doesn't define; they're dropped, never stored, and don't cause a `400`.
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |

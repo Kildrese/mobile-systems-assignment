@@ -44,8 +44,7 @@ export async function registerAction(_prev: FormState, formData: FormData): Prom
       : { fieldErrors: { username: ["Username already taken"] }, values };
   }
 
-  const { username, password } = parsed.data;
-  const session = await signIn({ identifier: username, password });
+  const session = await signIn({ identifier: created.user.username, password: parsed.data.password });
   if (!session.ok) throw new Error("Sign-in failed right after registration");
 
   await setSessionCookie(session.token, session.expiresAt);

@@ -31,7 +31,7 @@ Authenticated read, update and delete of users by id, restricted to the caller's
 - **THEN** the response is `200` with A's user object
 
 ### Requirement: Update own user
-`PATCH /api/users/:id` SHALL accept a JSON body with optional `username` (same rules as at registration) and optional `firstName` and `lastName` (non-empty strings). It SHALL require at least one of them and SHALL reject any other keys with `400`. If the username is taken by another user (compared case-insensitively) it SHALL respond `409` with code `USERNAME_TAKEN` and change nothing. On success it SHALL update the fields that were provided, store the username lowercased, set `name` to `"<firstName> <lastName>"`, update `updatedAt`, and respond `200` with the updated user object. `email` and `password` SHALL NOT be changeable through this endpoint.
+`PATCH /api/users/:id` SHALL accept a JSON body with optional `username` (same rules as at registration) and optional `firstName` (non-empty) and `lastName` (may be empty). It SHALL require at least one of them; other keys SHALL be ignored, so a body with only other keys SHALL be rejected with `400`. If the username is taken by another user (compared case-insensitively) it SHALL respond `409` with code `USERNAME_TAKEN` and change nothing. On success it SHALL update the fields that were provided, store the username lowercased, set `name` to `"<firstName> <lastName>"` (without a trailing space when `lastName` is empty), update `updatedAt`, and respond `200` with the updated user object. `email` and `password` SHALL NOT be changeable through this endpoint.
 
 #### Scenario: Update first name
 - **WHEN** user A patches `{ "firstName": "Augusta" }` on their own id

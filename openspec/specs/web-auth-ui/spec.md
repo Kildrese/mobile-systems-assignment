@@ -72,7 +72,7 @@ When a user with a valid session opens `/login` or `/register`, the page SHALL r
 - **THEN** the field shows a validation message and no sign-in is attempted
 
 ### Requirement: Registration page
-`/register` SHALL use the matching shadcn `signup-03` layout with first name, last name, username, email, password and confirm-password fields and a link to `/login` that keeps the `next` parameter. It SHALL apply the same validation as `POST /api/auth/register` and SHALL also require the two passwords to match. On success the user SHALL be signed in immediately (session cookie set) and redirected as in "Safe post-login redirect". A taken email SHALL show an error on the email field, and a taken username an error on the username field.
+`/register` SHALL use the matching shadcn `signup-03` layout with first name, last name (optional), username, email, password and confirm-password fields and a link to `/login` that keeps the `next` parameter. It SHALL apply the same validation as `POST /api/auth/register` and SHALL also require the two passwords to match. On success the user SHALL be signed in immediately (session cookie set) and redirected as in "Safe post-login redirect". A taken email SHALL show an error on the email field, and a taken username an error on the username field.
 
 #### Scenario: Successful registration
 - **WHEN** a visitor fills in valid details on `/register`

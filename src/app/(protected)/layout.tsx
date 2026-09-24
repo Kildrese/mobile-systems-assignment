@@ -3,6 +3,7 @@
 import { Brand } from "@/components/layout/brand";
 import { UserMenu } from "@/components/layout/user-menu";
 import { Toaster } from "@/components/ui/sonner";
+import { hasEmail } from "@/lib/api/contracts";
 import { requireSession } from "@/lib/session";
 
 export default async function ProtectedLayout({ children }: LayoutProps<"/">) {
@@ -17,7 +18,7 @@ export default async function ProtectedLayout({ children }: LayoutProps<"/">) {
             username={user.username}
             firstName={user.firstName}
             lastName={user.lastName}
-            email={user.email}
+            email={hasEmail(user.email) ? user.email : null}
           />
         </div>
       </header>

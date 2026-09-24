@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { hasEmail } from "@/lib/api/contracts";
 import { requireSession } from "@/lib/session";
 
 export default async function HomePage() {
@@ -10,7 +11,8 @@ export default async function HomePage() {
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">Hello, {user.firstName}!</h1>
       <p className="text-muted-foreground">
-        You&apos;re signed in as @{user.username} ({user.email}).
+        You&apos;re signed in as @{user.username}
+        {hasEmail(user.email) && ` (${user.email})`}.
       </p>
       <div className="flex flex-wrap gap-2">
         <Button asChild>

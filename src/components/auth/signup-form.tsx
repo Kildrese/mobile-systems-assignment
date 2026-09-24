@@ -40,7 +40,7 @@ export function SignupForm({ next }: { next: string }) {
                 <FieldError errors={asErrors(errors.firstName)} />
               </Field>
               <Field data-invalid={!!errors.lastName}>
-                <FieldLabel htmlFor="lastName">Last name</FieldLabel>
+                <FieldLabel htmlFor="lastName">Last name (optional)</FieldLabel>
                 <Input
                   id="lastName"
                   name="lastName"
@@ -48,8 +48,7 @@ export function SignupForm({ next }: { next: string }) {
                   defaultValue={state.values?.lastName}
                   aria-invalid={!!errors.lastName}
                   maxLength={100}
-                  required
-                />
+                                  />
                 <FieldError errors={asErrors(errors.lastName)} />
               </Field>
             </Field>

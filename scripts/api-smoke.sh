@@ -128,8 +128,8 @@ req POST /api/auth/register "{\"email\":\"x-$RUN@example.com\",\"username\":\"AD
 expect_code 409 USERNAME_TAKEN "register duplicate username (different case)"
 
 BAD_EMAIL="bad-$RUN@example.com"
-req POST /api/auth/register "{\"email\":\"$BAD_EMAIL\",\"username\":\"bad_$RUN\",\"password\":\"$A_PASS\",\"firstName\":\"Ada\"}"
-expect_code 400 VALIDATION_ERROR "register missing lastName"
+req POST /api/auth/register "{\"email\":\"$BAD_EMAIL\",\"username\":\"bad_$RUN\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
+expect_code 400 VALIDATION_ERROR "register missing password"
 req POST /api/auth/register "{\"email\":\"not-an-email\",\"username\":\"bad_$RUN\",\"password\":\"$A_PASS\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
 expect_code 400 VALIDATION_ERROR "register invalid email"
 SEVEN="s3cr7x$((RANDOM % 10))"
@@ -137,16 +137,14 @@ req POST /api/auth/register "{\"email\":\"$BAD_EMAIL\",\"username\":\"bad_$RUN\"
 expect_code 400 VALIDATION_ERROR "register 7-char password"
 if grep -qF -- "$SEVEN" "$TMP/body"; then fail "validation error echoes the password"; fi
 ok "validation error does not echo the password"
-req POST /api/auth/register "{\"email\":\"$BAD_EMAIL\",\"username\":\"bad_$RUN\",\"password\":\"$A_PASS\",\"firstName\":\"Ada\",\"lastName\":\"L\",\"id\":\"$A_ID\"}"
-expect_code 400 VALIDATION_ERROR "register with extra id"
-req POST /api/auth/register "{\"email\":\"$BAD_EMAIL\",\"username\":\"bad_$RUN\",\"password\":\"$A_PASS\",\"firstName\":\"Ada\",\"lastName\":\"L\",\"emailVerified\":true}"
-expect_code 400 VALIDATION_ERROR "register with extra emailVerified"
 for bad_user in "ab" "has space" "has@at" "$(printf 'u%.0s' {1..31})"; do
   req POST /api/auth/register "{\"email\":\"$BAD_EMAIL\",\"username\":\"$bad_user\",\"password\":\"$A_PASS\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
   expect_code 400 VALIDATION_ERROR "register invalid username '$bad_user'"
 done
-req POST /api/auth/register "{\"email\":\"$BAD_EMAIL\",\"password\":\"$A_PASS\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
-expect_code 400 VALIDATION_ERROR "register missing username"
+req POST /api/auth/register "{\"password\":\"$A_PASS\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
+expect_code 400 VALIDATION_ERROR "register without username and email"
+req POST /api/auth/register "{\"email\":\"x@no-email.invalid\",\"password\":\"$A_PASS\"}"
+expect_code 400 VALIDATION_ERROR "register with the reserved placeholder email domain"
 [ "$(sql "select count(*) from \"user\" where email = '$BAD_EMAIL'")" = "0" ] || fail "invalid registration created a user"
 ok "no user created by invalid registrations"
 
@@ -156,9 +154,57 @@ B_ID="$(jq -r .id "$TMP/body")"
 collect_hashes
 ok "register B"
 
+# Extra keys are dropped, never stored.
+X_EMAIL="extra-$RUN@example.com"
+SENT_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+req POST /api/auth/register "{\"email\":\"$X_EMAIL\",\"username\":\"extra_$RUN\",\"password\":\"$A_PASS\",\"id\":\"$SENT_ID\",\"emailVerified\":true,\"role\":\"admin\"}"
+expect_status 201 "register with extra keys"
+expect_user_keys .
+X_ID="$(jq -r .id "$TMP/body")"
+[ "$X_ID" != "$SENT_ID" ] || fail "register stored the client-sent id"
+[ "$(sql "select email_verified from \"user\" where id = '$X_ID'")" = "f" ] || fail "register stored emailVerified"
+ok "register with extra keys -> 201, extra keys ignored"
+
+# Only a username and a password.
+req POST /api/auth/register "{\"username\":\"Solo_$RUN\",\"password\":\"$A_PASS\"}"
+expect_status 201 "register with only username + password"
+expect_user_keys .
+[ "$(jq -c '[.username, .email, .firstName, .lastName]' "$TMP/body")" = "[\"solo_$RUN\",null,\"solo_$RUN\",\"\"]" ] \
+  || fail "username-only registration fields"
+SOLO_ID="$(jq -r .id "$TMP/body")"
+req POST /api/auth/register "{\"username\":\"SOLO_$RUN\",\"password\":\"$A_PASS\"}"
+expect_code 409 USERNAME_TAKEN "register taken username without an email"
+req POST /api/auth/login "{\"username\":\"solo_$RUN\",\"password\":\"$A_PASS\"}"
+expect_status 200 "login with {username, password}"
+[ "$(jq -r .user.email "$TMP/body")" = null ] || fail "placeholder email leaked"
+SOLO_TOKEN="$(jq -r .token "$TMP/body")"
+ok "username-only account: 201, email null, name defaults, login by username"
+
+# Only an email and a password.
+E_EMAIL="only-email-$RUN@example.com"
+req POST /api/auth/register "{\"email\":\"$E_EMAIL\",\"password\":\"$A_PASS\"}"
+expect_status 201 "register with only email + password"
+E_ID="$(jq -r .id "$TMP/body")"
+E_USER="$(jq -r .username "$TMP/body")"
+[[ "$E_USER" =~ ^onlyemail[0-9]*_[0-9a-f]{8}$ ]] || fail "derived username: $E_USER"
+req POST /api/auth/login "{\"email\":\"$E_EMAIL\",\"password\":\"$A_PASS\"}"
+expect_status 200 "login with {email, password}"
+E_TOKEN="$(jq -r .token "$TMP/body")"
+req POST /api/auth/login "{\"email\":\"$E_USER\",\"password\":\"$A_PASS\"}"
+expect_status 200 "login with the username in the email field"
+ok "email-only account: 201, username derived, login via email or username"
+
+req DELETE "/api/users/$SOLO_ID" "" -H "$(auth "$SOLO_TOKEN")"
+expect_status 204 "DELETE username-only account (cleanup)"
+req DELETE "/api/users/$E_ID" "" -H "$(auth "$E_TOKEN")"
+expect_status 204 "DELETE email-only account (cleanup)"
+sql "delete from \"user\" where id = '$X_ID'" >/dev/null
+
 echo "== login"
 req POST /api/auth/login '{not json'
 expect_code 400 VALIDATION_ERROR "login malformed JSON"
+req POST /api/auth/login "{\"password\":\"x\"}"
+expect_code 400 VALIDATION_ERROR "login without identifier, email or username"
 req POST /api/auth/login "{\"identifier\":\"$A_EMAIL\",\"password\":\"wrong-password\"}"
 expect_code 401 INVALID_CREDENTIALS "login wrong password"
 cp "$TMP/body" "$TMP/wrong-password"
@@ -339,8 +385,6 @@ req GET /api/auth/me "" -H "$(auth "$T2")"
 expect_status 200 "token still works after wrong current password"
 req POST /api/auth/change-password "{\"currentPassword\":\"$C_PASS\",\"newPassword\":\"short7x\"}" -H "$(auth "$T2")"
 expect_code 400 VALIDATION_ERROR "change-password 7-char new password"
-req POST /api/auth/change-password "{\"currentPassword\":\"$C_PASS\",\"newPassword\":\"$NEW_PASS\",\"extra\":1}" -H "$(auth "$T2")"
-expect_code 400 VALIDATION_ERROR "change-password extra field"
 req POST /api/auth/login "{\"identifier\":\"$C_EMAIL\",\"password\":\"$C_PASS\"}"
 expect_status 200 "old password still works after rejected changes"
 T4="$(jq -r .token "$TMP/body")"

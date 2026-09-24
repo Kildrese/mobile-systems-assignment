@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { asErrors, initialFormState } from "@/lib/forms";
 import { useFormToast } from "./use-form-toast";
 
-export function EmailForm({ email }: { email: string }) {
+export function EmailForm({ email }: { email: string | null }) {
   const [state, action, pending] = useActionState(changeEmailAction, initialFormState);
   useFormToast(state);
   const errors = state.fieldErrors ?? {};
@@ -19,8 +19,14 @@ export function EmailForm({ email }: { email: string }) {
       <CardHeader>
         <CardTitle>Email</CardTitle>
         <CardDescription>
-          Currently <span className="font-medium text-foreground">{email}</span>. The change takes
-          effect immediately.
+          {email ? (
+            <>
+              Currently <span className="font-medium text-foreground">{email}</span>.
+            </>
+          ) : (
+            "You haven't added an email yet."
+          )}{" "}
+          The change takes effect immediately.
         </CardDescription>
       </CardHeader>
       <form action={action} className="contents">

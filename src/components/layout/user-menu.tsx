@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-type Props = { username: string; firstName: string; lastName: string; email: string };
+type Props = { username: string; firstName: string; lastName: string; email: string | null };
 
 export function UserMenu({ username, firstName, lastName, email }: Props) {
   const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
@@ -32,10 +32,10 @@ export function UserMenu({ username, firstName, lastName, email }: Props) {
       <DropdownMenuContent align="end" className="min-w-56">
         <DropdownMenuLabel className="flex flex-col font-normal">
           <span className="font-medium text-foreground">
-            {firstName} {lastName}
+            {[firstName, lastName].filter(Boolean).join(" ")}
           </span>
           <span className="truncate text-xs text-muted-foreground">@{username}</span>
-          <span className="truncate text-xs text-muted-foreground">{email}</span>
+          {email && <span className="truncate text-xs text-muted-foreground">{email}</span>}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>

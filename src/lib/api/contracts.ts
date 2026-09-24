@@ -1,6 +1,7 @@
 // The API contract: one Zod schema per request body, path params and response
-// status. The same schemas validate requests, shape responses (unknown keys are
-// stripped) and generate the OpenAPI document.
+// status. The same schemas validate requests, shape responses and generate the
+// OpenAPI document. Unknown keys are dropped, in requests and responses alike,
+// so clients may send extra fields but they are never stored or returned.
 //
 // This module must only import `zod` and `zod-openapi` so the OpenAPI script
 // can load it without a database, env vars or Next.js.
@@ -18,6 +19,19 @@ const Timestamp = z.date().meta({
 });
 
 const Name = z.string().trim().min(1).max(100);
+// A last name may be empty: not everyone has one.
+const LastName = z.string().trim().max(100);
+
+// Better Auth needs an email on every user, so users who register without one
+// get `<username>@no-email.invalid`. `.invalid` is a reserved top-level domain
+// (RFC 2606), so it can never be a real address. Responses show it as `null`.
+export const NO_EMAIL_DOMAIN = "no-email.invalid";
+export const hasEmail = (email: string) => !email.endsWith(`@${NO_EMAIL_DOMAIN}`);
+
+const Email = z
+  .email()
+  .max(254)
+  .refine(hasEmail, `Addresses at ${NO_EMAIL_DOMAIN} are reserved`);
 
 // Same rules as Better Auth's username plugin (see `@/lib/auth`).
 const Username = z
@@ -32,7 +46,13 @@ const Username = z
 export const User = z
   .object({
     id: z.uuid(),
-    email: z.email(),
+    email: z
+      .string()
+      .transform((email) => (hasEmail(email) ? email : null))
+      .meta({
+        override: { type: ["string", "null"], format: "email" },
+        description: "`null` if the user registered without an email.",
+      }),
     username: z.string(),
     firstName: z.string(),
     lastName: z.string(),
@@ -76,22 +96,40 @@ export const Health = z
   .object({ status: z.literal("ok") })
   .meta({ id: "Health" });
 
+// Only a password and a username or an email are required. Without a username
+// one is derived from the email; without names, `firstName` is the username
+// and `lastName` is empty.
 export const RegisterBody = z
-  .strictObject({
-    email: z.email().max(254),
-    username: Username,
+  .object({
+    email: Email.optional(),
+    username: Username.optional(),
     password: z.string().min(8).max(128),
-    firstName: Name,
-    lastName: Name,
+    firstName: Name.optional(),
+    lastName: LastName.optional(),
+  })
+  .refine((b) => b.email !== undefined || b.username !== undefined, {
+    message: "Provide a username, an email or both",
   })
   .meta({ id: "RegisterBody" });
 
+const Identifier = z.string().trim().min(1).max(254);
+
+// Clients may name the login field `identifier`, `email` or `username`; all
+// three accept either an email or a username.
 export const LoginBody = z
   .object({
-    identifier: z.string().trim().min(1).max(254).meta({
-      description: "Your email or your username.",
-    }),
+    identifier: Identifier.optional().meta({ description: "Your email or your username." }),
+    email: Identifier.optional().meta({ description: "Same as `identifier`." }),
+    username: Identifier.optional().meta({ description: "Same as `identifier`." }),
     password: z.string().min(1).max(128),
+  })
+  .transform(({ identifier, email, username, password }, ctx) => {
+    const value = identifier ?? email ?? username;
+    if (value === undefined) {
+      ctx.addIssue({ code: "custom", message: "Provide identifier, email or username" });
+      return z.NEVER;
+    }
+    return { identifier: value, password };
   })
   .meta({ id: "LoginBody" });
 
@@ -105,10 +143,10 @@ export const LoginResponse = z
   .meta({ id: "LoginResponse" });
 
 export const UpdateUserBody = z
-  .strictObject({
+  .object({
     username: Username.optional(),
     firstName: Name.optional(),
-    lastName: Name.optional(),
+    lastName: LastName.optional(),
   })
   .refine((b) => Object.values(b).some((v) => v !== undefined), {
     message: "Provide at least one of username, firstName or lastName",
@@ -116,7 +154,7 @@ export const UpdateUserBody = z
   .meta({ id: "UpdateUserBody" });
 
 export const ChangePasswordBody = z
-  .strictObject({
+  .object({
     currentPassword: z.string().min(1).max(128),
     newPassword: z.string().min(8).max(128),
   })
@@ -131,8 +169,8 @@ export const ChangePasswordResponse = z
   .meta({ id: "ChangePasswordResponse" });
 
 export const ChangeEmailBody = z
-  .strictObject({
-    newEmail: z.email().max(254),
+  .object({
+    newEmail: Email,
     currentPassword: z.string().min(1).max(128),
   })
   .meta({ id: "ChangeEmailBody" });
