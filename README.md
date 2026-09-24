@@ -104,6 +104,26 @@ The browser session is an `HttpOnly`, `SameSite=Lax` cookie named `session` (`Se
 
 **Known limitation:** email changes take effect immediately and aren't verified by email, because the app doesn't send email yet. There's also no password reset.
 
+### Project layout
+
+```
+src/
+  app/                  routes (Next.js App Router)
+    (protected)/        signed-in pages and their layout: / and /account
+    (public)/           signed-out pages and their layout: /login and /register
+    api/                JSON API route handlers
+    docs/ healthz/      API reference and health check
+  actions/              Server Actions used by the web forms
+  components/           React components (ui/ is shadcn/ui)
+  db/                   Drizzle schema and client
+  lib/
+    api/                API contracts (Zod), route handler wrapper, OpenAPI
+    services/           account rules shared by the API and the web UI
+  proxy.ts              redirects signed-out visitors to /login
+```
+
+A folder in parentheses is a [route group](https://nextjs.org/docs/app/getting-started/project-structure#route-groups): it groups pages under a shared layout but isn't part of the URL, so `(protected)/account/page.tsx` is served at `/account`.
+
 ## Deployment
 
 Production runs on [Vercel](https://vercel.com), with the database on [Neon](https://neon.com) (project `empty-firefly-03102623`, branch `production`).

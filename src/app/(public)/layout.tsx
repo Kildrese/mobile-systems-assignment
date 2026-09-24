@@ -1,3 +1,5 @@
+// Layout for the signed-out pages (`/login`, `/register`). `(public)` is a
+// route group: the folder name isn't part of the URL.
 import { GalleryVerticalEndIcon } from "lucide-react";
 import Link from "next/link";
 import { APP_NAME } from "@/lib/app";

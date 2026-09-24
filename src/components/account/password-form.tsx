@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { changePasswordAction } from "@/app/(app)/account/actions";
+import { changePasswordAction } from "@/actions/account";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";

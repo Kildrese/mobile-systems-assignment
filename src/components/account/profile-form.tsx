@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { updateNameAction } from "@/app/(app)/account/actions";
+import { updateNameAction } from "@/actions/account";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";

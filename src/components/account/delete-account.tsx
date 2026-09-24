@@ -1,7 +1,7 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
-import { deleteAccountAction } from "@/app/(app)/account/actions";
+import { deleteAccountAction } from "@/actions/account";
 import {
   AlertDialog,
   AlertDialogCancel,

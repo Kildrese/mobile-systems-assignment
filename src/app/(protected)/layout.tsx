@@ -1,6 +1,8 @@
+// Layout for every signed-in page. `(protected)` is a route group: the folder
+// name isn't part of the URL, so `(protected)/account` is served at `/account`.
 import { GalleryVerticalEndIcon } from "lucide-react";
 import Link from "next/link";
-import { UserMenu } from "@/components/app/user-menu";
+import { UserMenu } from "@/components/layout/user-menu";
 import { Toaster } from "@/components/ui/sonner";
 import { APP_NAME } from "@/lib/app";
 import { requireSession } from "@/lib/session";

@@ -2,7 +2,7 @@
 
 import { LogOutIcon, UserIcon } from "lucide-react";
 import Link from "next/link";
-import { signOutAction } from "@/app/(app)/actions";
+import { signOutAction } from "@/actions/session";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
