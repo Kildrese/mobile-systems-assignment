@@ -21,11 +21,3 @@ The application SHALL create its database connection from the `DATABASE_URL` env
 #### Scenario: Missing DATABASE_URL
 - **WHEN** the app attempts to access the database and `DATABASE_URL` is not set
 - **THEN** it fails with an error message stating that `DATABASE_URL` is missing
-
-### Requirement: Placeholder home page
-The home page (`/`) SHALL be a static page that does not query the database and that links to the API reference at `/docs`.
-
-#### Scenario: Home page renders without the database
-- **WHEN** the database is stopped and a user opens `http://localhost:3000/`
-- **THEN** the page renders and contains a link to `/docs`
-
