@@ -1,6 +1,6 @@
 # mobile-systems-assignment
 
-Repository for the Mobile Systems coursework at NYU.
+A web app and JSON API for user accounts: register, log in with an email or username, and manage your account. It's the foundation for the Mobile Systems coursework at NYU, built with Next.js, Better Auth and PostgreSQL.
 
 This project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec) for spec-driven development. Proposed changes live under `openspec/changes/`, and approved specs live under `openspec/specs/`.
 
@@ -11,7 +11,7 @@ The stack is a Next.js (App Router, TypeScript) app that runs on your machine wi
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) with Compose v2 (Docker Desktop is fine), **running**
-- [Node.js](https://nodejs.org/) 20+ and npm
+- [Node.js](https://nodejs.org/) 20.9+ (22 or 24 recommended) and npm
 - A bash shell (macOS/Linux, or WSL / Git Bash on Windows)
 
 ### One command
@@ -26,7 +26,8 @@ This will:
 2. run `npm install` if `node_modules` is missing,
 3. start Postgres and wait until it's healthy,
 4. apply pending migrations,
-5. start the dev server at <http://localhost:3000>.
+5. create the test account (username `NYUgrader`, password `Courant2026!`) if it doesn't exist yet,
+6. start the dev server at <http://localhost:3000>. The web UI and the API are served by this one process.
 
 ### Individual scripts
 
@@ -39,7 +40,7 @@ All scripts can be run from any directory.
 | `scripts/db-down.sh --reset` | Stop the container **and delete all data** |
 | `scripts/db-migrate.sh` | Apply pending migrations |
 | `scripts/dev.sh` | Start the Next.js dev server |
-| `scripts/start.sh` | All of the above, in order |
+| `scripts/start.sh` | All of the above, in order, plus `npm run db:seed` |
 
 ### Changing the database schema
 
@@ -52,7 +53,7 @@ Use `npm run db:studio` to browse the database in Drizzle Studio.
 
 ### Configuration and ports
 
-All configuration lives in `.env`, which is git-ignored. Docker Compose, Drizzle, and Next.js all read it. The defaults in `.env.example` are for local development only; don't reuse these credentials anywhere else.
+All configuration lives in `.env`, which is git-ignored. Docker Compose, Drizzle, and Next.js all read it. `.env.example` lists every variable with working values for the local Docker database, so copying it to `.env` (which `scripts/start.sh` does for you) is all the setup needed. These defaults are for local development only; don't reuse these credentials anywhere else.
 
 If port `5432` is already taken (for example by a locally installed Postgres), change the port in both places in `.env`:
 
@@ -81,6 +82,7 @@ cp .env.example .env         # once
 npm install                  # once
 docker compose up -d         # start Postgres
 npm run db:migrate           # apply migrations
+npm run db:seed              # create the test account (skipped if it exists)
 npm run dev                  # http://localhost:3000
 
 docker compose down          # stop Postgres (keep data)
@@ -200,7 +202,7 @@ Run `npm run openapi:generate` and commit the result whenever you change a contr
 
 The API enforces three rules. Each one is enforced in a single shared place, so a new route can't silently skip it:
 
-1. **Password hashes are never returned.** Hashes live only in `account.password`, never on `user`. Every response goes through `handle()` (`src/lib/api/handler.ts`), which parses the handler's result through the contract's response schema. The `User` schema is an allow-list (`id`, `email`, `username`, `firstName`, `lastName`, `createdAt`, `updatedAt`), and Zod strips every other key. So even if a handler passes a raw database row or Better Auth's user object, nothing else leaves the server. Validation errors report only the field path and rule, never the submitted value. Unexpected errors return a generic `500` with no message or stack trace.
+1. **Password hashes are never returned.** Passwords are hashed with scrypt (Better Auth's default, via `node:crypto`) and the hashes live only in `account.password`, never on `user`. Every response goes through `handle()` (`src/lib/api/handler.ts`), which parses the handler's result through the contract's response schema. The `User` schema is an allow-list (`id`, `email`, `username`, `firstName`, `lastName`, `createdAt`, `updatedAt`), and Zod strips every other key. So even if a handler passes a raw database row or Better Auth's user object, nothing else leaves the server. Validation errors report only the field path and rule, never the submitted value. Unexpected errors return a generic `500` with no message or stack trace.
 2. **A missing, bad or expired token returns `401`.** `handle()` resolves the session for every protected route. It accepts only a well-formed `Authorization: Bearer <token>` header and passes just that header to Better Auth, so the API is bearer-only and cookies are ignored. Unknown, expired or revoked tokens, and the token of a deleted user, all return `401`, never `200` or `500`.
 3. **You can't touch another user's account; we return `404`, not `403`.** `GET`, `PATCH` and `DELETE /api/users/:id` compare `:id` with the caller's own id before any database access. Another user's id, an id that doesn't exist, and a value that isn't a UUID all get the same `404 NOT_FOUND` body. A `403` would confirm that the id belongs to a real account, letting anyone with a token probe which user ids exist. With `404`, "not yours" and "doesn't exist" can't be told apart, by content or by timing, since no lookup happens in either case.
 

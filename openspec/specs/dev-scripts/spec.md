@@ -52,13 +52,23 @@ All shell scripts in `scripts/` SHALL be executable, use strict bash mode, and r
 - **THEN** the app is served at `http://localhost:3000`
 
 ### Requirement: One command runs the full stack
-`scripts/start.sh` SHALL bring up the whole local environment: create `.env` from `.env.example` if missing, install npm dependencies if `node_modules` is missing, start the database and wait for it, apply migrations, and start the dev server.
+`scripts/start.sh` SHALL bring up the whole local environment: create `.env` from `.env.example` if missing, install npm dependencies if `node_modules` is missing, start the database and wait for it, apply migrations, create the test account, and start the dev server.
 
 #### Scenario: Fresh clone
 - **WHEN** a developer on a fresh clone (with Docker and Node.js installed) runs `scripts/start.sh`
-- **THEN** `.env` is created (including the auth variables), dependencies are installed, the database starts, migrations are applied, and the app is reachable at `http://localhost:3000`, with `GET /healthz` returning `{ "status": "ok" }`
+- **THEN** `.env` is created (including the auth variables), dependencies are installed, the database starts, migrations are applied, the test account exists, and the app is reachable at `http://localhost:3000`, with `GET /healthz` returning `{ "status": "ok" }`
 
 #### Scenario: Failure stops the chain
 - **WHEN** any step (e.g. starting the database) fails
 - **THEN** the script stops immediately with a non-zero status and does not start the dev server
 
+### Requirement: Seed the test account
+`npm run db:seed` SHALL create a user with username `NYUgrader` and password `Courant2026!` in the database from `DATABASE_URL`. When a user with that username already exists it SHALL leave it unchanged and exit successfully.
+
+#### Scenario: First run
+- **WHEN** a developer runs `npm run db:seed` on a migrated database without that user
+- **THEN** the user is created and can log in with `{ "username": "NYUgrader", "password": "Courant2026!" }`
+
+#### Scenario: Repeated run
+- **WHEN** the user already exists and a developer runs `npm run db:seed` again
+- **THEN** the command exits with status 0 and the user is unchanged
