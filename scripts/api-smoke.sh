@@ -260,12 +260,133 @@ expect_code 401 UNAUTHORIZED "me after deletion"
 req POST /api/auth/login "{\"email\":\"$A_EMAIL\",\"password\":\"$A_PASS\"}"
 expect_code 401 INVALID_CREDENTIALS "login after deletion"
 
+echo "== logout"
+C_EMAIL="cat-$RUN@example.com"
+C_PASS="tabby-$RUN"
+req POST /api/auth/register "{\"email\":\"$C_EMAIL\",\"password\":\"$C_PASS\",\"firstName\":\"Cat\",\"lastName\":\"Stevens\"}"
+expect_status 201 "register C"
+C_ID="$(jq -r .id "$TMP/body")"
+collect_hashes
+login_c() {
+  req POST /api/auth/login "{\"email\":\"$1\",\"password\":\"$2\"}"
+  expect_status 200 "login C"
+  jq -r .token "$TMP/body"
+}
+T1="$(login_c "$C_EMAIL" "$C_PASS")"
+T2="$(login_c "$C_EMAIL" "$C_PASS")"
+
+req POST /api/auth/logout
+expect_code 401 UNAUTHORIZED "logout without token"
+req POST /api/auth/logout "" -H "$(auth "$T1")"
+expect_status 204 "logout T1"
+[ ! -s "$TMP/body" ] || fail "logout 204 has a body"
+ok "logout -> 204, no body"
+req GET /api/auth/me "" -H "$(auth "$T1")"
+expect_code 401 UNAUTHORIZED "me after logout"
+req POST /api/auth/logout "" -H "$(auth "$T1")"
+expect_code 401 UNAUTHORIZED "logout with revoked token"
+req GET /api/auth/me "" -H "$(auth "$T2")"
+expect_status 200 "me with other session after logout"
+ok "other session survives logout"
+
+echo "== change-password"
+T3="$(login_c "$C_EMAIL" "$C_PASS")"
+NEW_PASS="new-tabby-$RUN"
+req POST /api/auth/change-password "{\"currentPassword\":\"$C_PASS\",\"newPassword\":\"$NEW_PASS\"}"
+expect_code 401 UNAUTHORIZED "change-password without token"
+req POST /api/auth/change-password "{\"currentPassword\":\"wrong-password\",\"newPassword\":\"$NEW_PASS\"}" -H "$(auth "$T2")"
+expect_code 403 INVALID_PASSWORD "change-password wrong current password"
+req GET /api/auth/me "" -H "$(auth "$T2")"
+expect_status 200 "token still works after wrong current password"
+req POST /api/auth/change-password "{\"currentPassword\":\"$C_PASS\",\"newPassword\":\"short7x\"}" -H "$(auth "$T2")"
+expect_code 400 VALIDATION_ERROR "change-password 7-char new password"
+req POST /api/auth/change-password "{\"currentPassword\":\"$C_PASS\",\"newPassword\":\"$NEW_PASS\",\"extra\":1}" -H "$(auth "$T2")"
+expect_code 400 VALIDATION_ERROR "change-password extra field"
+req POST /api/auth/login "{\"email\":\"$C_EMAIL\",\"password\":\"$C_PASS\"}"
+expect_status 200 "old password still works after rejected changes"
+T4="$(jq -r .token "$TMP/body")"
+ok "rejected changes leave the password unchanged"
+
+req POST /api/auth/change-password "{\"currentPassword\":\"$C_PASS\",\"newPassword\":\"$NEW_PASS\"}" -H "$(auth "$T2")"
+expect_status 200 "change-password"
+C_TOKEN="$(jq -r .token "$TMP/body")"
+[ -n "$C_TOKEN" ] && [ "$C_TOKEN" != null ] || fail "change-password returned no token"
+[ "$(jq -c 'keys' "$TMP/body")" = '["token"]' ] || fail "change-password body is not exactly {token}"
+ok "change-password -> 200 {token}"
+collect_hashes
+for t in "$T2" "$T3" "$T4"; do
+  req GET /api/auth/me "" -H "$(auth "$t")"
+  expect_code 401 UNAUTHORIZED "me with a token issued before the password change"
+done
+req GET /api/auth/me "" -H "$(auth "$C_TOKEN")"
+expect_status 200 "me with the new token"
+ok "only the returned token works"
+req POST /api/auth/login "{\"email\":\"$C_EMAIL\",\"password\":\"$C_PASS\"}"
+expect_code 401 INVALID_CREDENTIALS "login with old password"
+login_c "$C_EMAIL" "$NEW_PASS" >/dev/null
+ok "login with new password -> 200"
+
+echo "== change-email"
+C_NEW_EMAIL="cat-new-$RUN@example.com"
+C_NEW_UPPER="$(echo "$C_NEW_EMAIL" | tr '[:lower:]' '[:upper:]')"
+B_UPPER="$(echo "$B_EMAIL" | tr '[:lower:]' '[:upper:]')"
+req POST /api/auth/change-email "{\"newEmail\":\"$C_NEW_EMAIL\",\"currentPassword\":\"$NEW_PASS\"}"
+expect_code 401 UNAUTHORIZED "change-email without token"
+req POST /api/auth/change-email "{\"newEmail\":\"not-an-email\",\"currentPassword\":\"$NEW_PASS\"}" -H "$(auth "$C_TOKEN")"
+expect_code 400 VALIDATION_ERROR "change-email invalid email"
+req POST /api/auth/change-email "{\"newEmail\":\"$C_NEW_EMAIL\",\"currentPassword\":\"wrong-password\"}" -H "$(auth "$C_TOKEN")"
+expect_code 403 INVALID_PASSWORD "change-email wrong password"
+req POST /api/auth/change-email "{\"newEmail\":\"$B_UPPER\",\"currentPassword\":\"wrong-password\"}" -H "$(auth "$C_TOKEN")"
+expect_code 403 INVALID_PASSWORD "change-email wrong password + taken email (403 before 409)"
+req POST /api/auth/change-email "{\"newEmail\":\"$B_UPPER\",\"currentPassword\":\"$NEW_PASS\"}" -H "$(auth "$C_TOKEN")"
+expect_code 409 EMAIL_TAKEN "change-email to B's email (different case)"
+[ "$(sql "select email from \"user\" where id = '$C_ID'")|$(sql "select email from \"user\" where id = '$B_ID'")" = "$C_EMAIL|$B_EMAIL" ] \
+  || fail "a rejected change-email modified a user"
+ok "rejected change-email left both users unchanged"
+req POST /api/auth/change-email "{\"newEmail\":\"$C_EMAIL\",\"currentPassword\":\"$NEW_PASS\"}" -H "$(auth "$C_TOKEN")"
+expect_status 200 "change-email to the current email"
+ok "change-email to the current email -> 200 no-op"
+
+req POST /api/auth/change-email "{\"newEmail\":\"$C_NEW_UPPER\",\"currentPassword\":\"$NEW_PASS\"}" -H "$(auth "$C_TOKEN")"
+expect_status 200 "change-email"
+expect_user_keys .
+[ "$(jq -r .email "$TMP/body")" = "$C_NEW_EMAIL" ] || fail "change-email did not lowercase"
+ok "change-email -> 200 user, email lowercased"
+req GET /api/auth/me "" -H "$(auth "$C_TOKEN")"
+expect_status 200 "me after change-email"
+[ "$(jq -r .email "$TMP/body")" = "$C_NEW_EMAIL" ] || fail "me does not show the new email"
+ok "token still works and shows the new email"
+req POST /api/auth/login "{\"email\":\"$C_EMAIL\",\"password\":\"$NEW_PASS\"}"
+expect_code 401 INVALID_CREDENTIALS "login with the old email"
+login_c "$C_NEW_EMAIL" "$NEW_PASS" >/dev/null
+ok "login with the new email -> 200"
+
+req DELETE "/api/users/$C_ID" "" -H "$(auth "$C_TOKEN")"
+expect_status 204 "DELETE C (cleanup)"
+
 echo "== api-docs"
 SKIP_KEY_SCAN=1 req GET /api/openapi.json
 expect_status 200 "GET /api/openapi.json"
 jq -e '.openapi | startswith("3.1")' "$TMP/body" >/dev/null || fail "openapi version"
 [ "$(jq -S . "$TMP/body")" = "$(jq -S . openapi/openapi.json)" ] || fail "served document differs from openapi/openapi.json"
 ok "served OpenAPI 3.1 document matches the committed file"
+for op in "get /healthz" "post /api/auth/register" "post /api/auth/login" "get /api/auth/me" \
+  "post /api/auth/logout" "post /api/auth/change-password" "post /api/auth/change-email" \
+  "get /api/users/{id}" "patch /api/users/{id}" "delete /api/users/{id}"; do
+  jq -e --arg m "${op%% *}" --arg p "${op#* }" '.paths[$p][$m]' "$TMP/body" >/dev/null || fail "OpenAPI is missing $op"
+done
+ok "every endpoint is documented"
+for op in "get /api/auth/me" "post /api/auth/logout" "post /api/auth/change-password" "post /api/auth/change-email" \
+  "get /api/users/{id}" "patch /api/users/{id}" "delete /api/users/{id}"; do
+  jq -e --arg m "${op%% *}" --arg p "${op#* }" '.paths[$p][$m] | (.security | tostring | contains("bearerAuth")) and (.responses | has("401"))' \
+    "$TMP/body" >/dev/null || fail "$op does not declare bearerAuth and 401"
+done
+ok "protected endpoints declare bearerAuth and 401"
+for p in /api/auth/change-password /api/auth/change-email; do
+  jq -e --arg p "$p" '.paths[$p].post.responses | has("403")' "$TMP/body" >/dev/null || fail "$p does not document 403"
+done
+jq -e '.components.schemas.ErrorCode.enum | index("INVALID_PASSWORD")' "$TMP/body" >/dev/null || fail "ErrorCode lacks INVALID_PASSWORD"
+ok "password-confirming endpoints document 403, ErrorCode has INVALID_PASSWORD"
 req GET /docs
 expect_status 200 "GET /docs"
 grep -qi '^content-type: text/html' "$TMP/headers" || fail "/docs is not HTML"

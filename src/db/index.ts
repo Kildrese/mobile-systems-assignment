@@ -4,8 +4,9 @@ import * as schema from "./schema";
 
 type Database = PostgresJsDatabase<typeof schema>;
 
-// Reuse one client across hot reloads in development so we don't open a new
-// connection pool every time a module is re-evaluated.
+// One client per process, kept on globalThis so it also survives hot reloads
+// in development. Without the cache every call would open a new connection
+// pool and quickly exhaust Postgres's connection limit.
 const globalForDb = globalThis as unknown as { db?: Database };
 
 function createDb(): Database {
@@ -19,7 +20,6 @@ function createDb(): Database {
 }
 
 export function getDb(): Database {
-  const db = globalForDb.db ?? createDb();
-  if (process.env.NODE_ENV !== "production") globalForDb.db = db;
-  return db;
+  globalForDb.db ??= createDb();
+  return globalForDb.db;
 }

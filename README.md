@@ -88,6 +88,22 @@ docker compose down -v       # stop Postgres and delete data
 npm run typecheck            # type-check the project
 ```
 
+## Web UI
+
+Open <http://localhost:3000>. Signed-out visitors are sent to the login page and come back to the page they asked for after signing in.
+
+| Path | What it is |
+| --- | --- |
+| `/login` | Sign in |
+| `/register` | Create an account (you're signed in straight away) |
+| `/` | Home (signed in) |
+| `/account` | Change your name, email or password, or delete your account (signed in) |
+| `/docs` | API reference (public) |
+
+The browser session is an `HttpOnly`, `SameSite=Lax` cookie named `session` (`Secure` in production) holding the session token, set by Server Actions. JavaScript can't read it. The JSON API ignores this cookie and stays bearer-only. Forms and API endpoints share one implementation of every account rule (`src/lib/services/account.ts`).
+
+**Known limitation:** email changes take effect immediately and aren't verified by email, because the app doesn't send email yet. There's also no password reset.
+
 ## API
 
 The app is a JSON API. Protected endpoints take `Authorization: Bearer <token>`, where the token comes from `POST /api/auth/login`.
@@ -98,6 +114,9 @@ The app is a JSON API. Protected endpoints take `Authorization: Bearer <token>`,
 | POST | `/api/auth/register` | no | Create an account |
 | POST | `/api/auth/login` | no | Get a bearer token |
 | GET | `/api/auth/me` | yes | The logged-in user |
+| POST | `/api/auth/logout` | yes | Revoke the current token (`204`) |
+| POST | `/api/auth/change-password` | yes | Needs the current password. Revokes every session and returns a new `token` |
+| POST | `/api/auth/change-email` | yes | Needs the current password. Changes the email immediately (no verification) |
 | GET / PATCH / DELETE | `/api/users/:id` | yes | Read, rename or delete your own account |
 
 ### API docs
@@ -125,6 +144,8 @@ The API enforces three rules. Each one is enforced in a single shared place, so 
 3. **You can't touch another user's account; we return `404`, not `403`.** `GET`, `PATCH` and `DELETE /api/users/:id` compare `:id` with the caller's own id before any database access. Another user's id, an id that doesn't exist, and a value that isn't a UUID all get the same `404 NOT_FOUND` body. A `403` would confirm that the id belongs to a real account, letting anyone with a token probe which user ids exist. With `404`, "not yours" and "doesn't exist" can't be told apart, by content or by timing, since no lookup happens in either case.
 
 Sessions last Better Auth's default of 7 days, and the expiry is extended as the token is used. Deleting an account cascades to its credentials and sessions, so its tokens stop working immediately. Better Auth's own HTTP routes are not mounted: our endpoints call its server API directly, so the endpoints above are the whole public surface. Login rate limiting is not implemented yet.
+
+A wrong current password on change-password or change-email returns `403 INVALID_PASSWORD`, not `401`, so clients don't mistake a typo for an expired token and sign the user out. After changing the password, store the token from the response: all older tokens stop working.
 
 ## Working with OpenSpec
 

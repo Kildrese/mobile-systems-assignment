@@ -37,6 +37,7 @@ export const ErrorCode = z
     "INVALID_CREDENTIALS",
     "NOT_FOUND",
     "EMAIL_TAKEN",
+    "INVALID_PASSWORD",
     "INTERNAL",
   ])
   .meta({ id: "ErrorCode" });
@@ -98,6 +99,28 @@ export const UpdateUserBody = z
   })
   .meta({ id: "UpdateUserBody" });
 
+export const ChangePasswordBody = z
+  .strictObject({
+    currentPassword: z.string().min(1).max(128),
+    newPassword: z.string().min(8).max(128),
+  })
+  .meta({ id: "ChangePasswordBody" });
+
+export const ChangePasswordResponse = z
+  .object({
+    token: z.string().meta({
+      description: "The new bearer token. Every previous token is revoked.",
+    }),
+  })
+  .meta({ id: "ChangePasswordResponse" });
+
+export const ChangeEmailBody = z
+  .strictObject({
+    newEmail: z.email().max(254),
+    currentPassword: z.string().min(1).max(128),
+  })
+  .meta({ id: "ChangeEmailBody" });
+
 export const UserIdParams = z.object({
   id: z.uuid().meta({ description: "The user's id (must be your own)." }),
 });
@@ -136,6 +159,9 @@ const unauthorized = error("Missing, malformed, unknown or expired token.");
 const notFound = error(
   "The id is not your own. Same response whether it belongs to someone else, doesn't exist or isn't a UUID.",
 );
+// 403, not 401: clients treat 401 as "token dead, sign out", and a typo in
+// the current password shouldn't sign the user out.
+const forbidden = error("The current password is wrong.");
 const internal = error("Unexpected server error.");
 
 export const healthCheck = defineContract({
@@ -197,6 +223,61 @@ export const me = defineContract({
   },
 });
 
+export const logout = defineContract({
+  method: "post",
+  path: "/api/auth/logout",
+  operationId: "logout",
+  summary: "Log out (revoke the current token)",
+  tags: ["Auth"],
+  auth: true,
+  responses: {
+    204: { description: "The token is revoked. Your other sessions stay valid." },
+    401: unauthorized,
+    500: internal,
+  },
+});
+
+export const changePassword = defineContract({
+  method: "post",
+  path: "/api/auth/change-password",
+  operationId: "changePassword",
+  summary: "Change your password",
+  tags: ["Auth"],
+  auth: true,
+  body: ChangePasswordBody,
+  responses: {
+    200: {
+      description: "Every session is revoked, including this one. Use the returned token from now on.",
+      schema: ChangePasswordResponse,
+    },
+    400: badRequest,
+    401: unauthorized,
+    403: forbidden,
+    500: internal,
+  },
+});
+
+export const changeEmail = defineContract({
+  method: "post",
+  path: "/api/auth/change-email",
+  operationId: "changeEmail",
+  summary: "Change your email",
+  tags: ["Auth"],
+  auth: true,
+  body: ChangeEmailBody,
+  responses: {
+    200: {
+      description: "The updated user. Takes effect immediately, without verification; your token keeps working.",
+      schema: User,
+    },
+    400: badRequest,
+    401: unauthorized,
+    403: forbidden,
+    409: error("The email is already registered to another user."),
+    500: internal,
+  },
+});
+
 export const getUser = defineContract({
   method: "get",
   path: "/api/users/{id}",
@@ -252,6 +333,9 @@ export const contracts = [
   register,
   login,
   me,
+  logout,
+  changePassword,
+  changeEmail,
   getUser,
   updateUser,
   deleteUser,
