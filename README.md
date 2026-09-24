@@ -94,10 +94,10 @@ Open <http://localhost:3000>. Signed-out visitors are sent to the login page and
 
 | Path | What it is |
 | --- | --- |
-| `/login` | Sign in |
+| `/login` | Sign in with your email or username |
 | `/register` | Create an account (you're signed in straight away) |
 | `/` | Home (signed in) |
-| `/account` | Change your name, email or password, or delete your account (signed in) |
+| `/account` | Change your username, name, email or password, or delete your account (signed in) |
 | `/docs` | API reference (public) |
 
 The browser session is an `HttpOnly`, `SameSite=Lax` cookie named `session` (`Secure` in production) holding the session token, set by Server Actions. JavaScript can't read it. The JSON API ignores this cookie and stays bearer-only. Forms and API endpoints share one implementation of every account rule (`src/lib/services/account.ts`).
@@ -163,16 +163,18 @@ To migrate or deploy by hand, run `./scripts/db-migrate-neon.sh` (uses the direc
 
 The app is a JSON API. Protected endpoints take `Authorization: Bearer <token>`, where the token comes from `POST /api/auth/login`.
 
+Every user has an email and a username, and can log in with either. Usernames are 3-30 letters, digits, `_` or `.`, case-insensitive and stored lowercased (Better Auth's `username` plugin rules). A login `identifier` containing `@` is treated as an email, anything else as a username.
+
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | GET | `/healthz` | no | Liveness check, returns `{ "status": "ok" }` |
 | POST | `/api/auth/register` | no | Create an account |
-| POST | `/api/auth/login` | no | Get a bearer token |
+| POST | `/api/auth/login` | no | Get a bearer token. `identifier` is your email or username |
 | GET | `/api/auth/me` | yes | The logged-in user |
 | POST | `/api/auth/logout` | yes | Revoke the current token (`204`) |
 | POST | `/api/auth/change-password` | yes | Needs the current password. Revokes every session and returns a new `token` |
 | POST | `/api/auth/change-email` | yes | Needs the current password. Changes the email immediately (no verification) |
-| GET / PATCH / DELETE | `/api/users/:id` | yes | Read, rename or delete your own account |
+| GET / PATCH / DELETE | `/api/users/:id` | yes | Read, update (username, first and last name) or delete your own account |
 
 ### API docs
 
@@ -194,7 +196,7 @@ Run `npm run openapi:generate` and commit the result whenever you change a contr
 
 The API enforces three rules. Each one is enforced in a single shared place, so a new route can't silently skip it:
 
-1. **Password hashes are never returned.** Hashes live only in `account.password`, never on `user`. Every response goes through `handle()` (`src/lib/api/handler.ts`), which parses the handler's result through the contract's response schema. The `User` schema is an allow-list (`id`, `email`, `firstName`, `lastName`, `createdAt`, `updatedAt`), and Zod strips every other key. So even if a handler passes a raw database row or Better Auth's user object, nothing else leaves the server. Validation errors report only the field path and rule, never the submitted value. Unexpected errors return a generic `500` with no message or stack trace.
+1. **Password hashes are never returned.** Hashes live only in `account.password`, never on `user`. Every response goes through `handle()` (`src/lib/api/handler.ts`), which parses the handler's result through the contract's response schema. The `User` schema is an allow-list (`id`, `email`, `username`, `firstName`, `lastName`, `createdAt`, `updatedAt`), and Zod strips every other key. So even if a handler passes a raw database row or Better Auth's user object, nothing else leaves the server. Validation errors report only the field path and rule, never the submitted value. Unexpected errors return a generic `500` with no message or stack trace.
 2. **A missing, bad or expired token returns `401`.** `handle()` resolves the session for every protected route. It accepts only a well-formed `Authorization: Bearer <token>` header and passes just that header to Better Auth, so the API is bearer-only and cookies are ignored. Unknown, expired or revoked tokens, and the token of a deleted user, all return `401`, never `200` or `500`.
 3. **You can't touch another user's account; we return `404`, not `403`.** `GET`, `PATCH` and `DELETE /api/users/:id` compare `:id` with the caller's own id before any database access. Another user's id, an id that doesn't exist, and a value that isn't a UUID all get the same `404 NOT_FOUND` body. A `403` would confirm that the id belongs to a real account, letting anyone with a token probe which user ids exist. With `404`, "not yours" and "doesn't exist" can't be told apart, by content or by timing, since no lookup happens in either case.
 

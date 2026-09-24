@@ -1,7 +1,7 @@
 import { betterAuth } from "better-auth";
 import type { APIError } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { bearer } from "better-auth/plugins";
+import { bearer, username } from "better-auth/plugins";
 import { getDb } from "@/db";
 import * as schema from "@/db/schema";
 
@@ -42,7 +42,9 @@ function createAuth() {
     advanced: {
       database: { generateId: "uuid" },
     },
-    plugins: [bearer()],
+    // Default username rules: 3-30 characters of letters, digits, `_` and
+    // `.`, stored lowercased. No separate display username.
+    plugins: [bearer(), username({ displayUsername: false })],
   });
 }
 
@@ -57,7 +59,13 @@ export function getAuth(): Auth {
   return globalForAuth.auth;
 }
 
-export type Session = NonNullable<Awaited<ReturnType<Auth["api"]["getSession"]>>>;
+type BetterAuthSession = NonNullable<Awaited<ReturnType<Auth["api"]["getSession"]>>>;
+
+// The username plugin types `username` as optional, but our column is
+// NOT NULL (see `@/db/schema`), so every user has one.
+export type Session = BetterAuthSession & {
+  user: BetterAuthSession["user"] & { username: string };
+};
 
 // By shape, not `instanceof`: Next can bundle Better Auth into more than one
 // layer (e.g. route handlers vs Server Actions), each with its own APIError
@@ -72,7 +80,7 @@ export const bearerHeaders = (token: string) => new Headers({ authorization: `Be
 // Both the API (bearer header) and the web UI (cookie) resolve sessions here.
 export async function getSessionByToken(token: string): Promise<Session | null> {
   try {
-    return await getAuth().api.getSession({ headers: bearerHeaders(token) });
+    return (await getAuth().api.getSession({ headers: bearerHeaders(token) })) as Session | null;
   } catch (err) {
     if (isAPIError(err)) return null;
     throw err;

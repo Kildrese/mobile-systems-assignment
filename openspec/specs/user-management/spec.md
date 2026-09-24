@@ -31,11 +31,19 @@ Authenticated read, update and delete of users by id, restricted to the caller's
 - **THEN** the response is `200` with A's user object
 
 ### Requirement: Update own user
-`PATCH /api/users/:id` SHALL accept a JSON body with optional `firstName` and `lastName` (non-empty strings). It SHALL require at least one of them and SHALL reject any other keys with `400`. On success it SHALL update the fields that were provided, set `name` to `"<firstName> <lastName>"`, update `updatedAt`, and respond `200` with the updated user object. `email` and `password` SHALL NOT be changeable through this endpoint.
+`PATCH /api/users/:id` SHALL accept a JSON body with optional `username` (same rules as at registration) and optional `firstName` and `lastName` (non-empty strings). It SHALL require at least one of them and SHALL reject any other keys with `400`. If the username is taken by another user (compared case-insensitively) it SHALL respond `409` with code `USERNAME_TAKEN` and change nothing. On success it SHALL update the fields that were provided, store the username lowercased, set `name` to `"<firstName> <lastName>"`, update `updatedAt`, and respond `200` with the updated user object. `email` and `password` SHALL NOT be changeable through this endpoint.
 
 #### Scenario: Update first name
 - **WHEN** user A patches `{ "firstName": "Augusta" }` on their own id
 - **THEN** the response is `200` with `firstName` equal to `Augusta`, `lastName` unchanged, and `updatedAt` later than before
+
+#### Scenario: Change username
+- **WHEN** user A patches `{ "username": "Augusta" }` on their own id
+- **THEN** the response is `200` with `username` equal to `augusta`, A can log in with `augusta`, and A's previous username no longer logs in
+
+#### Scenario: Username taken
+- **WHEN** user A patches `{ "username": "<B's username>" }` on their own id
+- **THEN** the response is `409` with `error.code` equal to `USERNAME_TAKEN` and A's record is unchanged
 
 #### Scenario: Empty body
 - **WHEN** user A patches `{}` on their own id

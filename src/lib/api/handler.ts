@@ -44,10 +44,11 @@ function errorBody(
 export const ERRORS = {
   NOT_FOUND: errorBody("NOT_FOUND", "Not found"),
   UNAUTHORIZED: errorBody("UNAUTHORIZED", "Authentication required"),
-  // Same body for unknown email and wrong password.
-  INVALID_CREDENTIALS: errorBody("INVALID_CREDENTIALS", "Invalid email or password"),
+  // Same body for an unknown email or username and a wrong password.
+  INVALID_CREDENTIALS: errorBody("INVALID_CREDENTIALS", "Invalid email, username or password"),
   INVALID_PASSWORD: errorBody("INVALID_PASSWORD", "Current password is incorrect"),
   EMAIL_TAKEN: errorBody("EMAIL_TAKEN", "Email is already registered"),
+  USERNAME_TAKEN: errorBody("USERNAME_TAKEN", "Username is already taken"),
   INTERNAL: errorBody("INTERNAL", "Internal server error"),
 };
 

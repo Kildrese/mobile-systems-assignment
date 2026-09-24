@@ -9,22 +9,34 @@ import { clearSessionCookie, requireSession, setSessionCookie } from "@/lib/sess
 
 const success = (message: string) => ({ message, at: Date.now() });
 
-export async function updateNameAction(_prev: FormState, formData: FormData): Promise<FormState> {
+export async function updateProfileAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
   const { user } = await requireSession();
-  const input = pick(formData, ["firstName", "lastName"]);
-  const values = { firstName: input.firstName ?? "", lastName: input.lastName ?? "" };
+  const input = pick(formData, ["username", "firstName", "lastName"]);
+  const values = {
+    username: input.username ?? "",
+    firstName: input.firstName ?? "",
+    lastName: input.lastName ?? "",
+  };
 
   const parsed = UpdateUserBody.safeParse(input);
   if (!parsed.success) return { ...fromZodError(parsed.error), values };
 
-  const result = await account.updateName(user.id, parsed.data);
-  if (!result.ok) redirect("/login");
+  const result = await account.updateProfile(user.id, parsed.data);
+  if (!result.ok) {
+    switch (result.code) {
+      case "USERNAME_TAKEN":
+        return { fieldErrors: { username: ["Username already taken"] }, values };
+      case "NOT_FOUND":
+        redirect("/login");
+    }
+  }
 
   revalidatePath("/", "layout");
-  return {
-    values: { firstName: result.user.firstName, lastName: result.user.lastName },
-    success: success("Name updated"),
-  };
+  const { username, firstName, lastName } = result.user;
+  return { values: { username, firstName, lastName }, success: success("Profile updated") };
 }
 
 export async function changeEmailAction(_prev: FormState, formData: FormData): Promise<FormState> {

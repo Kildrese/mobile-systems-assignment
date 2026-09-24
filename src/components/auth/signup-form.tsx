@@ -53,6 +53,24 @@ export function SignupForm({ next }: { next: string }) {
                 <FieldError errors={asErrors(errors.lastName)} />
               </Field>
             </Field>
+            <Field data-invalid={!!errors.username}>
+              <FieldLabel htmlFor="username">Username</FieldLabel>
+              <Input
+                id="username"
+                name="username"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                defaultValue={state.values?.username}
+                aria-invalid={!!errors.username}
+                minLength={3}
+                maxLength={30}
+                pattern="[a-zA-Z0-9_.]+"
+                required
+              />
+              <FieldDescription>3-30 letters, digits, _ or . You can sign in with it.</FieldDescription>
+              <FieldError errors={asErrors(errors.username)} />
+            </Field>
             <Field data-invalid={!!errors.email}>
               <FieldLabel htmlFor="email">Email</FieldLabel>
               <Input

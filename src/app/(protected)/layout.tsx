@@ -13,7 +13,12 @@ export default async function ProtectedLayout({ children }: LayoutProps<"/">) {
       <header className="border-b">
         <div className="mx-auto flex h-14 w-full max-w-4xl items-center justify-between px-4">
           <Brand />
-          <UserMenu firstName={user.firstName} lastName={user.lastName} email={user.email} />
+          <UserMenu
+            username={user.username}
+            firstName={user.firstName}
+            lastName={user.lastName}
+            email={user.email}
+          />
         </div>
       </header>
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">{children}</main>

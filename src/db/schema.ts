@@ -9,7 +9,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 // Better Auth's core tables. Shape taken from `npx @better-auth/cli generate`,
-// with UUID primary keys and `first_name`/`last_name` on `user`.
+// with UUID primary keys, and `username`, `first_name` and `last_name` on
+// `user`.
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -24,6 +25,9 @@ const timestamps = {
 export const user = pgTable("user", {
   id: uuid("id").defaultRandom().primaryKey(),
   email: text("email").notNull().unique(),
+  // Better Auth's username plugin. Stored lowercased; login accepts it in
+  // place of the email.
+  username: text("username").notNull().unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
   // Always `${firstName} ${lastName}`; Better Auth requires it.
   name: text("name").notNull(),

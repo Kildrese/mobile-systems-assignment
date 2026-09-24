@@ -7,25 +7,26 @@ import { registerUser, signIn } from "@/lib/services/account";
 import { safeNext, setSessionCookie } from "@/lib/session";
 
 export async function signInAction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const input = pick(formData, ["email", "password"]);
-  const values = { email: input.email ?? "" };
+  const input = pick(formData, ["identifier", "password"]);
+  const values = { identifier: input.identifier ?? "" };
 
   const parsed = LoginBody.safeParse(input);
   if (!parsed.success) return { ...fromZodError(parsed.error), values };
 
   const result = await signIn(parsed.data);
-  if (!result.ok) return { formError: "Invalid email or password", values };
+  if (!result.ok) return { formError: "Invalid email, username or password", values };
 
   await setSessionCookie(result.token, result.expiresAt);
   redirect(safeNext(formData.get("next")));
 }
 
 export async function registerAction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const input = pick(formData, ["firstName", "lastName", "email", "password"]);
+  const input = pick(formData, ["firstName", "lastName", "username", "email", "password"]);
   const confirmPassword = formData.get("confirmPassword");
   const values = {
     firstName: input.firstName ?? "",
     lastName: input.lastName ?? "",
+    username: input.username ?? "",
     email: input.email ?? "",
   };
 
@@ -37,9 +38,14 @@ export async function registerAction(_prev: FormState, formData: FormData): Prom
   if (!parsed.success || errors.fieldErrors?.confirmPassword) return { ...errors, values };
 
   const created = await registerUser(parsed.data);
-  if (!created.ok) return { fieldErrors: { email: ["Email already registered"] }, values };
+  if (!created.ok) {
+    return created.code === "EMAIL_TAKEN"
+      ? { fieldErrors: { email: ["Email already registered"] }, values }
+      : { fieldErrors: { username: ["Username already taken"] }, values };
+  }
 
-  const session = await signIn(parsed.data);
+  const { username, password } = parsed.data;
+  const session = await signIn({ identifier: username, password });
   if (!session.ok) throw new Error("Sign-in failed right after registration");
 
   await setSessionCookie(session.token, session.expiresAt);

@@ -14,9 +14,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-type Props = { firstName: string; lastName: string; email: string };
+type Props = { username: string; firstName: string; lastName: string; email: string };
 
-export function UserMenu({ firstName, lastName, email }: Props) {
+export function UserMenu({ username, firstName, lastName, email }: Props) {
   const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
 
   return (
@@ -34,6 +34,7 @@ export function UserMenu({ firstName, lastName, email }: Props) {
           <span className="font-medium text-foreground">
             {firstName} {lastName}
           </span>
+          <span className="truncate text-xs text-muted-foreground">@{username}</span>
           <span className="truncate text-xs text-muted-foreground">{email}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />

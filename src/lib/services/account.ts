@@ -4,7 +4,7 @@
 // to a status (API) or a field error (UI). Input is already validated with
 // the Zod schemas in `@/lib/api/contracts`.
 import "server-only";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { getDb } from "@/db";
 import { account, session, user, type User } from "@/db/schema";
@@ -19,13 +19,17 @@ import { bearerHeaders, getAuth, isAPIError } from "@/lib/auth";
 
 type Failure<C extends string> = { ok: false; code: C };
 
-async function emailTaken(email: string): Promise<boolean> {
+// Which of the unique login identifiers is already in use, email first.
+async function takenIdentifier(
+  email: string,
+  username: string,
+): Promise<"EMAIL_TAKEN" | "USERNAME_TAKEN" | null> {
   const rows = await getDb()
-    .select({ id: user.id })
+    .select({ email: user.email })
     .from(user)
-    .where(eq(user.email, email))
-    .limit(1);
-  return rows.length > 0;
+    .where(or(eq(user.email, email), eq(user.username, username)));
+  if (rows.length === 0) return null;
+  return rows.some((r) => r.email === email) ? "EMAIL_TAKEN" : "USERNAME_TAKEN";
 }
 
 // Better Auth's sign-in and change-password results don't include the
@@ -41,25 +45,26 @@ async function sessionExpiry(token: string): Promise<Date> {
 
 export async function registerUser(
   input: z.output<typeof RegisterBody>,
-): Promise<{ ok: true; user: User } | Failure<"EMAIL_TAKEN">> {
-  const { password, firstName, lastName } = input;
+): Promise<{ ok: true; user: User } | Failure<"EMAIL_TAKEN" | "USERNAME_TAKEN">> {
+  // `username` is already lowercased by the contract.
+  const { username, password, firstName, lastName } = input;
   // Better Auth stores emails lowercased.
   const email = input.email.toLowerCase();
 
-  // With autoSignIn off, Better Auth answers a duplicate sign-up with a fake
+  // With autoSignIn off, Better Auth answers a duplicate email with a fake
   // success, so check first.
-  if (await emailTaken(email)) return { ok: false, code: "EMAIL_TAKEN" };
+  const taken = await takenIdentifier(email, username);
+  if (taken) return { ok: false, code: taken };
 
   try {
     const { user: created } = await getAuth().api.signUpEmail({
-      body: { email, password, firstName, lastName, name: `${firstName} ${lastName}` },
+      body: { email, username, password, firstName, lastName, name: `${firstName} ${lastName}` },
     });
     return { ok: true, user: created as User };
   } catch (err) {
-    // Lost a race with a concurrent sign-up for the same email.
-    if (isAPIError(err) && (await emailTaken(email))) {
-      return { ok: false, code: "EMAIL_TAKEN" };
-    }
+    // Lost a race with a concurrent sign-up for the same email or username.
+    const taken = isAPIError(err) ? await takenIdentifier(email, username) : null;
+    if (taken) return { ok: false, code: taken };
     throw err;
   }
 }
@@ -69,15 +74,18 @@ export async function signIn(
 ): Promise<
   { ok: true; token: string; expiresAt: Date; user: User } | Failure<"INVALID_CREDENTIALS">
 > {
+  const { identifier, password } = input;
   try {
+    // Usernames can't contain `@`, so anything with one is an email.
     // Better Auth's response headers (including Set-Cookie) are dropped: only
     // the token is used.
-    const { token, user: signedIn } = await getAuth().api.signInEmail({
-      body: { email: input.email, password: input.password },
-    });
+    const { token, user: signedIn } = identifier.includes("@")
+      ? await getAuth().api.signInEmail({ body: { email: identifier, password } })
+      : await getAuth().api.signInUsername({ body: { username: identifier, password } });
     return { ok: true, token, expiresAt: await sessionExpiry(token), user: signedIn as User };
   } catch (err) {
-    // Same code for unknown email and wrong password.
+    // Same code for an unknown email or username, a malformed username and a
+    // wrong password.
     if (isAPIError(err) && err.statusCode < 500) {
       return { ok: false, code: "INVALID_CREDENTIALS" };
     }
@@ -91,27 +99,35 @@ export async function signOut(token: string): Promise<{ ok: true }> {
   return { ok: true };
 }
 
-export async function updateName(
+export async function updateProfile(
   userId: string,
   input: z.output<typeof UpdateUserBody>,
-): Promise<{ ok: true; user: User } | Failure<"NOT_FOUND">> {
+): Promise<{ ok: true; user: User } | Failure<"NOT_FOUND" | "USERNAME_TAKEN">> {
   // Column references in SET read the pre-update values, so `name` is built
   // from the new value when given and the stored one otherwise.
   const firstName = input.firstName !== undefined ? sql`${input.firstName}` : sql`${user.firstName}`;
   const lastName = input.lastName !== undefined ? sql`${input.lastName}` : sql`${user.lastName}`;
 
-  const [row] = await getDb()
-    .update(user)
-    .set({
-      firstName: input.firstName,
-      lastName: input.lastName,
-      name: sql`${firstName} || ' ' || ${lastName}`,
-      updatedAt: new Date(),
-    })
-    .where(eq(user.id, userId))
-    .returning();
-  if (!row) return { ok: false, code: "NOT_FOUND" };
-  return { ok: true, user: row };
+  try {
+    const [row] = await getDb()
+      .update(user)
+      .set({
+        username: input.username,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        name: sql`${firstName} || ' ' || ${lastName}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, userId))
+      .returning();
+    if (!row) return { ok: false, code: "NOT_FOUND" };
+    return { ok: true, user: row };
+  } catch (err) {
+    // `username` is the only unique column set here. The constraint decides,
+    // so there's no check-then-write race.
+    if (isUniqueViolation(err)) return { ok: false, code: "USERNAME_TAKEN" };
+    throw err;
+  }
 }
 
 function isUniqueViolation(err: unknown): boolean {

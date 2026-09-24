@@ -32,7 +32,7 @@ The application SHALL serve an OpenAPI 3.1 document at `GET /api/openapi.json` w
 
 #### Scenario: User schema has no hash
 - **WHEN** the `User` component schema in the document is inspected
-- **THEN** its properties are exactly `id`, `email`, `firstName`, `lastName`, `createdAt`, `updatedAt`
+- **THEN** its properties are exactly `id`, `email`, `username`, `firstName`, `lastName`, `createdAt`, `updatedAt`
 
 ### Requirement: Interactive API reference
 The application SHALL serve an interactive API reference at `GET /docs`, rendered from `/api/openapi.json`, from which requests can be sent with a bearer token.

@@ -19,10 +19,21 @@ const Timestamp = z.date().meta({
 
 const Name = z.string().trim().min(1).max(100);
 
+// Same rules as Better Auth's username plugin (see `@/lib/auth`).
+const Username = z
+  .string()
+  .trim()
+  .min(3)
+  .max(30)
+  .regex(/^[a-zA-Z0-9_.]+$/, "Use only letters, digits, underscores and periods")
+  .toLowerCase()
+  .meta({ description: "3-30 letters, digits, `_` or `.`. Case-insensitive; stored lowercased." });
+
 export const User = z
   .object({
     id: z.uuid(),
     email: z.email(),
+    username: z.string(),
     firstName: z.string(),
     lastName: z.string(),
     createdAt: Timestamp,
@@ -37,6 +48,7 @@ export const ErrorCode = z
     "INVALID_CREDENTIALS",
     "NOT_FOUND",
     "EMAIL_TAKEN",
+    "USERNAME_TAKEN",
     "INVALID_PASSWORD",
     "INTERNAL",
   ])
@@ -67,6 +79,7 @@ export const Health = z
 export const RegisterBody = z
   .strictObject({
     email: z.email().max(254),
+    username: Username,
     password: z.string().min(8).max(128),
     firstName: Name,
     lastName: Name,
@@ -75,7 +88,9 @@ export const RegisterBody = z
 
 export const LoginBody = z
   .object({
-    email: z.email().max(254),
+    identifier: z.string().trim().min(1).max(254).meta({
+      description: "Your email or your username.",
+    }),
     password: z.string().min(1).max(128),
   })
   .meta({ id: "LoginBody" });
@@ -91,11 +106,12 @@ export const LoginResponse = z
 
 export const UpdateUserBody = z
   .strictObject({
+    username: Username.optional(),
     firstName: Name.optional(),
     lastName: Name.optional(),
   })
-  .refine((b) => b.firstName !== undefined || b.lastName !== undefined, {
-    message: "Provide at least one of firstName or lastName",
+  .refine((b) => Object.values(b).some((v) => v !== undefined), {
+    message: "Provide at least one of username, firstName or lastName",
   })
   .meta({ id: "UpdateUserBody" });
 
@@ -188,7 +204,7 @@ export const register = defineContract({
   responses: {
     201: { description: "The created user. No token; log in next.", schema: User },
     400: badRequest,
-    409: error("The email is already registered."),
+    409: error("The email (EMAIL_TAKEN) or username (USERNAME_TAKEN) is already registered."),
     500: internal,
   },
 });
@@ -204,7 +220,7 @@ export const login = defineContract({
   responses: {
     200: { description: "A bearer token and the user.", schema: LoginResponse },
     400: badRequest,
-    401: error("Unknown email or wrong password (indistinguishable)."),
+    401: error("Unknown email or username, or wrong password (indistinguishable)."),
     500: internal,
   },
 });
@@ -298,7 +314,7 @@ export const updateUser = defineContract({
   method: "patch",
   path: "/api/users/{id}",
   operationId: "updateUser",
-  summary: "Update your own name",
+  summary: "Update your own username or name",
   tags: ["Users"],
   auth: true,
   params: UserIdParams,
@@ -308,6 +324,7 @@ export const updateUser = defineContract({
     400: badRequest,
     401: unauthorized,
     404: notFound,
+    409: error("The username is already taken by another user."),
     500: internal,
   },
 });
