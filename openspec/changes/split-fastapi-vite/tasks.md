@@ -103,7 +103,7 @@
   - `./scripts/start.sh` and the exact per-app commands
   - env variables per file, project layout, architecture (two origins, CORS, bearer in `localStorage` and CSP), the API table
   - security decisions (argon2id, hashed tokens, 404 for other users' ids, 403 for a wrong current password), the test account
-- [ ] 11.5 Verify on a fresh clone: `./scripts/start.sh` brings up both apps; register and log in through the UI; `api-smoke.sh` passes; data survives restarting the database and the backend
+- [x] 11.5 Verify on a fresh clone: `./scripts/start.sh` brings up both apps; register and log in through the UI; `api-smoke.sh` passes; data survives restarting the database and the backend
 
 ## 12. Deployment (after the backend host is decided, see design Open Questions)
 
