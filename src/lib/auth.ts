@@ -14,7 +14,11 @@ function createAuth() {
 
   return betterAuth({
     secret,
-    baseURL: process.env.BETTER_AUTH_URL,
+    // On Vercel preview deployments BETTER_AUTH_URL is unset, so fall back to
+    // the deployment's own URL.
+    baseURL:
+      process.env.BETTER_AUTH_URL ??
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined),
     database: drizzleAdapter(getDb(), { provider: "pg", schema }),
     emailAndPassword: {
       enabled: true,

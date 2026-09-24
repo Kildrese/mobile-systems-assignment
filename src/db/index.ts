@@ -16,7 +16,10 @@ function createDb(): Database {
       "DATABASE_URL is missing. Copy .env.example to .env and set DATABASE_URL.",
     );
   }
-  return drizzle(postgres(url), { schema });
+  // prepare: false because Neon's pooled endpoint (PgBouncer in transaction
+  // mode) doesn't support named prepared statements. A small pool is enough
+  // since each serverless instance only serves a few requests at a time.
+  return drizzle(postgres(url, { prepare: false, max: 5 }), { schema });
 }
 
 export function getDb(): Database {

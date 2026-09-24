@@ -104,6 +104,41 @@ The browser session is an `HttpOnly`, `SameSite=Lax` cookie named `session` (`Se
 
 **Known limitation:** email changes take effect immediately and aren't verified by email, because the app doesn't send email yet. There's also no password reset.
 
+## Deployment
+
+Production runs on [Vercel](https://vercel.com), with the database on [Neon](https://neon.com) (project `empty-firefly-03102623`, branch `production`).
+
+### One-time setup
+
+1. Install the CLIs and log in: `npm i -g neon vercel`, then `neon login` and `vercel login`.
+2. Link the Neon project: `neon link --project-id empty-firefly-03102623 --branch production -y`. This writes the Neon connection strings into `.env`. Move `DATABASE_URL`, `DATABASE_URL_UNPOOLED` and `NEON_BRANCH` into a new `.env.neon`, and put the local `DATABASE_URL` back in `.env`. Otherwise local development and migrations will run against production.
+3. Link the Vercel project (`vercel link`) and connect it to the GitHub repository in the Vercel dashboard (Settings → Git).
+4. Set these Vercel environment variables (`vercel env add <NAME> production`):
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | Neon's **pooled** connection string (`DATABASE_URL` in `.env.neon`) |
+| `BETTER_AUTH_SECRET` | A fresh secret, e.g. `openssl rand -base64 32`. Never the local placeholder. |
+| `BETTER_AUTH_URL` | The production URL, e.g. `https://<project>.vercel.app` |
+| `DATABASE_URL_UNPOOLED` | Neon's **direct** connection string (`DATABASE_URL_UNPOOLED` in `.env.neon`), used by the production build to run migrations |
+
+These are set for Production only. Preview deployments build, but they have no database yet, so requests that touch it fail. A preview can leave `BETTER_AUTH_URL` unset; the app falls back to the deployment's own URL (`VERCEL_URL`).
+
+### Deploying
+
+Vercel is connected to this GitHub repository and deploys on its own:
+
+- **Push to `master`** (including a merged pull request): a production deployment. Its build command, `scripts/vercel-build.sh` (set in `vercel.json`), runs `next build` and then applies pending migrations to Neon. A failed build never touches the database.
+- **Pull request:** a preview deployment. Previews never run migrations, so they can't change the production database.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs typecheck, lint and `openapi:check` on every pull request and every push to `master`. It needs no secrets.
+
+Migrations run just before the new version goes live, so for a moment the old code runs against the new schema. Keep them backwards compatible, for example add a column before the code that uses it and drop columns in a later deploy.
+
+To migrate or deploy by hand, run `./scripts/db-migrate-neon.sh` (uses the direct connection string from `.env.neon`), then `vercel --prod`.
+
+`neon.ts` holds the Neon project policy; apply changes to it with `neon deploy --no-env-pull`. The `--no-env-pull` flag keeps it from overwriting `.env`.
+
 ## API
 
 The app is a JSON API. Protected endpoints take `Authorization: Bearer <token>`, where the token comes from `POST /api/auth/login`.
