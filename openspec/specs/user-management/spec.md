@@ -2,7 +2,6 @@
 
 ## Purpose
 Authenticated read, update and delete of users by id, restricted to the caller's own account; any other id returns `404`.
-
 ## Requirements
 ### Requirement: Users can only access their own account
 `GET`, `PATCH` and `DELETE` on `/api/users/:id` SHALL require bearer authentication (see `user-auth`). When `:id` is not the authenticated user's own id, whether it belongs to another user, doesn't exist, or isn't a valid UUID, the endpoint SHALL respond `404` with code `NOT_FOUND`, and the response SHALL be identical in all three cases. The endpoint SHALL NOT read, change or delete any data in that case. The ownership check SHALL happen before any database lookup of `:id`.
@@ -54,11 +53,11 @@ Authenticated read, update and delete of users by id, restricted to the caller's
 - **THEN** the response is `400` and the user record is unchanged
 
 ### Requirement: Delete own user
-`DELETE /api/users/:id` SHALL delete the caller's user record together with their accounts and sessions, and SHALL respond `204` with an empty body. After deletion, the caller's token SHALL no longer authenticate.
+`DELETE /api/users/:id` SHALL delete the caller's user record together with their password hash and sessions, and SHALL respond `204` with an empty body. After deletion, the caller's token SHALL no longer authenticate.
 
 #### Scenario: Delete self
 - **WHEN** user A calls `DELETE /api/users/<A's id>` with A's token
-- **THEN** the response is `204` and A's `user`, `account` and `session` rows no longer exist
+- **THEN** the response is `204` and A's `users`, `user_passwords` and `sessions` rows no longer exist
 
 #### Scenario: Token invalid after deletion
 - **WHEN** user A deletes their account and then calls `GET /api/auth/me` with the same token

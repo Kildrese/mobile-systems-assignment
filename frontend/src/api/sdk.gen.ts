@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ChangeEmailData, ChangeEmailErrors, ChangeEmailResponses, ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetUserData, GetUserErrors, GetUserResponses, HealthCheckData, HealthCheckErrors, HealthCheckResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, RegisterData, RegisterErrors, RegisterResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses } from './types.gen';
+import type { ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetUserData, GetUserErrors, GetUserResponses, HealthCheckData, HealthCheckErrors, HealthCheckResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, RegisterData, RegisterErrors, RegisterResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -71,19 +71,6 @@ export const logout = <ThrowOnError extends boolean = false>(options?: Options<L
 export const changePassword = <ThrowOnError extends boolean = false>(options: Options<ChangePasswordData, ThrowOnError>): RequestResult<ChangePasswordResponses, ChangePasswordErrors, ThrowOnError> => (options.client ?? client).post<ChangePasswordResponses, ChangePasswordErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/auth/change-password',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-/**
- * Change your email
- */
-export const changeEmail = <ThrowOnError extends boolean = false>(options: Options<ChangeEmailData, ThrowOnError>): RequestResult<ChangeEmailResponses, ChangeEmailErrors, ThrowOnError> => (options.client ?? client).post<ChangeEmailResponses, ChangeEmailErrors, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/auth/change-email',
     ...options,
     headers: {
         'Content-Type': 'application/json',

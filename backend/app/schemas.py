@@ -10,7 +10,6 @@ from typing import Annotated, Any, Literal, Self
 from pydantic import (
     BaseModel,
     ConfigDict,
-    EmailStr,
     Field,
     StringConstraints,
     model_validator,
@@ -47,7 +46,6 @@ class ResponseModel(ApiModel):
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 # A last name may be empty: not everyone has one.
 LastName = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
-Email = Annotated[EmailStr, Field(max_length=254)]
 Username = Annotated[
     str,
     StringConstraints(
@@ -61,7 +59,9 @@ Username = Annotated[
 ]
 CurrentPassword = Annotated[str, Field(min_length=1, max_length=128)]
 NewPassword = Annotated[str, Field(min_length=8, max_length=128)]
-Identifier = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=254)]
+# Deliberately not `Username`: a malformed login name fails like an unknown
+# one (401), not with a telling 400.
+LoginName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=254)]
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +75,6 @@ class ErrorCode(StrEnum):
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
     NOT_FOUND = "NOT_FOUND"
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
-    EMAIL_TAKEN = "EMAIL_TAKEN"
     USERNAME_TAKEN = "USERNAME_TAKEN"
     INVALID_PASSWORD = "INVALID_PASSWORD"
     INTERNAL = "INTERNAL"
@@ -105,7 +104,6 @@ class User(ResponseModel):
     """A user. Never includes credentials."""
 
     id: uuid.UUID
-    email: EmailStr | None = Field(description="`null` if the user registered without an email.")
     username: str
     first_name: str
     last_name: str
@@ -131,40 +129,17 @@ class ChangePasswordResponse(ResponseModel):
 # ---------------------------------------------------------------------------
 
 
-# Only a password and a username or an email are required. Without a username
-# one is derived from the email; without names, `firstName` is the username and
-# `lastName` is empty.
+# Without names, `firstName` is the username and `lastName` is empty.
 class RegisterBody(ApiModel):
-    email: Email = None
-    username: Username = None
+    username: Username
     password: NewPassword
     first_name: Name = None
     last_name: LastName = None
 
-    @model_validator(mode="after")
-    def username_or_email(self) -> Self:
-        if self.email is None and self.username is None:
-            raise ValueError("Provide a username, an email or both")
-        return self
 
-
-# Clients may name the login field `identifier`, `email` or `username`; all
-# three accept either an email or a username.
 class LoginBody(ApiModel):
-    identifier: Identifier = Field(None, description="Your email or your username.")
-    email: Identifier = Field(None, description="Same as `identifier`.")
-    username: Identifier = Field(None, description="Same as `identifier`.")
+    username: LoginName = Field(description="Case-insensitive.")
     password: CurrentPassword
-
-    @model_validator(mode="after")
-    def one_identifier(self) -> Self:
-        if self.login_identifier is None:
-            raise ValueError("Provide identifier, email or username")
-        return self
-
-    @property
-    def login_identifier(self) -> str | None:
-        return self.identifier or self.email or self.username
 
 
 class UpdateUserBody(ApiModel):
@@ -182,8 +157,3 @@ class UpdateUserBody(ApiModel):
 class ChangePasswordBody(ApiModel):
     current_password: CurrentPassword
     new_password: NewPassword
-
-
-class ChangeEmailBody(ApiModel):
-    new_email: Email
-    current_password: CurrentPassword

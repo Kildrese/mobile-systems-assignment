@@ -98,7 +98,7 @@ expect_code() {
   ok "$3 -> $1 $2"
 }
 expect_user_keys() {
-  [ "$(jq -c "$1 | keys" "$TMP/body")" = '["createdAt","email","firstName","id","lastName","updatedAt","username"]' ] \
+  [ "$(jq -c "$1 | keys" "$TMP/body")" = '["createdAt","firstName","id","lastName","updatedAt","username"]' ] \
     || fail "user object keys are not exactly the allow-list"
 }
 is_uuid() { [[ "$1" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; }
@@ -107,8 +107,6 @@ collect_hashes() {
   while IFS= read -r h; do [ -n "$h" ] && HASHES+=("$h"); done < <(sql "select hash from user_passwords union all select token_hash from sessions")
 }
 
-A_EMAIL="ada-$RUN@example.com"
-B_EMAIL="bob-$RUN@example.com"
 A_USER="ada_$RUN"
 B_USER="bob_$RUN"
 A_PASS="correct-horse-$RUN"
@@ -125,12 +123,16 @@ expect_status 200 "GET /healthz with a bad token"
 ok "GET /healthz ignores credentials"
 
 echo "== register"
-req POST /api/auth/register "{\"email\":\"$A_EMAIL\",\"username\":\"Ada_$RUN\",\"password\":\"$A_PASS\",\"firstName\":\"Ada\",\"lastName\":\"Lovelace\"}"
+[ "$(sql "select count(*) from information_schema.columns where table_name = 'users' and column_name = 'email'")" = "0" ] \
+  || fail "users table has an email column"
+ok "DB: users has no email column"
+
+req POST /api/auth/register "{\"username\":\"Ada_$RUN\",\"password\":\"$A_PASS\",\"firstName\":\"Ada\",\"lastName\":\"Lovelace\"}"
 expect_status 201 "register A"
 expect_user_keys .
 A_ID="$(jq -r .id "$TMP/body")"
 is_uuid "$A_ID" || fail "user id is not a UUID"
-[ "$(jq -r '.email + "|" + .username + "|" + .firstName + "|" + .lastName' "$TMP/body")" = "$A_EMAIL|$A_USER|Ada|Lovelace" ] \
+[ "$(jq -r '.username + "|" + .firstName + "|" + .lastName' "$TMP/body")" = "$A_USER|Ada|Lovelace" ] \
   || fail "register fields (username lowercased)"
 jq -e 'has("token") | not' "$TMP/body" >/dev/null || fail "register returned a token"
 ok "register -> 201 user, UUID id, no token"
@@ -140,38 +142,36 @@ collect_hashes
   || fail "expected exactly one user_passwords row with a hashed password"
 [ "$(sql "select count(*) from information_schema.columns where table_name = 'users' and column_name like '%password%'")" = "0" ] \
   || fail "users table has a password column"
-[ "$(sql "select email || '|' || first_name || '|' || last_name from users where id = '$A_ID'")" = "$A_EMAIL|Ada|Lovelace" ] \
+[ "$(sql "select username || '|' || first_name || '|' || last_name from users where id = '$A_ID'")" = "$A_USER|Ada|Lovelace" ] \
   || fail "users row does not match the request"
 ok "DB: row matches, hash only in user_passwords"
 [[ "$(sql "select hash from user_passwords where user_id = '$A_ID'")" == '$argon2id$'* ]] || fail "stored hash is not argon2id"
 ok "DB: stored hash is argon2id"
 
-UPPER_A="$(echo "$A_EMAIL" | tr '[:lower:]' '[:upper:]')"
-req POST /api/auth/register "{\"email\":\"$UPPER_A\",\"username\":\"x_$RUN\",\"password\":\"$A_PASS\",\"firstName\":\"X\",\"lastName\":\"Y\"}"
-expect_code 409 EMAIL_TAKEN "register duplicate email (different case)"
-req POST /api/auth/register "{\"email\":\"x-$RUN@example.com\",\"username\":\"ADA_$RUN\",\"password\":\"$A_PASS\",\"firstName\":\"X\",\"lastName\":\"Y\"}"
+req POST /api/auth/register "{\"username\":\"ADA_$RUN\",\"password\":\"$A_PASS\",\"firstName\":\"X\",\"lastName\":\"Y\"}"
 expect_code 409 USERNAME_TAKEN "register duplicate username (different case)"
 
-BAD_EMAIL="bad-$RUN@example.com"
-req POST /api/auth/register "{\"email\":\"$BAD_EMAIL\",\"username\":\"bad_$RUN\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
+BAD_USER="bad_$RUN"
+USERS_BEFORE="$(sql "select count(*) from users")"
+req POST /api/auth/register "{\"username\":\"$BAD_USER\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
 expect_code 400 VALIDATION_ERROR "register missing password"
-req POST /api/auth/register "{\"email\":\"not-an-email\",\"username\":\"bad_$RUN\",\"password\":\"$A_PASS\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
-expect_code 400 VALIDATION_ERROR "register invalid email"
 SEVEN="s3cr7x$((RANDOM % 10))"
-req POST /api/auth/register "{\"email\":\"$BAD_EMAIL\",\"username\":\"bad_$RUN\",\"password\":\"$SEVEN\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
+req POST /api/auth/register "{\"username\":\"$BAD_USER\",\"password\":\"$SEVEN\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
 expect_code 400 VALIDATION_ERROR "register 7-char password"
 if grep -qF -- "$SEVEN" "$TMP/body"; then fail "validation error echoes the password"; fi
 ok "validation error does not echo the password"
 for bad_user in "ab" "has space" "has@at" "$(printf 'u%.0s' {1..31})"; do
-  req POST /api/auth/register "{\"email\":\"$BAD_EMAIL\",\"username\":\"$bad_user\",\"password\":\"$A_PASS\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
+  req POST /api/auth/register "{\"username\":\"$bad_user\",\"password\":\"$A_PASS\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
   expect_code 400 VALIDATION_ERROR "register invalid username '$bad_user'"
 done
 req POST /api/auth/register "{\"password\":\"$A_PASS\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
-expect_code 400 VALIDATION_ERROR "register without username and email"
-[ "$(sql "select count(*) from users where email = '$BAD_EMAIL'")" = "0" ] || fail "invalid registration created a user"
+expect_code 400 VALIDATION_ERROR "register without username"
+req POST /api/auth/register "{\"email\":\"$BAD_USER@example.com\",\"password\":\"$A_PASS\"}"
+expect_code 400 VALIDATION_ERROR "register with only email + password"
+[ "$(sql "select count(*) from users")" = "$USERS_BEFORE" ] || fail "invalid registration created a user"
 ok "no user created by invalid registrations"
 
-req POST /api/auth/register "{\"email\":\"$B_EMAIL\",\"username\":\"$B_USER\",\"password\":\"$B_PASS\",\"firstName\":\"Bob\",\"lastName\":\"Builder\"}"
+req POST /api/auth/register "{\"username\":\"$B_USER\",\"password\":\"$B_PASS\",\"firstName\":\"Bob\",\"lastName\":\"Builder\"}"
 expect_status 201 "register B"
 B_ID="$(jq -r .id "$TMP/body")"
 collect_hashes
@@ -179,97 +179,71 @@ collect_hashes
   || fail "two users' hashes are equal"
 ok "register B (hash differs from A's)"
 
-# Extra keys are dropped, never stored.
+# Extra keys, `email` included, are dropped, never stored.
 X_EMAIL="extra-$RUN@example.com"
 SENT_ID="$(new_uuid)"
-req POST /api/auth/register "{\"email\":\"$X_EMAIL\",\"username\":\"extra_$RUN\",\"password\":\"$A_PASS\",\"id\":\"$SENT_ID\",\"emailVerified\":true,\"role\":\"admin\"}"
+req POST /api/auth/register "{\"username\":\"extra_$RUN\",\"password\":\"$A_PASS\",\"id\":\"$SENT_ID\",\"email\":\"$X_EMAIL\",\"role\":\"admin\"}"
 expect_status 201 "register with extra keys"
 expect_user_keys .
 X_ID="$(jq -r .id "$TMP/body")"
 [ "$X_ID" != "$SENT_ID" ] || fail "register stored the client-sent id"
-ok "register with extra keys -> 201, extra keys ignored"
+if grep -qF -- "$X_EMAIL" "$TMP/body"; then fail "register echoed the email"; fi
+ok "register with extra keys (id, email) -> 201, extra keys ignored"
+sql "delete from users where id = '$X_ID'" >/dev/null
 
 # Only a username and a password.
 req POST /api/auth/register "{\"username\":\"Solo_$RUN\",\"password\":\"$A_PASS\"}"
 expect_status 201 "register with only username + password"
 expect_user_keys .
-[ "$(jq -c '[.username, .email, .firstName, .lastName]' "$TMP/body")" = "[\"solo_$RUN\",null,\"solo_$RUN\",\"\"]" ] \
+[ "$(jq -c '[.username, .firstName, .lastName]' "$TMP/body")" = "[\"solo_$RUN\",\"solo_$RUN\",\"\"]" ] \
   || fail "username-only registration fields"
 SOLO_ID="$(jq -r .id "$TMP/body")"
-[ "$(sql "select email is null from users where id = '$SOLO_ID'")" = "t" ] || fail "users.email is not NULL without an email"
-req POST /api/auth/register "{\"username\":\"SOLO_$RUN\",\"password\":\"$A_PASS\"}"
-expect_code 409 USERNAME_TAKEN "register taken username without an email"
-req POST /api/auth/register "{\"username\":\"solo2_$RUN\",\"password\":\"$A_PASS\"}"
-expect_status 201 "register a second user without an email"
-sql "delete from users where id = '$(jq -r .id "$TMP/body")'" >/dev/null
-ok "a second user can register without an email"
 req POST /api/auth/login "{\"username\":\"solo_$RUN\",\"password\":\"$A_PASS\"}"
 expect_status 200 "login with {username, password}"
-[ "$(jq -r .user.email "$TMP/body")" = null ] || fail "placeholder email leaked"
 SOLO_TOKEN="$(jq -r .token "$TMP/body")"
-ok "username-only account: 201, email null, name defaults, login by username"
-
-# Only an email and a password.
-E_EMAIL="only-email-$RUN@example.com"
-req POST /api/auth/register "{\"email\":\"$E_EMAIL\",\"password\":\"$A_PASS\"}"
-expect_status 201 "register with only email + password"
-E_ID="$(jq -r .id "$TMP/body")"
-E_USER="$(jq -r .username "$TMP/body")"
-[[ "$E_USER" =~ ^onlyemail[0-9]*_[0-9a-f]{8}$ ]] || fail "derived username: $E_USER"
-req POST /api/auth/login "{\"email\":\"$E_EMAIL\",\"password\":\"$A_PASS\"}"
-expect_status 200 "login with {email, password}"
-E_TOKEN="$(jq -r .token "$TMP/body")"
-req POST /api/auth/login "{\"email\":\"$E_USER\",\"password\":\"$A_PASS\"}"
-expect_status 200 "login with the username in the email field"
-ok "email-only account: 201, username derived, login via email or username"
-
+ok "username-only account: 201, name defaults, login by username"
 req DELETE "/api/users/$SOLO_ID" "" -H "$(auth "$SOLO_TOKEN")"
 expect_status 204 "DELETE username-only account (cleanup)"
-req DELETE "/api/users/$E_ID" "" -H "$(auth "$E_TOKEN")"
-expect_status 204 "DELETE email-only account (cleanup)"
-sql "delete from users where id = '$X_ID'" >/dev/null
 
 echo "== login"
 req POST /api/auth/login '{not json'
 expect_code 400 VALIDATION_ERROR "login malformed JSON"
 req POST /api/auth/login "{\"password\":\"x\"}"
-expect_code 400 VALIDATION_ERROR "login without identifier, email or username"
-req POST /api/auth/login "{\"identifier\":\"$A_EMAIL\",\"password\":\"wrong-password\"}"
+expect_code 400 VALIDATION_ERROR "login without username"
+req POST /api/auth/login "{\"identifier\":\"$A_USER\",\"password\":\"$A_PASS\"}"
+expect_code 400 VALIDATION_ERROR "login with identifier instead of username"
+req POST /api/auth/login "{\"email\":\"$A_USER\",\"password\":\"$A_PASS\"}"
+expect_code 400 VALIDATION_ERROR "login with email instead of username"
+req POST /api/auth/login "{\"username\":\"$A_USER\",\"password\":\"wrong-password\"}"
 expect_code 401 INVALID_CREDENTIALS "login wrong password"
+[ "$(jq -r .error.message "$TMP/body")" = "Invalid username or password" ] || fail "login failure message"
+ok "login failure message is \"Invalid username or password\""
 cp "$TMP/body" "$TMP/wrong-password"
-req POST /api/auth/login "{\"identifier\":\"nobody-$RUN@example.com\",\"password\":\"wrong-password\"}"
-expect_code 401 INVALID_CREDENTIALS "login unknown email"
-cmp -s "$TMP/body" "$TMP/wrong-password" || fail "unknown-email and wrong-password bodies differ"
-ok "unknown email is indistinguishable from wrong password"
-req POST /api/auth/login "{\"identifier\":\"nobody_$RUN\",\"password\":\"wrong-password\"}"
+req POST /api/auth/login "{\"username\":\"nobody_$RUN\",\"password\":\"wrong-password\"}"
 expect_code 401 INVALID_CREDENTIALS "login unknown username"
 cmp -s "$TMP/body" "$TMP/wrong-password" || fail "unknown-username and wrong-password bodies differ"
-req POST /api/auth/login "{\"identifier\":\"$A_USER\",\"password\":\"wrong-password\"}"
-expect_code 401 INVALID_CREDENTIALS "login username + wrong password"
-cmp -s "$TMP/body" "$TMP/wrong-password" || fail "username wrong-password body differs"
-req POST /api/auth/login "{\"identifier\":\"a\",\"password\":\"wrong-password\"}"
-expect_code 401 INVALID_CREDENTIALS "login malformed username"
-cmp -s "$TMP/body" "$TMP/wrong-password" || fail "malformed-username and wrong-password bodies differ"
+for bad_user in "a" "nobody-$RUN@example.com"; do
+  req POST /api/auth/login "{\"username\":\"$bad_user\",\"password\":\"wrong-password\"}"
+  expect_code 401 INVALID_CREDENTIALS "login malformed username '$bad_user'"
+  cmp -s "$TMP/body" "$TMP/wrong-password" || fail "malformed-username and wrong-password bodies differ"
+done
 ok "unknown or malformed username is indistinguishable from wrong password"
-req POST /api/auth/login "{\"identifier\":\"ADA_$RUN\",\"password\":\"$A_PASS\"}"
-expect_status 200 "login A by username (different case)"
-[ "$(jq -r .user.id "$TMP/body")" = "$A_ID" ] || fail "username login returned another user"
-ok "login by username (case-insensitive) -> 200"
 
-req POST /api/auth/login "{\"identifier\":\"$A_EMAIL\",\"password\":\"$A_PASS\"}"
-expect_status 200 "login A"
+req POST /api/auth/login "{\"username\":\"ADA_$RUN\",\"password\":\"$A_PASS\"}"
+expect_status 200 "login A (different case)"
+[ "$(jq -r .user.id "$TMP/body")" = "$A_ID" ] || fail "username login returned another user"
 A_TOKEN="$(jq -r .token "$TMP/body")"
 [ -n "$A_TOKEN" ] && [ "$A_TOKEN" != null ] || fail "login returned no token"
 expect_user_keys .user
 if grep -qi '^set-cookie:' "$TMP/headers"; then fail "login sent Set-Cookie"; fi
-ok "login -> 200 token + user, no Set-Cookie"
+ok "login by username (case-insensitive) -> 200 token + user, no Set-Cookie"
 [ "$(sql "select count(*) from sessions where token_hash = '$(sha256 "$A_TOKEN")' and user_id = '$A_ID'")" = "1" ] \
   || fail "sessions has no row with the token's SHA-256"
 [ "$(sql "select count(*) from sessions where token_hash = '$A_TOKEN'")" = "0" ] || fail "sessions stores the raw token"
 collect_hashes
 ok "DB: sessions stores the token's SHA-256, not the token"
 
-req POST /api/auth/login "{\"identifier\":\"$B_EMAIL\",\"password\":\"$B_PASS\"}"
+req POST /api/auth/login "{\"username\":\"$B_USER\",\"password\":\"$B_PASS\"}"
 expect_status 200 "login B"
 B_TOKEN="$(jq -r .token "$TMP/body")"
 ok "login B"
@@ -296,7 +270,7 @@ expect_user_keys .
 [ "$(jq -r .id "$TMP/body")" = "$A_ID" ] || fail "me returned the wrong user"
 ok "me -> 200 A"
 
-req POST /api/auth/login "{\"identifier\":\"$A_EMAIL\",\"password\":\"$A_PASS\"}"
+req POST /api/auth/login "{\"username\":\"$A_USER\",\"password\":\"$A_PASS\"}"
 EXPIRED_TOKEN="$(jq -r .token "$TMP/body")"
 sql "update sessions set expires_at = now() - interval '1 minute' where token_hash = '$(sha256 "$EXPIRED_TOKEN")'" >/dev/null
 req GET /api/auth/me "" -H "$(auth "$EXPIRED_TOKEN")"
@@ -352,9 +326,9 @@ A_USER="augusta_$RUN"
 req PATCH "/api/users/$A_ID" "{\"username\":\"Augusta_$RUN\"}" -H "$(auth "$A_TOKEN")"
 expect_status 200 "PATCH own username"
 [ "$(jq -r '.username + "|" + .firstName' "$TMP/body")" = "$A_USER|Augusta" ] || fail "PATCH username result"
-req POST /api/auth/login "{\"identifier\":\"ada_$RUN\",\"password\":\"$A_PASS\"}"
+req POST /api/auth/login "{\"username\":\"ada_$RUN\",\"password\":\"$A_PASS\"}"
 expect_code 401 INVALID_CREDENTIALS "login with the old username"
-req POST /api/auth/login "{\"identifier\":\"$A_USER\",\"password\":\"$A_PASS\"}"
+req POST /api/auth/login "{\"username\":\"$A_USER\",\"password\":\"$A_PASS\"}"
 expect_status 200 "login with the new username"
 ok "PATCH own username -> 200 lowercased, old username stops working"
 
@@ -364,7 +338,7 @@ for body in '{"email":"new@example.com"}' '{"password":"x"}' "{\"id\":\"$RANDOM_
   req PATCH "/api/users/$A_ID" "$body" -H "$(auth "$A_TOKEN")"
   expect_code 400 VALIDATION_ERROR "PATCH forbidden field $body"
 done
-[ "$(sql "select email || '|' || first_name from users where id = '$A_ID'")" = "$A_EMAIL|Augusta" ] || fail "A changed by forbidden PATCH"
+[ "$(sql "select username || '|' || first_name from users where id = '$A_ID'")" = "$A_USER|Augusta" ] || fail "A changed by forbidden PATCH"
 ok "A unchanged by forbidden PATCHes"
 
 req DELETE "/api/users/$A_ID" "" -H "$(auth "$A_TOKEN")"
@@ -375,23 +349,23 @@ expect_status 204 "DELETE own user"
 ok "DELETE own user -> 204, rows cascaded"
 req GET /api/auth/me "" -H "$(auth "$A_TOKEN")"
 expect_code 401 UNAUTHORIZED "me after deletion"
-req POST /api/auth/login "{\"identifier\":\"$A_EMAIL\",\"password\":\"$A_PASS\"}"
+req POST /api/auth/login "{\"username\":\"$A_USER\",\"password\":\"$A_PASS\"}"
 expect_code 401 INVALID_CREDENTIALS "login after deletion"
 
 echo "== logout"
-C_EMAIL="cat-$RUN@example.com"
+C_USER="cat_$RUN"
 C_PASS="tabby-$RUN"
-req POST /api/auth/register "{\"email\":\"$C_EMAIL\",\"username\":\"cat_$RUN\",\"password\":\"$C_PASS\",\"firstName\":\"Cat\",\"lastName\":\"Stevens\"}"
+req POST /api/auth/register "{\"username\":\"$C_USER\",\"password\":\"$C_PASS\",\"firstName\":\"Cat\",\"lastName\":\"Stevens\"}"
 expect_status 201 "register C"
 C_ID="$(jq -r .id "$TMP/body")"
 collect_hashes
 login_c() {
-  req POST /api/auth/login "{\"identifier\":\"$1\",\"password\":\"$2\"}"
+  req POST /api/auth/login "{\"username\":\"$1\",\"password\":\"$2\"}"
   expect_status 200 "login C"
   jq -r .token "$TMP/body"
 }
-T1="$(login_c "$C_EMAIL" "$C_PASS")"
-T2="$(login_c "$C_EMAIL" "$C_PASS")"
+T1="$(login_c "$C_USER" "$C_PASS")"
+T2="$(login_c "$C_USER" "$C_PASS")"
 
 req POST /api/auth/logout
 expect_code 401 UNAUTHORIZED "logout without token"
@@ -408,7 +382,7 @@ expect_status 200 "me with other session after logout"
 ok "other session survives logout"
 
 echo "== change-password"
-T3="$(login_c "$C_EMAIL" "$C_PASS")"
+T3="$(login_c "$C_USER" "$C_PASS")"
 NEW_PASS="new-tabby-$RUN"
 req POST /api/auth/change-password "{\"currentPassword\":\"$C_PASS\",\"newPassword\":\"$NEW_PASS\"}"
 expect_code 401 UNAUTHORIZED "change-password without token"
@@ -418,7 +392,7 @@ req GET /api/auth/me "" -H "$(auth "$T2")"
 expect_status 200 "token still works after wrong current password"
 req POST /api/auth/change-password "{\"currentPassword\":\"$C_PASS\",\"newPassword\":\"short7x\"}" -H "$(auth "$T2")"
 expect_code 400 VALIDATION_ERROR "change-password 7-char new password"
-req POST /api/auth/login "{\"identifier\":\"$C_EMAIL\",\"password\":\"$C_PASS\"}"
+req POST /api/auth/login "{\"username\":\"$C_USER\",\"password\":\"$C_PASS\"}"
 expect_status 200 "old password still works after rejected changes"
 T4="$(jq -r .token "$TMP/body")"
 ok "rejected changes leave the password unchanged"
@@ -437,45 +411,14 @@ done
 req GET /api/auth/me "" -H "$(auth "$C_TOKEN")"
 expect_status 200 "me with the new token"
 ok "only the returned token works"
-req POST /api/auth/login "{\"identifier\":\"$C_EMAIL\",\"password\":\"$C_PASS\"}"
+req POST /api/auth/login "{\"username\":\"$C_USER\",\"password\":\"$C_PASS\"}"
 expect_code 401 INVALID_CREDENTIALS "login with old password"
-login_c "$C_EMAIL" "$NEW_PASS" >/dev/null
+login_c "$C_USER" "$NEW_PASS" >/dev/null
 ok "login with new password -> 200"
 
-echo "== change-email"
-C_NEW_EMAIL="cat-new-$RUN@example.com"
-C_NEW_UPPER="$(echo "$C_NEW_EMAIL" | tr '[:lower:]' '[:upper:]')"
-B_UPPER="$(echo "$B_EMAIL" | tr '[:lower:]' '[:upper:]')"
-req POST /api/auth/change-email "{\"newEmail\":\"$C_NEW_EMAIL\",\"currentPassword\":\"$NEW_PASS\"}"
-expect_code 401 UNAUTHORIZED "change-email without token"
-req POST /api/auth/change-email "{\"newEmail\":\"not-an-email\",\"currentPassword\":\"$NEW_PASS\"}" -H "$(auth "$C_TOKEN")"
-expect_code 400 VALIDATION_ERROR "change-email invalid email"
-req POST /api/auth/change-email "{\"newEmail\":\"$C_NEW_EMAIL\",\"currentPassword\":\"wrong-password\"}" -H "$(auth "$C_TOKEN")"
-expect_code 403 INVALID_PASSWORD "change-email wrong password"
-req POST /api/auth/change-email "{\"newEmail\":\"$B_UPPER\",\"currentPassword\":\"wrong-password\"}" -H "$(auth "$C_TOKEN")"
-expect_code 403 INVALID_PASSWORD "change-email wrong password + taken email (403 before 409)"
-req POST /api/auth/change-email "{\"newEmail\":\"$B_UPPER\",\"currentPassword\":\"$NEW_PASS\"}" -H "$(auth "$C_TOKEN")"
-expect_code 409 EMAIL_TAKEN "change-email to B's email (different case)"
-[ "$(sql "select email from users where id = '$C_ID'")|$(sql "select email from users where id = '$B_ID'")" = "$C_EMAIL|$B_EMAIL" ] \
-  || fail "a rejected change-email modified a user"
-ok "rejected change-email left both users unchanged"
-req POST /api/auth/change-email "{\"newEmail\":\"$C_EMAIL\",\"currentPassword\":\"$NEW_PASS\"}" -H "$(auth "$C_TOKEN")"
-expect_status 200 "change-email to the current email"
-ok "change-email to the current email -> 200 no-op"
-
-req POST /api/auth/change-email "{\"newEmail\":\"$C_NEW_UPPER\",\"currentPassword\":\"$NEW_PASS\"}" -H "$(auth "$C_TOKEN")"
-expect_status 200 "change-email"
-expect_user_keys .
-[ "$(jq -r .email "$TMP/body")" = "$C_NEW_EMAIL" ] || fail "change-email did not lowercase"
-ok "change-email -> 200 user, email lowercased"
-req GET /api/auth/me "" -H "$(auth "$C_TOKEN")"
-expect_status 200 "me after change-email"
-[ "$(jq -r .email "$TMP/body")" = "$C_NEW_EMAIL" ] || fail "me does not show the new email"
-ok "token still works and shows the new email"
-req POST /api/auth/login "{\"identifier\":\"$C_EMAIL\",\"password\":\"$NEW_PASS\"}"
-expect_code 401 INVALID_CREDENTIALS "login with the old email"
-login_c "$C_NEW_EMAIL" "$NEW_PASS" >/dev/null
-ok "login with the new email -> 200"
+echo "== change-email is gone"
+req POST /api/auth/change-email "{\"newEmail\":\"cat-$RUN@example.com\",\"currentPassword\":\"$NEW_PASS\"}" -H "$(auth "$C_TOKEN")"
+expect_code 404 NOT_FOUND "POST /api/auth/change-email"
 
 req DELETE "/api/users/$C_ID" "" -H "$(auth "$C_TOKEN")"
 expect_status 204 "DELETE C (cleanup)"
@@ -487,23 +430,27 @@ jq -e '.openapi | startswith("3.1")' "$TMP/body" >/dev/null || fail "openapi ver
 [ "$(jq -S . "$TMP/body")" = "$(jq -S . openapi/openapi.json)" ] || fail "served document differs from openapi/openapi.json"
 ok "served OpenAPI 3.1 document matches the committed file"
 for op in "get /healthz" "post /api/auth/register" "post /api/auth/login" "get /api/auth/me" \
-  "post /api/auth/logout" "post /api/auth/change-password" "post /api/auth/change-email" \
+  "post /api/auth/logout" "post /api/auth/change-password" \
   "get /api/users/{id}" "patch /api/users/{id}" "delete /api/users/{id}"; do
   jq -e --arg m "${op%% *}" --arg p "${op#* }" '.paths[$p][$m]' "$TMP/body" >/dev/null || fail "OpenAPI is missing $op"
 done
 ok "every endpoint is documented"
-for op in "get /api/auth/me" "post /api/auth/logout" "post /api/auth/change-password" "post /api/auth/change-email" \
+jq -e '.paths | has("/api/auth/change-email") | not' "$TMP/body" >/dev/null || fail "OpenAPI documents change-email"
+ok "change-email is not documented"
+for op in "get /api/auth/me" "post /api/auth/logout" "post /api/auth/change-password" \
   "get /api/users/{id}" "patch /api/users/{id}" "delete /api/users/{id}"; do
   jq -e --arg m "${op%% *}" --arg p "${op#* }" '.paths[$p][$m] | (.security | tostring | contains("bearerAuth")) and (.responses | has("401"))' \
     "$TMP/body" >/dev/null || fail "$op does not declare bearerAuth and 401"
 done
 ok "protected endpoints declare bearerAuth and 401"
-for p in /api/auth/change-password /api/auth/change-email; do
-  jq -e --arg p "$p" '.paths[$p].post.responses | has("403")' "$TMP/body" >/dev/null || fail "$p does not document 403"
-done
+jq -e '.paths["/api/auth/change-password"].post.responses | has("403")' "$TMP/body" >/dev/null \
+  || fail "change-password does not document 403"
 jq -e '.components.schemas.ErrorCode.enum | index("INVALID_PASSWORD")' "$TMP/body" >/dev/null || fail "ErrorCode lacks INVALID_PASSWORD"
 jq -e '.components.schemas.ErrorCode.enum | index("USERNAME_TAKEN")' "$TMP/body" >/dev/null || fail "ErrorCode lacks USERNAME_TAKEN"
-ok "password-confirming endpoints document 403, ErrorCode has INVALID_PASSWORD"
+jq -e '.components.schemas.ErrorCode.enum | index("EMAIL_TAKEN") | not' "$TMP/body" >/dev/null || fail "ErrorCode has EMAIL_TAKEN"
+jq -e '.components.schemas.User.properties | keys == ["createdAt","firstName","id","lastName","updatedAt","username"]' "$TMP/body" >/dev/null \
+  || fail "User schema properties are not exactly the allow-list"
+ok "change-password documents 403, ErrorCode has INVALID_PASSWORD and no EMAIL_TAKEN, User has no email"
 req GET /docs
 expect_status 200 "GET /docs"
 grep -qi '^content-type: text/html' "$TMP/headers" || fail "/docs is not HTML"
