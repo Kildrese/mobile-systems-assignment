@@ -5,11 +5,8 @@ import "server-only";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
-import type { Session } from "@/lib/api/handler";
-import { getAuth } from "@/lib/auth";
-import { isAPIError } from "@/lib/services/account";
-
-export const SESSION_COOKIE = "session";
+import { PUBLIC_PAGES, SESSION_COOKIE } from "@/lib/app";
+import { getSessionByToken, type Session } from "@/lib/auth";
 
 // Only callable from Server Actions and route handlers.
 export async function setSessionCookie(token: string, expiresAt: Date): Promise<void> {
@@ -34,17 +31,8 @@ export async function getSessionToken(): Promise<string | null> {
 // unknown, expired or revoked. Cached so it runs once per request.
 export const getCurrentSession = cache(async (): Promise<Session | null> => {
   const token = await getSessionToken();
-  if (!token) return null;
-
-  try {
-    // Same path as the API: the token goes to Better Auth as a bearer header.
-    return await getAuth().api.getSession({
-      headers: new Headers({ authorization: `Bearer ${token}` }),
-    });
-  } catch (err) {
-    if (isAPIError(err)) return null;
-    throw err;
-  }
+  // Same lookup as the API: the token goes to Better Auth as a bearer header.
+  return token ? getSessionByToken(token) : null;
 });
 
 // The signed-in session, or a redirect to `/login?next=<current path>`.
@@ -56,8 +44,6 @@ export async function requireSession(): Promise<Session> {
   const next = safeNext((await headers()).get("x-pathname"));
   redirect(`/login?next=${encodeURIComponent(next)}`);
 }
-
-const AUTH_PAGES = new Set(["/login", "/register"]);
 
 // `value` if it is a same-site relative path that isn't an auth page, else
 // `/`. Rejects `//host` and `/\host` (browsers treat both as another host)
@@ -77,6 +63,6 @@ export function safeNext(value: unknown): string {
   }
   if (url.origin !== base) return "/";
   const path = url.pathname.replace(/\/+$/, "") || "/";
-  if (AUTH_PAGES.has(path)) return "/";
+  if (PUBLIC_PAGES.has(path)) return "/";
   return value;
 }

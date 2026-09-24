@@ -4,22 +4,20 @@
 // to a status (API) or a field error (UI). Input is already validated with
 // the Zod schemas in `@/lib/api/contracts`.
 import "server-only";
-import type { APIError } from "better-auth/api";
 import { and, eq, sql } from "drizzle-orm";
+import type { z } from "zod";
 import { getDb } from "@/db";
 import { account, session, user, type User } from "@/db/schema";
-import { getAuth } from "@/lib/auth";
+import type {
+  ChangeEmailBody,
+  ChangePasswordBody,
+  LoginBody,
+  RegisterBody,
+  UpdateUserBody,
+} from "@/lib/api/contracts";
+import { bearerHeaders, getAuth, isAPIError } from "@/lib/auth";
 
 type Failure<C extends string> = { ok: false; code: C };
-
-// By shape, not `instanceof`: Next can bundle Better Auth into more than one
-// layer (e.g. route handlers vs Server Actions), each with its own APIError
-// class, so `instanceof` misses errors thrown by the other copy.
-export function isAPIError(err: unknown): err is APIError {
-  return err instanceof Error && err.name === "APIError" && typeof (err as APIError).statusCode === "number";
-}
-
-const bearer = (token: string) => new Headers({ authorization: `Bearer ${token}` });
 
 async function emailTaken(email: string): Promise<boolean> {
   const rows = await getDb()
@@ -41,12 +39,9 @@ async function sessionExpiry(token: string): Promise<Date> {
   return row.expiresAt;
 }
 
-export async function registerUser(input: {
-  email: string;
-  password: string;
-  firstName: string;
-  lastName: string;
-}): Promise<{ ok: true; user: User } | Failure<"EMAIL_TAKEN">> {
+export async function registerUser(
+  input: z.output<typeof RegisterBody>,
+): Promise<{ ok: true; user: User } | Failure<"EMAIL_TAKEN">> {
   const { password, firstName, lastName } = input;
   // Better Auth stores emails lowercased.
   const email = input.email.toLowerCase();
@@ -69,10 +64,9 @@ export async function registerUser(input: {
   }
 }
 
-export async function signIn(input: {
-  email: string;
-  password: string;
-}): Promise<
+export async function signIn(
+  input: z.output<typeof LoginBody>,
+): Promise<
   { ok: true; token: string; expiresAt: Date; user: User } | Failure<"INVALID_CREDENTIALS">
 > {
   try {
@@ -93,13 +87,13 @@ export async function signIn(input: {
 
 // Revokes only this session. A token that is already gone is a no-op.
 export async function signOut(token: string): Promise<{ ok: true }> {
-  await getAuth().api.signOut({ headers: bearer(token) });
+  await getAuth().api.signOut({ headers: bearerHeaders(token) });
   return { ok: true };
 }
 
 export async function updateName(
   userId: string,
-  input: { firstName?: string; lastName?: string },
+  input: z.output<typeof UpdateUserBody>,
 ): Promise<{ ok: true; user: User } | Failure<"NOT_FOUND">> {
   // Column references in SET read the pre-update values, so `name` is built
   // from the new value when given and the stored one otherwise.
@@ -134,7 +128,7 @@ function isUniqueViolation(err: unknown): boolean {
 // (EMAIL_TAKEN), so a wrong password can't probe which emails exist.
 export async function changeEmail(
   userId: string,
-  input: { newEmail: string; currentPassword: string },
+  input: z.output<typeof ChangeEmailBody>,
 ): Promise<
   { ok: true; user: User } | Failure<"INVALID_PASSWORD" | "EMAIL_TAKEN" | "NOT_FOUND">
 > {
@@ -175,11 +169,11 @@ export async function changeEmail(
 // sessions older than a day.
 export async function changePassword(
   token: string,
-  input: { currentPassword: string; newPassword: string },
+  input: z.output<typeof ChangePasswordBody>,
 ): Promise<{ ok: true; token: string; expiresAt: Date } | Failure<"INVALID_PASSWORD">> {
   try {
     const result = await getAuth().api.changePassword({
-      headers: bearer(token),
+      headers: bearerHeaders(token),
       body: {
         currentPassword: input.currentPassword,
         newPassword: input.newPassword,

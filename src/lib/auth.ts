@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import type { APIError } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { bearer } from "better-auth/plugins";
 import { getDb } from "@/db";
@@ -54,4 +55,26 @@ const globalForAuth = globalThis as unknown as { auth?: Auth };
 export function getAuth(): Auth {
   globalForAuth.auth ??= createAuth();
   return globalForAuth.auth;
+}
+
+export type Session = NonNullable<Awaited<ReturnType<Auth["api"]["getSession"]>>>;
+
+// By shape, not `instanceof`: Next can bundle Better Auth into more than one
+// layer (e.g. route handlers vs Server Actions), each with its own APIError
+// class, so `instanceof` misses errors thrown by the other copy.
+export function isAPIError(err: unknown): err is APIError {
+  return err instanceof Error && err.name === "APIError" && typeof (err as APIError).statusCode === "number";
+}
+
+export const bearerHeaders = (token: string) => new Headers({ authorization: `Bearer ${token}` });
+
+// The session for a token, or null when it is unknown, expired or revoked.
+// Both the API (bearer header) and the web UI (cookie) resolve sessions here.
+export async function getSessionByToken(token: string): Promise<Session | null> {
+  try {
+    return await getAuth().api.getSession({ headers: bearerHeaders(token) });
+  } catch (err) {
+    if (isAPIError(err)) return null;
+    throw err;
+  }
 }
