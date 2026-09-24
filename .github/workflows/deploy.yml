@@ -1,0 +1,57 @@
+# Deploys master to production: checks, Neon migrations, then Vercel.
+# Runs on every push to master, which includes merged pull requests.
+#
+# Repository secrets: VERCEL_TOKEN, NEON_DATABASE_URL_UNPOOLED
+# Repository variables: VERCEL_ORG_ID, VERCEL_PROJECT_ID
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# Never run two deploys at once; a newer push waits for the running one.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://mobile-systems-assignment.vercel.app
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run openapi:check
+
+      # Before the deploy, so the new code never runs against an old schema.
+      # Uses the direct connection: migrations don't work through the pooler.
+      - name: Migrate Neon database
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL_UNPOOLED }}
+
+      - name: Deploy to Vercel
+        run: |
+          npx vercel@59 pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx vercel@59 build --prod --token="$VERCEL_TOKEN"
+          npx vercel@59 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

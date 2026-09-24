@@ -125,8 +125,20 @@ Preview deployments can leave `BETTER_AUTH_URL` unset; the app falls back to the
 
 ### Deploying
 
-1. If the schema changed, apply the migrations to Neon first: `./scripts/db-migrate-neon.sh`. It uses the direct (unpooled) connection string from `.env.neon`. Migrations don't run during the Vercel build, so that a preview build can't change the production database.
-2. Deploy: `vercel --prod` (or push to the branch connected to Vercel).
+Every push to `master`, including a merged pull request, runs `.github/workflows/deploy.yml`. It type-checks, lints and runs `openapi:check`, then applies pending migrations to Neon, then builds and deploys to Vercel production. If any step fails, nothing after it runs. You can also start it by hand from the repository's Actions tab.
+
+The workflow needs these repository settings (Settings → Secrets and variables → Actions):
+
+| Name | Kind | Value |
+| --- | --- | --- |
+| `VERCEL_TOKEN` | secret | A Vercel access token (vercel.com/account/tokens) |
+| `NEON_DATABASE_URL_UNPOOLED` | secret | Neon's direct connection string (`DATABASE_URL_UNPOOLED` in `.env.neon`) |
+| `VERCEL_ORG_ID` | variable | `orgId` from `.vercel/project.json` |
+| `VERCEL_PROJECT_ID` | variable | `projectId` from `.vercel/project.json` |
+
+Migrations run before the deploy and never during the Vercel build, so a preview build can't change the production database. Keep migrations backwards compatible: for a moment the old code runs against the new schema.
+
+To deploy by hand instead, run `./scripts/db-migrate-neon.sh` (uses the direct connection string from `.env.neon`), then `vercel --prod`.
 
 `neon.ts` holds the Neon project policy; apply changes to it with `neon deploy --no-env-pull`. The `--no-env-pull` flag keeps it from overwriting `.env`.
 
