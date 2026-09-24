@@ -5,3 +5,6 @@
 .claude
 .idea
 openspec
+**/node_modules
+**/.venv
+**/__pycache__

@@ -2,28 +2,17 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Mobile Systems API",
-    "version": "0.1.0",
-    "description": "JSON API for accounts and users. Log in with `POST /api/auth/login`, then send the token as `Authorization: Bearer <token>`."
+    "description": "JSON API for accounts and users. Log in with `POST /api/auth/login`, then send the token as `Authorization: Bearer <token>`.",
+    "version": "0.1.0"
   },
-  "tags": [
-    {
-      "name": "Health"
-    },
-    {
-      "name": "Auth"
-    },
-    {
-      "name": "Users"
-    }
-  ],
   "paths": {
     "/healthz": {
       "get": {
-        "operationId": "healthCheck",
-        "summary": "Liveness check",
         "tags": [
           "Health"
         ],
+        "summary": "Liveness check",
+        "operationId": "healthCheck",
         "responses": {
           "200": {
             "description": "The server is up.",
@@ -50,20 +39,20 @@
     },
     "/api/auth/register": {
       "post": {
-        "operationId": "register",
-        "summary": "Create an account",
         "tags": [
           "Auth"
         ],
+        "summary": "Create an account",
+        "operationId": "register",
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RegisterBody"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "201": {
@@ -111,20 +100,20 @@
     },
     "/api/auth/login": {
       "post": {
-        "operationId": "login",
-        "summary": "Log in and get a bearer token",
         "tags": [
           "Auth"
         ],
+        "summary": "Log in and get a bearer token",
+        "operationId": "login",
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/LoginBody"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -172,16 +161,11 @@
     },
     "/api/auth/me": {
       "get": {
-        "operationId": "getCurrentUser",
-        "summary": "Get the logged-in user",
         "tags": [
           "Auth"
         ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "summary": "Get the logged-in user",
+        "operationId": "getCurrentUser",
         "responses": {
           "200": {
             "description": "The logged-in user.",
@@ -213,21 +197,21 @@
               }
             }
           }
-        }
-      }
-    },
-    "/api/auth/logout": {
-      "post": {
-        "operationId": "logout",
-        "summary": "Log out (revoke the current token)",
-        "tags": [
-          "Auth"
-        ],
+        },
         "security": [
           {
             "bearerAuth": []
           }
+        ]
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "Auth"
         ],
+        "summary": "Log out (revoke the current token)",
+        "operationId": "logout",
         "responses": {
           "204": {
             "description": "The token is revoked. Your other sessions stay valid."
@@ -252,30 +236,30 @@
               }
             }
           }
-        }
-      }
-    },
-    "/api/auth/change-password": {
-      "post": {
-        "operationId": "changePassword",
-        "summary": "Change your password",
-        "tags": [
-          "Auth"
-        ],
+        },
         "security": [
           {
             "bearerAuth": []
           }
+        ]
+      }
+    },
+    "/api/auth/change-password": {
+      "post": {
+        "tags": [
+          "Auth"
         ],
+        "summary": "Change your password",
+        "operationId": "changePassword",
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ChangePasswordBody"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -328,30 +312,30 @@
               }
             }
           }
-        }
-      }
-    },
-    "/api/auth/change-email": {
-      "post": {
-        "operationId": "changeEmail",
-        "summary": "Change your email",
-        "tags": [
-          "Auth"
-        ],
+        },
         "security": [
           {
             "bearerAuth": []
           }
+        ]
+      }
+    },
+    "/api/auth/change-email": {
+      "post": {
+        "tags": [
+          "Auth"
         ],
+        "summary": "Change your email",
+        "operationId": "changeEmail",
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ChangeEmailBody"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -414,16 +398,21 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/api/users/{id}": {
       "get": {
-        "operationId": "getUser",
-        "summary": "Read your own user",
         "tags": [
           "Users"
         ],
+        "summary": "Read your own user",
+        "operationId": "getUser",
         "security": [
           {
             "bearerAuth": []
@@ -431,15 +420,15 @@
         ],
         "parameters": [
           {
-            "in": "path",
             "name": "id",
+            "in": "path",
+            "required": true,
             "schema": {
               "type": "string",
+              "description": "The user's id (must be your own).",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "description": "The user's id (must be your own)."
+              "title": "Id"
             },
-            "required": true,
             "description": "The user's id (must be your own)."
           }
         ],
@@ -487,11 +476,11 @@
         }
       },
       "patch": {
-        "operationId": "updateUser",
-        "summary": "Update your own username or name",
         "tags": [
           "Users"
         ],
+        "summary": "Update your own username or name",
+        "operationId": "updateUser",
         "security": [
           {
             "bearerAuth": []
@@ -499,15 +488,15 @@
         ],
         "parameters": [
           {
-            "in": "path",
             "name": "id",
+            "in": "path",
+            "required": true,
             "schema": {
               "type": "string",
+              "description": "The user's id (must be your own).",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "description": "The user's id (must be your own)."
+              "title": "Id"
             },
-            "required": true,
             "description": "The user's id (must be your own)."
           }
         ],
@@ -585,11 +574,11 @@
         }
       },
       "delete": {
-        "operationId": "deleteUser",
-        "summary": "Delete your own account",
         "tags": [
           "Users"
         ],
+        "summary": "Delete your own account",
+        "operationId": "deleteUser",
         "security": [
           {
             "bearerAuth": []
@@ -597,15 +586,15 @@
         ],
         "parameters": [
           {
-            "in": "path",
             "name": "id",
+            "in": "path",
+            "required": true,
             "schema": {
               "type": "string",
+              "description": "The user's id (must be your own).",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "description": "The user's id (must be your own)."
+              "title": "Id"
             },
-            "required": true,
             "description": "The user's id (must be your own)."
           }
         ],
@@ -649,175 +638,95 @@
   },
   "components": {
     "schemas": {
-      "RegisterBody": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "maxLength": 254,
-            "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
-          },
-          "username": {
-            "type": "string",
-            "minLength": 3,
-            "maxLength": 30,
-            "pattern": "^[a-zA-Z0-9_.]+$",
-            "description": "3-30 letters, digits, `_` or `.`. Case-insensitive; stored lowercased."
-          },
-          "password": {
-            "type": "string",
-            "minLength": 8,
-            "maxLength": 128
-          },
-          "firstName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100
-          },
-          "lastName": {
-            "type": "string",
-            "maxLength": 100
-          }
-        },
-        "required": [
-          "password"
-        ]
-      },
-      "LoginBody": {
-        "type": "object",
-        "properties": {
-          "identifier": {
-            "description": "Your email or your username.",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 254
-          },
-          "email": {
-            "description": "Same as `identifier`.",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 254
-          },
-          "username": {
-            "description": "Same as `identifier`.",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 254
-          },
-          "password": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128
-          }
-        },
-        "required": [
-          "password"
-        ]
-      },
-      "ChangePasswordBody": {
-        "type": "object",
-        "properties": {
-          "currentPassword": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128
-          },
-          "newPassword": {
-            "type": "string",
-            "minLength": 8,
-            "maxLength": 128
-          }
-        },
-        "required": [
-          "currentPassword",
-          "newPassword"
-        ]
-      },
       "ChangeEmailBody": {
-        "type": "object",
         "properties": {
           "newEmail": {
             "type": "string",
             "maxLength": 254,
-            "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "format": "email"
           },
           "currentPassword": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 128
+            "maxLength": 128,
+            "minLength": 1
           }
         },
+        "type": "object",
         "required": [
           "newEmail",
           "currentPassword"
-        ]
+        ],
+        "title": "ChangeEmailBody"
       },
-      "UpdateUserBody": {
-        "type": "object",
+      "ChangePasswordBody": {
         "properties": {
-          "username": {
+          "currentPassword": {
             "type": "string",
-            "minLength": 3,
-            "maxLength": 30,
-            "pattern": "^[a-zA-Z0-9_.]+$",
-            "description": "3-30 letters, digits, `_` or `.`. Case-insensitive; stored lowercased."
+            "maxLength": 128,
+            "minLength": 1
           },
-          "firstName": {
+          "newPassword": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 100
-          },
-          "lastName": {
-            "type": "string",
-            "maxLength": 100
-          }
-        }
-      },
-      "Health": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "ok"
+            "maxLength": 128,
+            "minLength": 8
           }
         },
+        "type": "object",
         "required": [
-          "status"
+          "currentPassword",
+          "newPassword"
         ],
-        "additionalProperties": false
+        "title": "ChangePasswordBody"
+      },
+      "ChangePasswordResponse": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The new bearer token. Every previous token is revoked."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "ChangePasswordResponse"
       },
       "Error": {
-        "type": "object",
         "properties": {
           "error": {
-            "type": "object",
-            "properties": {
-              "code": {
-                "$ref": "#/components/schemas/ErrorCode"
-              },
-              "message": {
-                "type": "string"
-              },
-              "details": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/ValidationIssue"
-                }
-              }
-            },
-            "required": [
-              "code",
-              "message"
-            ],
-            "additionalProperties": false
+            "$ref": "#/components/schemas/ErrorBody"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "error"
         ],
-        "additionalProperties": false
+        "title": "Error"
+      },
+      "ErrorBody": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationIssue"
+            },
+            "type": "array"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorBody"
       },
       "ErrorCode": {
         "type": "string",
@@ -826,53 +735,152 @@
           "UNAUTHORIZED",
           "INVALID_CREDENTIALS",
           "NOT_FOUND",
+          "METHOD_NOT_ALLOWED",
           "EMAIL_TAKEN",
           "USERNAME_TAKEN",
           "INVALID_PASSWORD",
           "INTERNAL"
-        ]
+        ],
+        "title": "ErrorCode"
       },
-      "ValidationIssue": {
-        "type": "object",
+      "Health": {
         "properties": {
-          "path": {
-            "type": "array",
-            "items": {
-              "type": [
-                "string",
-                "number"
-              ]
-            }
-          },
-          "code": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
+          "status": {
+            "type": "string",
+            "const": "ok"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
-          "path",
-          "code",
-          "message"
+          "status"
         ],
-        "additionalProperties": false
+        "title": "Health"
+      },
+      "LoginBody": {
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 1,
+            "description": "Your email or your username."
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 1,
+            "description": "Same as `identifier`."
+          },
+          "username": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 1,
+            "description": "Same as `identifier`."
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          }
+        },
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "title": "LoginBody"
+      },
+      "LoginResponse": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Send as `Authorization: Bearer <token>`."
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token",
+          "user"
+        ],
+        "title": "LoginResponse"
+      },
+      "RegisterBody": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "username": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 3,
+            "pattern": "^[a-zA-Z0-9_.]+$",
+            "description": "3-30 letters, digits, `_` or `.`. Case-insensitive; stored lowercased."
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 8
+          },
+          "firstName": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1
+          },
+          "lastName": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "title": "RegisterBody"
+      },
+      "UpdateUserBody": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 3,
+            "pattern": "^[a-zA-Z0-9_.]+$",
+            "description": "3-30 letters, digits, `_` or `.`. Case-insensitive; stored lowercased."
+          },
+          "firstName": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1
+          },
+          "lastName": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "type": "object",
+        "title": "UpdateUserBody"
       },
       "User": {
-        "type": "object",
         "properties": {
           "id": {
             "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            "format": "uuid"
           },
           "email": {
-            "description": "`null` if the user registered without an email.",
-            "type": [
-              "string",
-              "null"
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "format": "email"
+            "description": "`null` if the user registered without an email."
           },
           "username": {
             "type": "string"
@@ -892,6 +900,8 @@
             "format": "date-time"
           }
         },
+        "additionalProperties": false,
+        "type": "object",
         "required": [
           "id",
           "email",
@@ -901,46 +911,58 @@
           "createdAt",
           "updatedAt"
         ],
-        "additionalProperties": false,
+        "title": "User",
         "description": "A user. Never includes credentials."
       },
-      "LoginResponse": {
-        "type": "object",
+      "ValidationIssue": {
         "properties": {
-          "token": {
-            "type": "string",
-            "description": "Send as `Authorization: Bearer <token>`."
+          "path": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array"
           },
-          "user": {
-            "$ref": "#/components/schemas/User"
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
           }
         },
-        "required": [
-          "token",
-          "user"
-        ],
-        "additionalProperties": false
-      },
-      "ChangePasswordResponse": {
+        "additionalProperties": false,
         "type": "object",
-        "properties": {
-          "token": {
-            "type": "string",
-            "description": "The new bearer token. Every previous token is revoked."
-          }
-        },
         "required": [
-          "token"
+          "path",
+          "code",
+          "message"
         ],
-        "additionalProperties": false
+        "title": "ValidationIssue"
       }
     },
     "securitySchemes": {
       "bearerAuth": {
         "type": "http",
-        "scheme": "bearer",
-        "description": "The `token` returned by `POST /api/auth/login`."
+        "description": "The `token` returned by `POST /api/auth/login`.",
+        "scheme": "bearer"
       }
     }
-  }
+  },
+  "tags": [
+    {
+      "name": "Health"
+    },
+    {
+      "name": "Auth"
+    },
+    {
+      "name": "Users"
+    }
+  ]
 }

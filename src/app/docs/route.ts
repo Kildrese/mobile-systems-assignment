@@ -1,6 +1,0 @@
-import { ApiReference } from "@scalar/nextjs-api-reference";
-
-export const GET = ApiReference({
-  url: "/api/openapi.json",
-  pageTitle: "Mobile Systems API",
-});

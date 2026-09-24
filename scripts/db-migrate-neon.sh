@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply pending Drizzle migrations to the Neon production database.
+# Apply pending Alembic migrations to the Neon production database.
 # Reads DATABASE_URL_UNPOOLED from .env.neon (written by `neon link`), since
 # migrations need a direct connection rather than the pooled one.
 set -euo pipefail
@@ -22,4 +22,5 @@ if [[ -z "${DATABASE_URL_UNPOOLED:-}" ]]; then
   exit 1
 fi
 
-DATABASE_URL="$DATABASE_URL_UNPOOLED" npm run db:migrate
+cd backend
+DATABASE_URL="$DATABASE_URL_UNPOOLED" DATABASE_URL_UNPOOLED="" uv run alembic upgrade head

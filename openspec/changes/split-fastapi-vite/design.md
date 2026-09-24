@@ -94,7 +94,7 @@ Route-level `responses={...}` declare the error model for each status, so the Op
 
 ### The frontend's API client: hey-api
 `@hey-api/openapi-ts` with the `@hey-api/client-fetch` client and the `@tanstack/react-query` plugin generates into `src/api/` from `../openapi/openapi.json`.
-- **Client setup:** at startup, `client.setConfig({ baseUrl: import.meta.env.VITE_API_URL })` and a request interceptor adds `Authorization: Bearer <localStorage.token>`.
+- **Client setup:** at startup, `client.setConfig({ baseUrl: import.meta.env.VITE_API_URL, auth: () => localStorage.token })`. The generated client calls `auth` only for operations that declare `bearerAuth`, so the token goes out as `Authorization: Bearer <token>` on protected endpoints and never to register or login. (Implemented this way instead of a request interceptor, which would add the header to every request.)
 - **401 handling:** a response interceptor clears the token on `401` and tells the auth context to go to login. An exception is the password-confirming endpoints, which return `403` for a wrong password, so they never trigger it.
 - **`api:check`:** regenerates into a temp dir and diffs against `src/api/`.
 
@@ -113,7 +113,7 @@ A small Vite plugin (`apply: "build"`) injects `<meta http-equiv="Content-Securi
 default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' <VITE_API_URL>; object-src 'none'; base-uri 'self'; form-action 'self'
 ```
 - **Fonts:** bundled through `@fontsource`, so the policy needs no Google Fonts host.
-- **Inline styles:** `style-src 'self'` needs Tailwind's CSS as a file (Vite's default in builds), and no inline `style` attributes that matter. Radix sets some inline styles on its positioned elements, so if those break, `style-src` gets `'unsafe-inline'` (a much smaller risk than inline scripts). That gets verified during implementation.
+- **Inline styles (verified in implementation):** `style-src` is `'self' 'unsafe-inline'`. Radix's scroll lock (`react-remove-scroll`, used by the dialog and the dropdown menu) and Sonner insert `<style>` elements at runtime, and the scroll lock's content is computed per use, so no hash can allow it. A static site can't hand out per-response nonces either. Inline styles are a much smaller risk than inline scripts, and `script-src` stays `'self'`, which is what protects the token.
 - **Framing:** `frame-ancestors 'none'` comes from the hosting config header (`vercel.json`), since meta policies ignore it.
 
 ### CORS
@@ -148,9 +148,5 @@ The frontend stays on Vercel: the existing project, re-pointed at `frontend/` as
 
 ## Open Questions
 
-- **Where does the backend run in production?**
-  - *Vercel* (FastAPI is supported with zero configuration) keeps everything in one account with no idle sleep. It runs as serverless functions, so the pool is per instance.
-  - *Render* (the assignment's suggestion) runs a normal long-lived uvicorn process, but its free tier sleeps after 15 minutes idle, with about 50 seconds of cold start.
-
-  Recommendation: Vercel. The assignment only requires running locally, so this can be decided just before the deployment tasks.
+- **Where does the backend run in production?** *Decided: Vercel,* as a second project with root `backend/`, next to the frontend project. The two stay on separate origins (for example `<app>.vercel.app` and `<api>.vercel.app`), so the CORS allow-list is used in production exactly as it is locally. A same-origin setup (Vercel Services, or a rewrite of `/api/*` from the frontend project) was considered and rejected: it would hide the cross-origin behavior this change exists to make visible, and production would differ from local development. FastAPI is detected from `app/main.py` with no configuration and runs as one function on Fluid Compute, so the connection pool (`pool_size=5`) is per instance, over Neon's pooled URL.
 - **Should `NYUgrader` also exist in production?** Default: no; it's seeded locally only.

@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# End-to-end smoke test of the HTTP API against a running dev server
-# (start it with scripts/start.sh). Exercises the health-check, user-auth,
-# user-management and api-docs scenarios, and scans every response body for
-# password hashes. Exits non-zero on the first failure.
+# End-to-end smoke test of the HTTP API against a running backend (start it
+# with scripts/start.sh or scripts/dev-backend.sh). Exercises the health-check,
+# user-auth, user-management, api-docs and CORS scenarios, and scans every
+# response body for password and token hashes. Exits non-zero on the first
+# failure.
 #
-# Requires: curl, jq, and the Docker Compose database (used via psql to
-# inspect rows and to expire a session).
+# Requires: curl, jq, shasum, and the database, inspected with `psql
+# "$DATABASE_URL"` when psql is installed, else through the Docker Compose
+# container. API_URL overrides the backend URL.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,22 +15,42 @@ cd "$ROOT"
 
 command -v jq >/dev/null || { echo "Error: jq is required (brew install jq)." >&2; exit 1; }
 
-set -a
-# shellcheck disable=SC1091
-source .env
-set +a
+# The root .env (POSTGRES_* for the container) and backend/.env
+# (DATABASE_URL); variables already in the environment win.
+load_env() {
+  local file="$1" line key
+  [ -f "$file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || continue
+    key="${line%%=*}"
+    [ -n "${!key+x}" ] || export "$line"
+  done < "$file"
+}
+load_env .env
+load_env backend/.env
 
-BASE="${API_URL:-http://localhost:3000}"
+BASE="${API_URL:-http://localhost:8000}"
+ALLOWED_ORIGIN="${ALLOWED_ORIGIN:-http://localhost:5173}"
 RUN="$(date +%s)$RANDOM"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-HASHES=() # stored account.password values, collected as users register
+HASHES=() # stored password and token hashes, collected as the test runs
 PASSES=0
 
 sql() {
-  docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAq -c "$1"
+  if command -v psql >/dev/null && [ -n "${DATABASE_URL:-}" ]; then
+    psql "$DATABASE_URL" -tAq -c "$1"
+  else
+    docker compose exec -T db psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-app}" -tAq -c "$1"
+  fi
 }
+
+new_uuid() {
+  { uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid; } | tr '[:upper:]' '[:lower:]'
+}
+
+sha256() { printf '%s' "$1" | shasum -a 256 | cut -d' ' -f1; }
 
 fail() {
   echo "FAIL: $*" >&2
@@ -82,7 +104,7 @@ expect_user_keys() {
 is_uuid() { [[ "$1" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; }
 collect_hashes() {
   local h
-  while IFS= read -r h; do [ -n "$h" ] && HASHES+=("$h"); done < <(sql "select password from account where password is not null")
+  while IFS= read -r h; do [ -n "$h" ] && HASHES+=("$h"); done < <(sql "select hash from user_passwords union all select token_hash from sessions")
 }
 
 A_EMAIL="ada-$RUN@example.com"
@@ -114,12 +136,15 @@ jq -e 'has("token") | not' "$TMP/body" >/dev/null || fail "register returned a t
 ok "register -> 201 user, UUID id, no token"
 collect_hashes
 
-[ "$(sql "select name from \"user\" where id = '$A_ID'")" = "Ada Lovelace" ] || fail "user.name not derived"
-[ "$(sql "select count(*) from account where user_id = '$A_ID' and password is not null and password <> '$A_PASS'")" = "1" ] \
-  || fail "expected exactly one account row with a hashed password"
-[ "$(sql "select count(*) from information_schema.columns where table_name = 'user' and column_name like '%password%'")" = "0" ] \
-  || fail "user table has a password column"
-ok "DB: name derived, hash only on account"
+[ "$(sql "select count(*) from user_passwords where user_id = '$A_ID' and hash <> '$A_PASS'")" = "1" ] \
+  || fail "expected exactly one user_passwords row with a hashed password"
+[ "$(sql "select count(*) from information_schema.columns where table_name = 'users' and column_name like '%password%'")" = "0" ] \
+  || fail "users table has a password column"
+[ "$(sql "select email || '|' || first_name || '|' || last_name from users where id = '$A_ID'")" = "$A_EMAIL|Ada|Lovelace" ] \
+  || fail "users row does not match the request"
+ok "DB: row matches, hash only in user_passwords"
+[[ "$(sql "select hash from user_passwords where user_id = '$A_ID'")" == '$argon2id$'* ]] || fail "stored hash is not argon2id"
+ok "DB: stored hash is argon2id"
 
 UPPER_A="$(echo "$A_EMAIL" | tr '[:lower:]' '[:upper:]')"
 req POST /api/auth/register "{\"email\":\"$UPPER_A\",\"username\":\"x_$RUN\",\"password\":\"$A_PASS\",\"firstName\":\"X\",\"lastName\":\"Y\"}"
@@ -143,26 +168,25 @@ for bad_user in "ab" "has space" "has@at" "$(printf 'u%.0s' {1..31})"; do
 done
 req POST /api/auth/register "{\"password\":\"$A_PASS\",\"firstName\":\"Ada\",\"lastName\":\"L\"}"
 expect_code 400 VALIDATION_ERROR "register without username and email"
-req POST /api/auth/register "{\"email\":\"x@no-email.invalid\",\"password\":\"$A_PASS\"}"
-expect_code 400 VALIDATION_ERROR "register with the reserved placeholder email domain"
-[ "$(sql "select count(*) from \"user\" where email = '$BAD_EMAIL'")" = "0" ] || fail "invalid registration created a user"
+[ "$(sql "select count(*) from users where email = '$BAD_EMAIL'")" = "0" ] || fail "invalid registration created a user"
 ok "no user created by invalid registrations"
 
 req POST /api/auth/register "{\"email\":\"$B_EMAIL\",\"username\":\"$B_USER\",\"password\":\"$B_PASS\",\"firstName\":\"Bob\",\"lastName\":\"Builder\"}"
 expect_status 201 "register B"
 B_ID="$(jq -r .id "$TMP/body")"
 collect_hashes
-ok "register B"
+[ "$(sql "select count(distinct hash) from user_passwords where user_id in ('$A_ID', '$B_ID')")" = "2" ] \
+  || fail "two users' hashes are equal"
+ok "register B (hash differs from A's)"
 
 # Extra keys are dropped, never stored.
 X_EMAIL="extra-$RUN@example.com"
-SENT_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+SENT_ID="$(new_uuid)"
 req POST /api/auth/register "{\"email\":\"$X_EMAIL\",\"username\":\"extra_$RUN\",\"password\":\"$A_PASS\",\"id\":\"$SENT_ID\",\"emailVerified\":true,\"role\":\"admin\"}"
 expect_status 201 "register with extra keys"
 expect_user_keys .
 X_ID="$(jq -r .id "$TMP/body")"
 [ "$X_ID" != "$SENT_ID" ] || fail "register stored the client-sent id"
-[ "$(sql "select email_verified from \"user\" where id = '$X_ID'")" = "f" ] || fail "register stored emailVerified"
 ok "register with extra keys -> 201, extra keys ignored"
 
 # Only a username and a password.
@@ -172,8 +196,13 @@ expect_user_keys .
 [ "$(jq -c '[.username, .email, .firstName, .lastName]' "$TMP/body")" = "[\"solo_$RUN\",null,\"solo_$RUN\",\"\"]" ] \
   || fail "username-only registration fields"
 SOLO_ID="$(jq -r .id "$TMP/body")"
+[ "$(sql "select email is null from users where id = '$SOLO_ID'")" = "t" ] || fail "users.email is not NULL without an email"
 req POST /api/auth/register "{\"username\":\"SOLO_$RUN\",\"password\":\"$A_PASS\"}"
 expect_code 409 USERNAME_TAKEN "register taken username without an email"
+req POST /api/auth/register "{\"username\":\"solo2_$RUN\",\"password\":\"$A_PASS\"}"
+expect_status 201 "register a second user without an email"
+sql "delete from users where id = '$(jq -r .id "$TMP/body")'" >/dev/null
+ok "a second user can register without an email"
 req POST /api/auth/login "{\"username\":\"solo_$RUN\",\"password\":\"$A_PASS\"}"
 expect_status 200 "login with {username, password}"
 [ "$(jq -r .user.email "$TMP/body")" = null ] || fail "placeholder email leaked"
@@ -198,7 +227,7 @@ req DELETE "/api/users/$SOLO_ID" "" -H "$(auth "$SOLO_TOKEN")"
 expect_status 204 "DELETE username-only account (cleanup)"
 req DELETE "/api/users/$E_ID" "" -H "$(auth "$E_TOKEN")"
 expect_status 204 "DELETE email-only account (cleanup)"
-sql "delete from \"user\" where id = '$X_ID'" >/dev/null
+sql "delete from users where id = '$X_ID'" >/dev/null
 
 echo "== login"
 req POST /api/auth/login '{not json'
@@ -234,6 +263,11 @@ A_TOKEN="$(jq -r .token "$TMP/body")"
 expect_user_keys .user
 if grep -qi '^set-cookie:' "$TMP/headers"; then fail "login sent Set-Cookie"; fi
 ok "login -> 200 token + user, no Set-Cookie"
+[ "$(sql "select count(*) from sessions where token_hash = '$(sha256 "$A_TOKEN")' and user_id = '$A_ID'")" = "1" ] \
+  || fail "sessions has no row with the token's SHA-256"
+[ "$(sql "select count(*) from sessions where token_hash = '$A_TOKEN'")" = "0" ] || fail "sessions stores the raw token"
+collect_hashes
+ok "DB: sessions stores the token's SHA-256, not the token"
 
 req POST /api/auth/login "{\"identifier\":\"$B_EMAIL\",\"password\":\"$B_PASS\"}"
 expect_status 200 "login B"
@@ -253,7 +287,7 @@ req GET /api/auth/me "" -H "$(auth not-a-real-token)"
 expect_code 401 UNAUTHORIZED "me with garbage token"
 req GET /api/auth/me "" -H "$(auth "${A_TOKEN:0:10}")"
 expect_code 401 UNAUTHORIZED "me with truncated token"
-req GET /api/auth/me "" -H "Cookie: better-auth.session_token=$A_TOKEN"
+req GET /api/auth/me "" -H "Cookie: session=$A_TOKEN"
 expect_code 401 UNAUTHORIZED "me with cookie only"
 
 req GET /api/auth/me "" -H "$(auth "$A_TOKEN")"
@@ -264,12 +298,12 @@ ok "me -> 200 A"
 
 req POST /api/auth/login "{\"identifier\":\"$A_EMAIL\",\"password\":\"$A_PASS\"}"
 EXPIRED_TOKEN="$(jq -r .token "$TMP/body")"
-sql "update session set expires_at = now() - interval '1 minute' where token = '$EXPIRED_TOKEN'" >/dev/null
+sql "update sessions set expires_at = now() - interval '1 minute' where token_hash = '$(sha256 "$EXPIRED_TOKEN")'" >/dev/null
 req GET /api/auth/me "" -H "$(auth "$EXPIRED_TOKEN")"
 expect_code 401 UNAUTHORIZED "me with expired token"
 
 echo "== user-management"
-RANDOM_UUID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+RANDOM_UUID="$(new_uuid)"
 for m in GET PATCH DELETE; do
   body=""; [ "$m" = PATCH ] && body='{"firstName":"X"}'
   req "$m" "/api/users/$A_ID" "$body"
@@ -298,18 +332,17 @@ req PATCH "/api/users/$B_ID" '{"firstName":"Hacked"}' -H "$(auth "$A_TOKEN")"
 expect_code 404 NOT_FOUND "PATCH other user's id"
 req DELETE "/api/users/$B_ID" "" -H "$(auth "$A_TOKEN")"
 expect_code 404 NOT_FOUND "DELETE other user's id"
-[ "$(sql "select first_name from \"user\" where id = '$B_ID'")" = "Bob" ] || fail "B was modified or deleted"
+[ "$(sql "select first_name from users where id = '$B_ID'")" = "Bob" ] || fail "B was modified or deleted"
 ok "B untouched"
 
-BEFORE_UPDATED="$(sql "select extract(epoch from updated_at) from \"user\" where id = '$A_ID'")"
+BEFORE_UPDATED="$(sql "select extract(epoch from updated_at) from users where id = '$A_ID'")"
 req PATCH "/api/users/$A_ID" '{"firstName":"Augusta"}' -H "$(auth "$A_TOKEN")"
 expect_status 200 "PATCH own firstName"
 expect_user_keys .
 [ "$(jq -r '.firstName + "|" + .lastName' "$TMP/body")" = "Augusta|Lovelace" ] || fail "PATCH result"
-AFTER_UPDATED="$(sql "select extract(epoch from updated_at) from \"user\" where id = '$A_ID'")"
+AFTER_UPDATED="$(sql "select extract(epoch from updated_at) from users where id = '$A_ID'")"
 awk "BEGIN { exit !($AFTER_UPDATED > $BEFORE_UPDATED) }" || fail "updatedAt did not advance"
-[ "$(sql "select name from \"user\" where id = '$A_ID'")" = "Augusta Lovelace" ] || fail "name not recomputed"
-ok "PATCH own firstName -> 200, lastName kept, updatedAt later, name recomputed"
+ok "PATCH own firstName -> 200, lastName kept, updatedAt later"
 
 req PATCH "/api/users/$A_ID" "{\"username\":\"$B_USER\"}" -H "$(auth "$A_TOKEN")"
 expect_code 409 USERNAME_TAKEN "PATCH username to B's"
@@ -331,14 +364,14 @@ for body in '{"email":"new@example.com"}' '{"password":"x"}' "{\"id\":\"$RANDOM_
   req PATCH "/api/users/$A_ID" "$body" -H "$(auth "$A_TOKEN")"
   expect_code 400 VALIDATION_ERROR "PATCH forbidden field $body"
 done
-[ "$(sql "select email || '|' || first_name from \"user\" where id = '$A_ID'")" = "$A_EMAIL|Augusta" ] || fail "A changed by forbidden PATCH"
+[ "$(sql "select email || '|' || first_name from users where id = '$A_ID'")" = "$A_EMAIL|Augusta" ] || fail "A changed by forbidden PATCH"
 ok "A unchanged by forbidden PATCHes"
 
 req DELETE "/api/users/$A_ID" "" -H "$(auth "$A_TOKEN")"
 expect_status 204 "DELETE own user"
 [ ! -s "$TMP/body" ] || fail "204 response has a body"
-[ "$(sql "select (select count(*) from \"user\" where id = '$A_ID') + (select count(*) from account where user_id = '$A_ID') + (select count(*) from session where user_id = '$A_ID')")" = "0" ] \
-  || fail "user/account/session rows remain after delete"
+[ "$(sql "select (select count(*) from users where id = '$A_ID') + (select count(*) from user_passwords where user_id = '$A_ID') + (select count(*) from sessions where user_id = '$A_ID')")" = "0" ] \
+  || fail "users/user_passwords/sessions rows remain after delete"
 ok "DELETE own user -> 204, rows cascaded"
 req GET /api/auth/me "" -H "$(auth "$A_TOKEN")"
 expect_code 401 UNAUTHORIZED "me after deletion"
@@ -423,7 +456,7 @@ req POST /api/auth/change-email "{\"newEmail\":\"$B_UPPER\",\"currentPassword\":
 expect_code 403 INVALID_PASSWORD "change-email wrong password + taken email (403 before 409)"
 req POST /api/auth/change-email "{\"newEmail\":\"$B_UPPER\",\"currentPassword\":\"$NEW_PASS\"}" -H "$(auth "$C_TOKEN")"
 expect_code 409 EMAIL_TAKEN "change-email to B's email (different case)"
-[ "$(sql "select email from \"user\" where id = '$C_ID'")|$(sql "select email from \"user\" where id = '$B_ID'")" = "$C_EMAIL|$B_EMAIL" ] \
+[ "$(sql "select email from users where id = '$C_ID'")|$(sql "select email from users where id = '$B_ID'")" = "$C_EMAIL|$B_EMAIL" ] \
   || fail "a rejected change-email modified a user"
 ok "rejected change-email left both users unchanged"
 req POST /api/auth/change-email "{\"newEmail\":\"$C_EMAIL\",\"currentPassword\":\"$NEW_PASS\"}" -H "$(auth "$C_TOKEN")"
@@ -475,6 +508,24 @@ req GET /docs
 expect_status 200 "GET /docs"
 grep -qi '^content-type: text/html' "$TMP/headers" || fail "/docs is not HTML"
 ok "GET /docs -> 200 HTML"
+
+echo "== cors"
+req OPTIONS /api/auth/me "" -H "Origin: $ALLOWED_ORIGIN" -H "Access-Control-Request-Method: GET" \
+  -H "Access-Control-Request-Headers: authorization"
+expect_status 200 "preflight from $ALLOWED_ORIGIN"
+grep -qi "^access-control-allow-origin: $ALLOWED_ORIGIN" "$TMP/headers" || fail "preflight lacks Access-Control-Allow-Origin"
+grep -qi '^access-control-allow-headers:.*authorization' "$TMP/headers" || fail "preflight does not allow Authorization"
+if grep -qi '^access-control-allow-credentials:' "$TMP/headers"; then fail "preflight allows credentials"; fi
+ok "preflight from the allowed origin -> 200, Authorization allowed, no credentials"
+req OPTIONS /api/auth/me "" -H "Origin: https://evil.example" -H "Access-Control-Request-Method: GET"
+if grep -qi '^access-control-allow-origin:' "$TMP/headers"; then fail "preflight from another origin was allowed"; fi
+req GET /api/auth/me "" -H "Origin: https://evil.example" -H "$(auth "$B_TOKEN")"
+if grep -qi '^access-control-allow-origin:' "$TMP/headers"; then fail "response to another origin has CORS headers"; fi
+ok "another origin gets no Access-Control-Allow-Origin"
+req GET /api/auth/me "" -H "Origin: $ALLOWED_ORIGIN"
+expect_code 401 UNAUTHORIZED "me without token from the allowed origin"
+grep -qi "^access-control-allow-origin: $ALLOWED_ORIGIN" "$TMP/headers" || fail "401 lacks Access-Control-Allow-Origin"
+ok "401 from the allowed origin carries CORS headers"
 
 # Clean up B.
 req DELETE "/api/users/$B_ID" "" -H "$(auth "$B_TOKEN")"
