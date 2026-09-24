@@ -109,5 +109,5 @@
 
 - [x] 12.1 Create a Neon snapshot branch of `production` for rollback
 - [x] 12.2 Configure the backend deployment: `DATABASE_URL` (pooled), `DATABASE_URL_UNPOOLED`, `CORS_ORIGINS` = the frontend URL, and a deploy step running `alembic upgrade head` on the direct URL
-- [ ] 12.3 Re-point the existing Vercel project at `frontend/` (framework Vite) with `VITE_API_URL` = the backend URL
+- [x] 12.3 Re-point the existing Vercel project at `frontend/` (framework Vite) with `VITE_API_URL` = the backend URL
 - [ ] 12.4 Merge, verify production (`/healthz`, register, login, `/docs`, CORS from the frontend origin), and seed `NYUgrader` in production only if requested
