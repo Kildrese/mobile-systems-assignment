@@ -32,9 +32,6 @@ class User(Timestamps, Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    # Lowercased. NULL for users who registered with only a username; unique
-    # indexes allow any number of NULLs.
-    email: Mapped[str | None] = mapped_column(String, unique=True)
     # Lowercased.
     username: Mapped[str] = mapped_column(String, unique=True)
     first_name: Mapped[str] = mapped_column(String)

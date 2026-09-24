@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/auth", tags=["Auth"])
     response_description="The created user. No token; log in next.",
     responses={
         **BAD_REQUEST,
-        **conflict("The email (EMAIL_TAKEN) or username (USERNAME_TAKEN) is already registered."),
+        **conflict("The username is already taken."),
         **INTERNAL,
     },
 )
@@ -40,7 +40,7 @@ def register(db: Db, body: schemas.RegisterBody):
     response_description="A bearer token and the user.",
     responses={
         **BAD_REQUEST,
-        **unauthenticated("Unknown email or username, or wrong password (indistinguishable)."),
+        **unauthenticated("Unknown username or wrong password (indistinguishable)."),
         **INTERNAL,
     },
 )
@@ -86,24 +86,3 @@ def logout(db: Db, session: CurrentSession) -> None:
 )
 def change_password(db: Db, session: CurrentSession, body: schemas.ChangePasswordBody):
     return {"token": accounts.change_password(db, session.user_id, body)}
-
-
-@router.post(
-    "/change-email",
-    operation_id="changeEmail",
-    summary="Change your email",
-    response_model=schemas.User,
-    response_description=(
-        "The updated user. Takes effect immediately, without verification; "
-        "your token keeps working."
-    ),
-    responses={
-        **BAD_REQUEST,
-        **UNAUTHORIZED,
-        **FORBIDDEN,
-        **conflict("The email is already registered to another user."),
-        **INTERNAL,
-    },
-)
-def change_email(db: Db, user: CurrentUser, body: schemas.ChangeEmailBody):
-    return accounts.change_email(db, user, body)

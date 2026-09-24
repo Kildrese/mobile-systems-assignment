@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { changeEmail, changePassword, deleteUser, getCurrentUser, getUser, healthCheck, login, logout, type Options, register, updateUser } from '../sdk.gen';
-import type { ChangeEmailData, ChangeEmailError, ChangeEmailResponse, ChangePasswordData, ChangePasswordError, ChangePasswordResponse2, DeleteUserData, DeleteUserError, DeleteUserResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetUserData, GetUserError, GetUserResponse, HealthCheckData, HealthCheckError, HealthCheckResponse, LoginData, LoginError, LoginResponse2, LogoutData, LogoutError, LogoutResponse, RegisterData, RegisterError, RegisterResponse, UpdateUserData, UpdateUserError, UpdateUserResponse } from '../types.gen';
+import { changePassword, deleteUser, getCurrentUser, getUser, healthCheck, login, logout, type Options, register, updateUser } from '../sdk.gen';
+import type { ChangePasswordData, ChangePasswordError, ChangePasswordResponse2, DeleteUserData, DeleteUserError, DeleteUserResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetUserData, GetUserError, GetUserResponse, HealthCheckData, HealthCheckError, HealthCheckResponse, LoginData, LoginError, LoginResponse2, LogoutData, LogoutError, LogoutResponse, RegisterData, RegisterError, RegisterResponse, UpdateUserData, UpdateUserError, UpdateUserResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -133,23 +133,6 @@ export const changePasswordMutation = (options?: Partial<Options<ChangePasswordD
     const mutationOptions: UseMutationOptions<ChangePasswordResponse2, ChangePasswordError, Options<ChangePasswordData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await changePassword({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-/**
- * Change your email
- */
-export const changeEmailMutation = (options?: Partial<Options<ChangeEmailData>>): UseMutationOptions<ChangeEmailResponse, ChangeEmailError, Options<ChangeEmailData>> => {
-    const mutationOptions: UseMutationOptions<ChangeEmailResponse, ChangeEmailError, Options<ChangeEmailData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await changeEmail({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

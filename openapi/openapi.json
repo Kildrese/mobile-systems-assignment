@@ -76,7 +76,7 @@
             }
           },
           "409": {
-            "description": "The email (EMAIL_TAKEN) or username (USERNAME_TAKEN) is already registered.",
+            "description": "The username is already taken.",
             "content": {
               "application/json": {
                 "schema": {
@@ -137,7 +137,7 @@
             }
           },
           "401": {
-            "description": "Unknown email or username, or wrong password (indistinguishable).",
+            "description": "Unknown username or wrong password (indistinguishable).",
             "content": {
               "application/json": {
                 "schema": {
@@ -294,92 +294,6 @@
           },
           "403": {
             "description": "The current password is wrong.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Unexpected server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/auth/change-email": {
-      "post": {
-        "tags": [
-          "Auth"
-        ],
-        "summary": "Change your email",
-        "operationId": "changeEmail",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChangeEmailBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "The updated user. Takes effect immediately, without verification; your token keeps working.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/User"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The body is not valid JSON or fails validation.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing, malformed, unknown or expired token.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "The current password is wrong.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The email is already registered to another user.",
             "content": {
               "application/json": {
                 "schema": {
@@ -638,26 +552,6 @@
   },
   "components": {
     "schemas": {
-      "ChangeEmailBody": {
-        "properties": {
-          "newEmail": {
-            "type": "string",
-            "maxLength": 254,
-            "format": "email"
-          },
-          "currentPassword": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1
-          }
-        },
-        "type": "object",
-        "required": [
-          "newEmail",
-          "currentPassword"
-        ],
-        "title": "ChangeEmailBody"
-      },
       "ChangePasswordBody": {
         "properties": {
           "currentPassword": {
@@ -736,7 +630,6 @@
           "INVALID_CREDENTIALS",
           "NOT_FOUND",
           "METHOD_NOT_ALLOWED",
-          "EMAIL_TAKEN",
           "USERNAME_TAKEN",
           "INVALID_PASSWORD",
           "INTERNAL"
@@ -759,23 +652,11 @@
       },
       "LoginBody": {
         "properties": {
-          "identifier": {
-            "type": "string",
-            "maxLength": 254,
-            "minLength": 1,
-            "description": "Your email or your username."
-          },
-          "email": {
-            "type": "string",
-            "maxLength": 254,
-            "minLength": 1,
-            "description": "Same as `identifier`."
-          },
           "username": {
             "type": "string",
             "maxLength": 254,
             "minLength": 1,
-            "description": "Same as `identifier`."
+            "description": "Case-insensitive."
           },
           "password": {
             "type": "string",
@@ -785,6 +666,7 @@
         },
         "type": "object",
         "required": [
+          "username",
           "password"
         ],
         "title": "LoginBody"
@@ -809,11 +691,6 @@
       },
       "RegisterBody": {
         "properties": {
-          "email": {
-            "type": "string",
-            "maxLength": 254,
-            "format": "email"
-          },
           "username": {
             "type": "string",
             "maxLength": 30,
@@ -838,6 +715,7 @@
         },
         "type": "object",
         "required": [
+          "username",
           "password"
         ],
         "title": "RegisterBody"
@@ -870,18 +748,6 @@
             "type": "string",
             "format": "uuid"
           },
-          "email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "`null` if the user registered without an email."
-          },
           "username": {
             "type": "string"
           },
@@ -904,7 +770,6 @@
         "type": "object",
         "required": [
           "id",
-          "email",
           "username",
           "firstName",
           "lastName",

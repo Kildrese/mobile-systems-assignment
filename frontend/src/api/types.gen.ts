@@ -5,14 +5,6 @@ export type ClientOptions = {
 };
 
 /**
- * ChangeEmailBody
- */
-export type ChangeEmailBody = {
-    newEmail: string;
-    currentPassword: string;
-};
-
-/**
  * ChangePasswordBody
  */
 export type ChangePasswordBody = {
@@ -49,7 +41,7 @@ export type ErrorBody = {
 /**
  * ErrorCode
  */
-export type ErrorCode = 'VALIDATION_ERROR' | 'UNAUTHORIZED' | 'INVALID_CREDENTIALS' | 'NOT_FOUND' | 'METHOD_NOT_ALLOWED' | 'EMAIL_TAKEN' | 'USERNAME_TAKEN' | 'INVALID_PASSWORD' | 'INTERNAL';
+export type ErrorCode = 'VALIDATION_ERROR' | 'UNAUTHORIZED' | 'INVALID_CREDENTIALS' | 'NOT_FOUND' | 'METHOD_NOT_ALLOWED' | 'USERNAME_TAKEN' | 'INVALID_PASSWORD' | 'INTERNAL';
 
 /**
  * Health
@@ -63,17 +55,9 @@ export type Health = {
  */
 export type LoginBody = {
     /**
-     * Your email or your username.
+     * Case-insensitive.
      */
-    identifier?: string;
-    /**
-     * Same as `identifier`.
-     */
-    email?: string;
-    /**
-     * Same as `identifier`.
-     */
-    username?: string;
+    username: string;
     password: string;
 };
 
@@ -92,11 +76,10 @@ export type LoginResponse = {
  * RegisterBody
  */
 export type RegisterBody = {
-    email?: string;
     /**
      * 3-30 letters, digits, `_` or `.`. Case-insensitive; stored lowercased.
      */
-    username?: string;
+    username: string;
     password: string;
     firstName?: string;
     lastName?: string;
@@ -121,10 +104,6 @@ export type UpdateUserBody = {
  */
 export type User = {
     id: string;
-    /**
-     * `null` if the user registered without an email.
-     */
-    email: string | null;
     username: string;
     firstName: string;
     lastName: string;
@@ -179,7 +158,7 @@ export type RegisterErrors = {
      */
     400: Error;
     /**
-     * The email (EMAIL_TAKEN) or username (USERNAME_TAKEN) is already registered.
+     * The username is already taken.
      */
     409: Error;
     /**
@@ -212,7 +191,7 @@ export type LoginErrors = {
      */
     400: Error;
     /**
-     * Unknown email or username, or wrong password (indistinguishable).
+     * Unknown username or wrong password (indistinguishable).
      */
     401: Error;
     /**
@@ -326,47 +305,6 @@ export type ChangePasswordResponses = {
 };
 
 export type ChangePasswordResponse2 = ChangePasswordResponses[keyof ChangePasswordResponses];
-
-export type ChangeEmailData = {
-    body: ChangeEmailBody;
-    path?: never;
-    query?: never;
-    url: '/api/auth/change-email';
-};
-
-export type ChangeEmailErrors = {
-    /**
-     * The body is not valid JSON or fails validation.
-     */
-    400: Error;
-    /**
-     * Missing, malformed, unknown or expired token.
-     */
-    401: Error;
-    /**
-     * The current password is wrong.
-     */
-    403: Error;
-    /**
-     * The email is already registered to another user.
-     */
-    409: Error;
-    /**
-     * Unexpected server error.
-     */
-    500: Error;
-};
-
-export type ChangeEmailError = ChangeEmailErrors[keyof ChangeEmailErrors];
-
-export type ChangeEmailResponses = {
-    /**
-     * The updated user. Takes effect immediately, without verification; your token keeps working.
-     */
-    200: User;
-};
-
-export type ChangeEmailResponse = ChangeEmailResponses[keyof ChangeEmailResponses];
 
 export type DeleteUserData = {
     body?: never;

@@ -16,7 +16,7 @@
 - **THEN** the field shows a validation message and no sign-in request is sent
 
 ### Requirement: Registration page
-`/register` SHALL use the matching shadcn `signup-03` layout with first name, last name (optional), username, password and confirm-password fields, and a link to `/login` that keeps the `next` parameter. It SHALL NOT ask for an email. It SHALL require the two passwords to match before sending anything. It SHALL show the API's validation errors on the matching fields.
+`/register` SHALL use the matching shadcn `signup-03` layout with first name (optional), last name (optional), username, password and confirm-password fields, and a link to `/login` that keeps the `next` parameter. It SHALL NOT ask for an email. It SHALL require the two passwords to match before sending anything. It SHALL show the API's validation errors on the matching fields.
 
 On success (`POST /api/auth/register`) the app SHALL sign the user in immediately with `POST /api/auth/login`, store the token, and send them on as in "Safe post-login redirect". A taken username SHALL show an error on the username field.
 

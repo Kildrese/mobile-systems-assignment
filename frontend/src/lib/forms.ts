@@ -22,7 +22,6 @@ function message(issue: ValidationIssue): string {
     case "string_pattern_mismatch":
       return "Use only letters, digits, underscores and periods";
     case "value_error":
-      if (/email/i.test(issue.message)) return "Enter a valid email address";
       return issue.message.replace(/^Value error, /, "");
     default:
       return issue.message;

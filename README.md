@@ -1,6 +1,6 @@
 # mobile-systems-assignment
 
-User accounts for the Mobile Systems coursework at NYU: register, log in with an email or username, and manage your account. Two apps in one repository:
+User accounts for the Mobile Systems coursework at NYU: register, log in with a username, and manage your account. Two apps in one repository:
 
 - **`backend/`**: a JSON API in Python with [FastAPI](https://fastapi.tiangolo.com), SQLAlchemy 2, Alembic and PostgreSQL. Authentication is written in the project: argon2id password hashes and hashed, expiring session tokens.
 - **`frontend/`**: a single-page app with Vite, React, React Router, Tailwind CSS and shadcn/ui. It only talks to the backend over HTTP, from another origin.
@@ -125,7 +125,7 @@ backend/                FastAPI app (uv project)
     security.py         argon2id hashing, token generation and hashing
     deps.py             bearer-token session and "own user id" dependencies
     errors.py           the error shape and exception handlers
-    services/           account rules (register, login, change email/password, …)
+    services/           account rules (register, login, change password, …)
     routers/            health, auth and users endpoints
     openapi.py          `python -m app.openapi [--check]`
     seed.py             `python -m app.seed`
@@ -156,21 +156,21 @@ Open <http://localhost:5173>. Signed-out visitors are sent to the login page and
 
 | Path | What it is |
 | --- | --- |
-| `/login` | Sign in with your email or username |
+| `/login` | Sign in with your username |
 | `/register` | Create an account (you're signed in straight away) |
 | `/` | Home (signed in), with a link to the API reference |
-| `/account` | Change your username, name, email or password, or delete your account (signed in) |
+| `/account` | Change your username, name or password, or delete your account (signed in) |
 
-**Known limitation:** email changes take effect immediately and aren't verified by email, because the app doesn't send email yet. There's also no password reset.
+**Known limitation:** there's no password reset.
 
 ## API
 
 Protected endpoints take `Authorization: Bearer <token>`, where the token comes from `POST /api/auth/login`.
 
-Every user has a username and usually an email, and can log in with either. Usernames are 3-30 letters, digits, `_` or `.`, case-insensitive and stored lowercased.
+Accounts have no email: a user is identified by their username, which is also what they log in with. Usernames are 3-30 letters, digits, `_` or `.`, case-insensitive and stored lowercased.
 
-- **Register** needs a `password` plus a `username`, an `email` or both. `firstName` and `lastName` are optional. Without a username, one is derived from the email. A user without an email is stored and returned with `"email": null`.
-- **Log in** with `{ "identifier": …, "password": … }`. `email` or `username` work in place of `identifier`, and each accepts either an email or a username: a value containing `@` is treated as an email.
+- **Register** needs a `username` and a `password`. `firstName` (defaults to the username) and `lastName` (defaults to empty) are optional.
+- **Log in** with `{ "username": …, "password": … }`. An unknown or malformed username and a wrong password all get the same `401 INVALID_CREDENTIALS` ("Invalid username or password").
 - **Extra keys are ignored.** Request bodies may contain keys an endpoint doesn't define; they're dropped, never stored, and don't cause a `400`.
 - **Errors** always look like `{ "error": { "code", "message", "details"? } }`. Invalid bodies are `400 VALIDATION_ERROR`, with `details` listing each field path and rule (never the submitted value).
 
@@ -182,7 +182,6 @@ Every user has a username and usually an email, and can log in with either. User
 | GET | `/api/auth/me` | yes | The logged-in user |
 | POST | `/api/auth/logout` | yes | Revoke the current token (`204`) |
 | POST | `/api/auth/change-password` | yes | Needs the current password. Revokes every session and returns a new `token` |
-| POST | `/api/auth/change-email` | yes | Needs the current password. Changes the email immediately (no verification) |
 | GET / PATCH / DELETE | `/api/users/:id` | yes | Read, update (username, first and last name) or delete your own account |
 
 ### API docs
@@ -193,21 +192,21 @@ Every user has a username and usually an email, and can log in with either. User
 ### Security decisions
 
 1. **Passwords are hashed with argon2id** ([pwdlib](https://github.com/frankie567/pwdlib), argon2-cffi's defaults: 64 MiB, 3 iterations, 4 lanes, above OWASP's minimums), with a random salt per hash. Hashes live only in `user_passwords`, never on `users`. A login for an unknown user still verifies the password against a dummy hash, so response times don't reveal which accounts exist.
-2. **Password hashes are never returned.** Every route declares a Pydantic `response_model`, and the `User` model is an allow-list (`id`, `email`, `username`, `firstName`, `lastName`, `createdAt`, `updatedAt`): even when a route returns a database row, nothing else is serialized. Unexpected errors return a generic `500` and are logged without the request body.
+2. **Password hashes are never returned.** Every route declares a Pydantic `response_model`, and the `User` model is an allow-list (`id`, `username`, `firstName`, `lastName`, `createdAt`, `updatedAt`): even when a route returns a database row, nothing else is serialized. Unexpected errors return a generic `500` and are logged without the request body.
 3. **Session tokens are random and stored hashed.** A token is 32 random bytes (`secrets.token_urlsafe`); the database keeps only its SHA-256, so a leaked database can't be used to log in. A token expires after `SESSION_TTL_DAYS` (7) days without use; using it extends the expiry, at most once a day. Logout deletes that session; a password change deletes all of the user's sessions and issues one new token; deleting the account cascades to its password and sessions.
 4. **A missing, bad or expired token returns `401`.** Only a well-formed `Authorization: Bearer <token>` header is accepted; cookies are ignored. Unknown, expired and revoked tokens, and the token of a deleted user, all get the same `401 UNAUTHORIZED`.
 5. **You can't touch another user's account; we return `404`, not `403`.** `/api/users/:id` compares `:id` with the caller's own id before looking anything up. Another user's id, an id that doesn't exist and a value that isn't a UUID all get the same `404 NOT_FOUND`. A `403` would confirm that the id belongs to a real account.
-6. **A wrong current password returns `403`, not `401`.** On change-password and change-email, `403 INVALID_PASSWORD` keeps clients from mistaking a typo for an expired token and signing the user out.
+6. **A wrong current password returns `403`, not `401`.** On change-password, `403 INVALID_PASSWORD` keeps clients from mistaking a typo for an expired token and signing the user out.
 
 Login rate limiting is not implemented yet.
 
 ### Test account
 
-`./scripts/start.sh` and `./scripts/db-seed.sh` create a user for graders: username **`NYUgrader`**, password **`Courant2026!`** (first name NYU, last name Grader, no email). Seeding again leaves it unchanged.
+`./scripts/start.sh` and `./scripts/db-seed.sh` create a user for graders: username **`NYUgrader`**, password **`Courant2026!`** (first name NYU, last name Grader). Seeding again leaves it unchanged.
 
 ## Deployment
 
-Production is being moved to two deployments (frontend and backend on separate origins, with the Neon database reset); see the deployment tasks in `openspec/changes/split-fastapi-vite/tasks.md`. Migrations run against Neon's direct connection string: `./scripts/db-migrate-neon.sh` reads `DATABASE_URL_UNPOOLED` from `.env.neon`.
+Production is being moved to two deployments (frontend and backend on separate origins, with the Neon database reset); see the deployment tasks in `openspec/changes/split-fastapi-vite/tasks.md`. Migrations run against Neon's direct connection string: `./scripts/db-migrate-neon.sh` reads `DATABASE_URL_UNPOOLED` from `.env.neon`. When a migration drops something the running code still reads (such as `users.email`), deploy first and migrate second, once both production deployments are ready.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and every push to `master`:
 

@@ -15,7 +15,7 @@ import {
 import { useAuth, useUser } from "@/lib/use-auth";
 
 export function UserMenu() {
-  const { username, firstName, lastName, email } = useUser();
+  const { username, firstName, lastName } = useUser();
   const { signOut } = useAuth();
   const navigate = useNavigate();
   const logout = useMutation(logoutMutation());
@@ -51,7 +51,6 @@ export function UserMenu() {
             {[firstName, lastName].filter(Boolean).join(" ")}
           </span>
           <span className="truncate text-xs text-muted-foreground">@{username}</span>
-          {email && <span className="truncate text-xs text-muted-foreground">{email}</span>}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>

@@ -26,10 +26,10 @@ export function LoginForm({ next }: { next: string }) {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const { identifier, password } = formValues(event.currentTarget);
+    const { username, password } = formValues(event.currentTarget);
     setState({});
     login.mutate(
-      { body: { identifier, password } },
+      { body: { username, password } },
       {
         onSuccess: ({ token, user }) => {
           signIn(token, user);
@@ -37,7 +37,7 @@ export function LoginForm({ next }: { next: string }) {
         },
         onError: (error) => {
           if (errorCode(error) === "INVALID_CREDENTIALS") {
-            setState({ formError: "Invalid email, username or password" });
+            setState({ formError: "Invalid username or password" });
           } else {
             setState(fromApiError(error) ?? { formError: SOMETHING_WENT_WRONG });
           }
@@ -50,25 +50,25 @@ export function LoginForm({ next }: { next: string }) {
     <Card>
       <CardHeader className="text-center">
         <CardTitle className="text-xl">Welcome back</CardTitle>
-        <CardDescription>Sign in with your email or username</CardDescription>
+        <CardDescription>Sign in with your username</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit}>
           <FieldGroup>
             {state.formError && <FieldError>{state.formError}</FieldError>}
-            <Field data-invalid={!!errors.identifier}>
-              <FieldLabel htmlFor="identifier">Email or username</FieldLabel>
+            <Field data-invalid={!!errors.username}>
+              <FieldLabel htmlFor="username">Username</FieldLabel>
               <Input
-                id="identifier"
-                name="identifier"
+                id="username"
+                name="username"
                 autoComplete="username"
                 autoCapitalize="none"
                 spellCheck={false}
-                aria-invalid={!!errors.identifier}
+                aria-invalid={!!errors.username}
                 maxLength={254}
                 required
               />
-              <FieldError errors={asErrors(errors.identifier)} />
+              <FieldError errors={asErrors(errors.username)} />
             </Field>
             <Field data-invalid={!!errors.password}>
               <FieldLabel htmlFor="password">Password</FieldLabel>

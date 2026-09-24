@@ -24,14 +24,11 @@ class ApiError(Exception):
 # NOT_FOUND is shared by "not yours / doesn't exist / not a UUID".
 NOT_FOUND = ApiError(404, ErrorCode.NOT_FOUND, "Not found")
 UNAUTHORIZED = ApiError(401, ErrorCode.UNAUTHORIZED, "Authentication required")
-# Same body for an unknown email or username and a wrong password.
-INVALID_CREDENTIALS = ApiError(
-    401, ErrorCode.INVALID_CREDENTIALS, "Invalid email, username or password"
-)
+# Same body for an unknown username and a wrong password.
+INVALID_CREDENTIALS = ApiError(401, ErrorCode.INVALID_CREDENTIALS, "Invalid username or password")
 # 403, not 401: clients treat 401 as "token dead, sign out", and a typo in
 # the current password shouldn't sign the user out.
 INVALID_PASSWORD = ApiError(403, ErrorCode.INVALID_PASSWORD, "Current password is incorrect")
-EMAIL_TAKEN = ApiError(409, ErrorCode.EMAIL_TAKEN, "Email is already registered")
 USERNAME_TAKEN = ApiError(409, ErrorCode.USERNAME_TAKEN, "Username is already taken")
 
 

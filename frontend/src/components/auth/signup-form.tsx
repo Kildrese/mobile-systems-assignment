@@ -28,7 +28,7 @@ export function SignupForm({ next }: { next: string }) {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const { firstName, lastName, username, email, password, confirmPassword } = formValues(
+    const { firstName, lastName, username, password, confirmPassword } = formValues(
       event.currentTarget,
     );
     if (password !== confirmPassword) {
@@ -39,7 +39,8 @@ export function SignupForm({ next }: { next: string }) {
 
     try {
       const user = await register.mutateAsync({
-        body: { firstName, lastName, username, email, password },
+        // A blank first name is left out: the API then uses the username.
+        body: { firstName: firstName.trim() || undefined, lastName, username, password },
       });
       // Registration returns no token: sign in right away.
       const session = await login.mutateAsync({ body: { username: user.username, password } });
@@ -47,8 +48,6 @@ export function SignupForm({ next }: { next: string }) {
       navigate(next, { replace: true });
     } catch (error) {
       switch (errorCode(error)) {
-        case "EMAIL_TAKEN":
-          return setState({ fieldErrors: { email: ["Email already registered"] } });
         case "USERNAME_TAKEN":
           return setState({ fieldErrors: { username: ["Username already taken"] } });
         default:
@@ -69,14 +68,13 @@ export function SignupForm({ next }: { next: string }) {
             {state.formError && <FieldError>{state.formError}</FieldError>}
             <Field className="grid grid-cols-2 gap-4">
               <Field data-invalid={!!errors.firstName}>
-                <FieldLabel htmlFor="firstName">First name</FieldLabel>
+                <FieldLabel htmlFor="firstName">First name (optional)</FieldLabel>
                 <Input
                   id="firstName"
                   name="firstName"
                   autoComplete="given-name"
                   aria-invalid={!!errors.firstName}
                   maxLength={100}
-                  required
                 />
                 <FieldError errors={asErrors(errors.firstName)} />
               </Field>
@@ -106,22 +104,8 @@ export function SignupForm({ next }: { next: string }) {
                 pattern="[a-zA-Z0-9_.]+"
                 required
               />
-              <FieldDescription>3-30 letters, digits, _ or . You can sign in with it.</FieldDescription>
+              <FieldDescription>3-30 letters, digits, _ or . You sign in with it.</FieldDescription>
               <FieldError errors={asErrors(errors.username)} />
-            </Field>
-            <Field data-invalid={!!errors.email}>
-              <FieldLabel htmlFor="email">Email</FieldLabel>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                placeholder="m@example.com"
-                aria-invalid={!!errors.email}
-                maxLength={254}
-                required
-              />
-              <FieldError errors={asErrors(errors.email)} />
             </Field>
             <Field>
               <Field className="grid grid-cols-2 gap-4">
