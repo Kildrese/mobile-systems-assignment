@@ -2,7 +2,7 @@ import hashlib
 
 import pytest
 
-from tests.conftest import USER_KEYS, assert_error, register
+from tests.conftest import USER_KEYS, assert_error, login, register
 
 
 @pytest.fixture
@@ -88,3 +88,31 @@ def test_unknown_username_still_costs_a_password_verify(client, monkeypatch):
     monkeypatch.setattr(accounts, "dummy_verify", calls.append)
     client.post("/api/auth/login", json={"username": "nobody", "password": "wrong-one"})
     assert calls == ["wrong-one"]
+
+
+def test_login_deletes_the_users_expired_sessions(client, sql, ada, bob):
+    active = login(client, "ada", ada.password)
+    sql.run(
+        "update sessions set expires_at = now() - interval '1 minute' "
+        "where token_hash = :h or user_id = :bob",
+        h=hashlib.sha256(ada.token.encode()).hexdigest(),
+        bob=bob.id,
+    )
+    new = login(client, "ada", ada.password)
+
+    remaining = {
+        token_hash
+        for (token_hash,) in sql.rows(
+            "select token_hash from sessions where user_id = :u", u=ada.id
+        )
+    }
+    assert remaining == {hashlib.sha256(t.encode()).hexdigest() for t in (active, new)}
+    # Bob's expired session is left alone.
+    assert sql.scalar("select count(*) from sessions where user_id = :u", u=bob.id) == 1
+
+
+def test_failed_login_deletes_nothing(client, sql, ada):
+    sql.run("update sessions set expires_at = now() - interval '1 minute'")
+    response = client.post("/api/auth/login", json={"username": "ada", "password": "wrong-one"})
+    assert response.status_code == 401
+    assert sql.scalar("select count(*) from sessions") == 1
