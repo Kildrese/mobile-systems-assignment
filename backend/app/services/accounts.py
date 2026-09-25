@@ -79,6 +79,12 @@ def login(db: DbSession, body: schemas.LoginBody) -> tuple[str, models.User]:
     if not verify_password(body.password, hash):
         raise INVALID_CREDENTIALS
 
+    # Nothing else ever deletes an expired session, so the table would only grow.
+    db.execute(
+        delete(models.Session).where(
+            models.Session.user_id == user.id, models.Session.expires_at <= datetime.now(UTC)
+        )
+    )
     token = _create_session(db, user.id)
     db.commit()
     return token, user

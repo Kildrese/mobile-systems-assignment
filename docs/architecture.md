@@ -19,4 +19,4 @@ A token in `localStorage` can be read by any script running on the page, so XSS 
 5. **You can't touch another user's account; we return `404`, not `403`.** `/api/users/:id` compares `:id` with the caller's own id before looking anything up. Another user's id, an id that doesn't exist and a value that isn't a UUID all get the same `404 NOT_FOUND`. A `403` would confirm that the id belongs to a real account.
 6. **A wrong current password returns `403`, not `401`.** On change-password, `403 INVALID_PASSWORD` keeps clients from mistaking a typo for an expired token and signing the user out.
 
-Not implemented yet: login rate limiting, and cleanup of expired rows in `sessions`.
+Not implemented yet: login rate limiting. Expired sessions are deleted when their user logs in again.
