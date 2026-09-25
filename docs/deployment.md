@@ -25,7 +25,7 @@ Order matters. When a migration drops something the running code still reads (su
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and every push to `master`, with no secrets:
 
-- **backend:** ruff lint and format, the OpenAPI check, migrations and `alembic check` against a Postgres 17 service container, then `scripts/api-smoke.sh` against a running server;
-- **frontend:** the API client check, typecheck, lint and build.
+- **backend:** ruff lint and format, the OpenAPI check, migrations and `alembic check` against a Postgres 17 service container, then the pytest suite (in its own `app_test` database on that server);
+- **frontend:** the API client check, typecheck, Vitest, lint and build.
 
 To run the same checks locally, see [development.md](development.md#checks).
