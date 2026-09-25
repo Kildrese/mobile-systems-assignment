@@ -44,15 +44,9 @@ jobs:
       # Models and migrations agree: autogenerate would produce nothing.
       - run: uv run alembic check
 
-      - name: Smoke test
-        run: |
-          uv run uvicorn app.main:app --port 8000 > "$RUNNER_TEMP/backend.log" 2>&1 &
-          for _ in $(seq 1 30); do curl -sf http://localhost:8000/healthz >/dev/null && break; sleep 1; done
-          ../scripts/api-smoke.sh
-
-      - name: Backend log
-        if: failure()
-        run: cat "$RUNNER_TEMP/backend.log"
+      # Integration tests: a separate app_test database on the same server,
+      # created and migrated from scratch by the tests.
+      - run: uv run pytest
 
   frontend:
     runs-on: ubuntu-latest
@@ -71,5 +65,6 @@ jobs:
       - run: npm ci
       - run: npm run api:check
       - run: npm run typecheck
+      - run: npm test
       - run: npm run lint
       - run: npm run build
