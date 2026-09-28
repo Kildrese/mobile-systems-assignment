@@ -41,7 +41,7 @@
 ## 7. Docs and specs
 
 - [x] 7.1 README: remove email from the API section (register, login, the endpoint table, change-email), the Web UI table, the security decisions (login lookup, 403 on change-email) and the test account description; state that accounts have no email
-- [ ] 7.2 After archiving, update the `Purpose` line of `openspec/specs/user-auth/spec.md`, which still says "login by email or username" and names the Better Auth tables (deltas can't change it)
+- [x] 7.2 After archiving, update the `Purpose` line of `openspec/specs/user-auth/spec.md`, which still says "login by email or username" and names the Better Auth tables (deltas can't change it)
 
 ## 8. Verify and ship
 

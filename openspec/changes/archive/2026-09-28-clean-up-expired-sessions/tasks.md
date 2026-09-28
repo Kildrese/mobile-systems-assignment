@@ -6,5 +6,5 @@
 
 ## 2. Ship
 
-- [ ] 2.1 Open a PR against `master`; CI green
-- [ ] 2.2 After merge, archive the change (`/opsx:archive clean-up-expired-sessions`)
+- [x] 2.1 Open a PR against `master`; CI green
+- [x] 2.2 After merge, archive the change (`/opsx:archive clean-up-expired-sessions`)

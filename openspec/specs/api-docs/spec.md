@@ -12,19 +12,19 @@ The application SHALL serve an OpenAPI 3.1 document at `GET /api/openapi.json` w
 
 #### Scenario: All endpoints documented
 - **WHEN** the document is inspected
-- **THEN** it contains `GET /healthz`, `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`, `POST /api/auth/change-password`, `POST /api/auth/change-email`, and `GET`, `PATCH` and `DELETE` on `/api/users/{id}`
+- **THEN** it contains `GET /healthz`, `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`, `POST /api/auth/change-password`, and `GET`, `PATCH` and `DELETE` on `/api/users/{id}`, and it does not contain `/api/auth/change-email`
 
 #### Scenario: Protected endpoints declare bearer auth
 - **WHEN** the document is inspected
-- **THEN** `/api/auth/me`, `/api/auth/logout`, `/api/auth/change-password`, `/api/auth/change-email` and every `/api/users/{id}` operation list `bearerAuth` under `security`, and each of them documents a `401` response
+- **THEN** `/api/auth/me`, `/api/auth/logout`, `/api/auth/change-password` and every `/api/users/{id}` operation list `bearerAuth` under `security`, and each of them documents a `401` response
 
-#### Scenario: Password-confirming endpoints document 403
+#### Scenario: Password-confirming endpoint documents 403
 - **WHEN** the document is inspected
-- **THEN** `/api/auth/change-password` and `/api/auth/change-email` each document a `403` response, and the `ErrorCode` schema includes `INVALID_PASSWORD`
+- **THEN** `/api/auth/change-password` documents a `403` response, and the `ErrorCode` schema includes `INVALID_PASSWORD` and not `EMAIL_TAKEN`
 
-#### Scenario: User schema has no hash
+#### Scenario: User schema has no hash and no email
 - **WHEN** the `User` component schema in the document is inspected
-- **THEN** its properties are exactly `id`, `email`, `username`, `firstName`, `lastName`, `createdAt`, `updatedAt`
+- **THEN** its properties are exactly `id`, `username`, `firstName`, `lastName`, `createdAt`, `updatedAt`
 
 ### Requirement: Interactive API reference
 The backend SHALL serve an interactive API reference (Swagger UI) at `GET /docs`, rendered from `/api/openapi.json`, from which requests can be sent with a bearer token.
@@ -71,4 +71,3 @@ The same models SHALL validate requests, filter responses (fields not in the res
 #### Scenario: Document builds without a database
 - **WHEN** the OpenAPI document is generated with no database running
 - **THEN** it is produced without error
-

@@ -68,7 +68,7 @@ Stopping the script (Ctrl-C) SHALL stop both servers.
 - **THEN** neither server process keeps running
 
 ### Requirement: Seed the test account
-`scripts/db-seed.sh` (running `uv run python -m app.seed` in `backend/`) SHALL create a user with username `NYUgrader` (stored as `nyugrader`) and password `Courant2026!`, with first name `NYU`, last name `Grader` and no email, in the database from `DATABASE_URL`. It SHALL use the same registration code as the API. When the username already exists it SHALL leave the user unchanged and exit successfully.
+`scripts/db-seed.sh` (running `uv run python -m app.seed` in `backend/`) SHALL create a user with username `NYUgrader` (stored as `nyugrader`) and password `Courant2026!`, with first name `NYU` and last name `Grader`, in the database from `DATABASE_URL`. It SHALL use the same registration code as the API. When the username already exists it SHALL leave the user unchanged and exit successfully.
 
 #### Scenario: First run
 - **WHEN** a developer runs `scripts/db-seed.sh` on a migrated database without that user
@@ -88,4 +88,3 @@ Stopping the script (Ctrl-C) SHALL stop both servers.
 #### Scenario: Frontend dev server
 - **WHEN** a developer runs `scripts/dev-frontend.sh`
 - **THEN** the app is served at `http://localhost:5173`
-
