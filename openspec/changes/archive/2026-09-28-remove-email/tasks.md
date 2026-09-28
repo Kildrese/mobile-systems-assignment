@@ -41,10 +41,10 @@
 ## 7. Docs and specs
 
 - [x] 7.1 README: remove email from the API section (register, login, the endpoint table, change-email), the Web UI table, the security decisions (login lookup, 403 on change-email) and the test account description; state that accounts have no email
-- [ ] 7.2 After archiving, update the `Purpose` line of `openspec/specs/user-auth/spec.md`, which still says "login by email or username" and names the Better Auth tables (deltas can't change it)
+- [x] 7.2 After archiving, update the `Purpose` line of `openspec/specs/user-auth/spec.md`, which still says "login by email or username" and names the Better Auth tables (deltas can't change it)
 
 ## 8. Verify and ship
 
 - [x] 8.1 In a browser against `npm run build` + `vite preview` (backend `CORS_ORIGINS` must include the preview origin, or preview on port 5173): register without an email, sign out, log in by username, wrong password shows "Invalid username or password", the account page has no Email card, the menu shows no email, delete the account; no console errors
 - [x] 8.2 Commit on `feat/remove-email`, push, and open a PR against `master`; CI green
-- [ ] 8.3 After the PR is merged and both Vercel production deployments are ready, run `./scripts/db-migrate-neon.sh` (deploy first, migrate second, see design), then verify production: `/healthz`, register and log in by username in the live frontend, `/api/auth/change-email` returns `404`, `NYUgrader` still logs in
+- [x] 8.3 After the PR is merged and both Vercel production deployments are ready, run `./scripts/db-migrate-neon.sh` (deploy first, migrate second, see design), then verify production: `/healthz`, register and log in by username in the live frontend, `/api/auth/change-email` returns `404`, `NYUgrader` still logs in

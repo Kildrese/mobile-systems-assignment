@@ -1,12 +1,11 @@
 # user-auth Specification
 
 ## Purpose
-Account registration, login by email or username that returns a bearer token, resolving the current user from that token, and the Better Auth data model (`user`, `account`, `session`, `verification`), under JSON API conventions that never expose password hashes.
+Account registration, login by username that returns a bearer token, resolving the current user from that token, logout and password changes, and the data model (`users`, `user_passwords`, `sessions`), under JSON API conventions that never expose password hashes.
 ## Requirements
 ### Requirement: User data model
 The database SHALL contain the tables `users`, `user_passwords` and `sessions`, each with a UUID primary key (`user_passwords` uses `user_id` as its key).
 - **`users`** SHALL have:
-  - `email`: nullable, unique, stored lowercased
   - `username`: unique, not null, stored lowercased
   - `first_name`: not null
   - `last_name`: not null, may be empty
@@ -14,15 +13,15 @@ The database SHALL contain the tables `users`, `user_passwords` and `sessions`, 
 - **`user_passwords`** SHALL hold the password hash, one row per user.
 - **`sessions`** SHALL hold `token_hash` (unique), `user_id`, `expires_at` and timestamps.
 
-Password hashes SHALL be stored only in `user_passwords` and never on `users`. The `user_passwords.user_id` and `sessions.user_id` columns SHALL reference `users.id` with `ON DELETE CASCADE`.
+The `users` table SHALL NOT have an `email` column. Password hashes SHALL be stored only in `user_passwords` and never on `users`. The `user_passwords.user_id` and `sessions.user_id` columns SHALL reference `users.id` with `ON DELETE CASCADE`.
 
 #### Scenario: Registered user is stored with a UUID
 - **WHEN** a user registers successfully
-- **THEN** a `users` row exists whose `id` is a UUID, whose `first_name`, `last_name` and `email` match the request (the email lowercased), and whose `username` is the requested username lowercased
+- **THEN** a `users` row exists whose `id` is a UUID, whose `first_name` and `last_name` match the request, and whose `username` is the requested username lowercased
 
-#### Scenario: User without an email
-- **WHEN** a user registers with only a username and a password
-- **THEN** their `users.email` is `NULL`, and a second user can also register without an email
+#### Scenario: No email column
+- **WHEN** the columns of the `users` table are inspected
+- **THEN** there is no `email` column
 
 #### Scenario: Password stored only as a hash
 - **WHEN** a user registers with password `P`
@@ -48,11 +47,11 @@ Every endpoint in this capability and in `user-management` SHALL accept JSON req
 - **THEN** the response is `500` with `{ "error": { "code": "INTERNAL", "message": "Internal server error" } }` and no stack trace
 
 ### Requirement: Password hashes are never returned
-No endpoint SHALL ever include a password hash, or any field of the `user_passwords` or `sessions` tables other than the login token, in a response body, whether it succeeds or fails and whatever the environment. User objects in responses SHALL contain exactly these fields: `id`, `email`, `username`, `firstName`, `lastName`, `createdAt`, `updatedAt`.
+No endpoint SHALL ever include a password hash, or any field of the `user_passwords` or `sessions` tables other than the login token, in a response body, whether it succeeds or fails and whatever the environment. User objects in responses SHALL contain exactly these fields: `id`, `username`, `firstName`, `lastName`, `createdAt`, `updatedAt`.
 
 #### Scenario: User objects expose only allow-listed fields
 - **WHEN** any endpoint returns a user object
-- **THEN** its keys are exactly `id`, `email`, `username`, `firstName`, `lastName`, `createdAt`, `updatedAt`
+- **THEN** its keys are exactly `id`, `username`, `firstName`, `lastName`, `createdAt`, `updatedAt`
 
 #### Scenario: No hash in any response
 - **WHEN** every endpoint is called with both valid and invalid input
@@ -86,60 +85,44 @@ Protected endpoints SHALL authenticate the caller only from an `Authorization: B
 - **THEN** the response is `401`
 
 ### Requirement: Register an account
-`POST /api/auth/register` SHALL NOT require authentication. It SHALL accept `{ email?, username?, password, firstName?, lastName? }` with at least one of `email` and `username`, where:
-- `email` is a valid email of at most 254 characters
+`POST /api/auth/register` SHALL NOT require authentication. It SHALL accept `{ username, password, firstName?, lastName? }`, where:
 - `username` has 3 to 30 characters that are letters, digits, `_` or `.`
 - `password` has 8 to 128 characters
 - `firstName` is a non-empty string and `lastName` a possibly empty string, each at most 100 characters
 
-Defaults for missing fields:
-- Without a username, one SHALL be derived from the email's local part (reduced to allowed characters, at most 21 of them) plus `_` and 8 random hex digits.
-- Without an email, the user SHALL be stored with no email and returned with `"email": null`.
-- Without `firstName` it SHALL be the username, and without `lastName` it SHALL be empty.
+Without `firstName` it SHALL be the username, and without `lastName` it SHALL be empty. Other keys, including `email`, SHALL be ignored.
 
-On success it SHALL create the user and respond `201` with the user object. It SHALL NOT return a token. If the email is already registered (compared case-insensitively), it SHALL respond `409` with code `EMAIL_TAKEN`. Otherwise, if the username is already taken (compared case-insensitively), it SHALL respond `409` with code `USERNAME_TAKEN`. Usernames and emails SHALL be stored lowercased.
+On success it SHALL create the user and respond `201` with the user object. It SHALL NOT return a token. If the username is already taken (compared case-insensitively), it SHALL respond `409` with code `USERNAME_TAKEN`. Usernames SHALL be stored lowercased.
 
 #### Scenario: Successful registration
-- **WHEN** a client posts `{ "email": "a@example.com", "username": "Ada_L", "password": "correct-horse", "firstName": "Ada", "lastName": "Lovelace" }`
-- **THEN** the response is `201` with a user object whose `email` is `a@example.com`, `username` is `ada_l`, `firstName` is `Ada`, `lastName` is `Lovelace`, and `id` is a UUID, and the body has no `token`
-
-#### Scenario: Duplicate email
-- **WHEN** a client registers `A@Example.com` after `a@example.com` already exists
-- **THEN** the response is `409` with `error.code` equal to `EMAIL_TAKEN`
+- **WHEN** a client posts `{ "username": "Ada_L", "password": "correct-horse", "firstName": "Ada", "lastName": "Lovelace" }`
+- **THEN** the response is `201` with a user object whose `username` is `ada_l`, `firstName` is `Ada`, `lastName` is `Lovelace`, and `id` is a UUID, and the body has no `token` and no `email`
 
 #### Scenario: Duplicate username
-- **WHEN** a client registers a new email with username `ADA_L` after `ada_l` already exists
-- **THEN** the response is `409` with `error.code` equal to `USERNAME_TAKEN`
-
-#### Scenario: Duplicate username without an email
 - **WHEN** a client posts `{ "username": "ADA_L", "password": "correct-horse" }` after `ada_l` already exists
 - **THEN** the response is `409` with `error.code` equal to `USERNAME_TAKEN`
 
 #### Scenario: Missing or invalid fields
-- **WHEN** a client posts a body missing `password`, or missing both `email` and `username`, or with an invalid email, or with a 7-character password, or with a username that is shorter than 3 characters, longer than 30 or contains other characters than letters, digits, `_` and `.`
+- **WHEN** a client posts a body missing `password` or `username`, or with a 7-character password, or with a username that is shorter than 3 characters, longer than 30 or contains other characters than letters, digits, `_` and `.`
 - **THEN** the response is `400` with `error.code` equal to `VALIDATION_ERROR` and no user is created
 
+#### Scenario: Email only is rejected
+- **WHEN** a client posts `{ "email": "a@example.com", "password": "correct-horse" }`
+- **THEN** the response is `400` with `error.code` equal to `VALIDATION_ERROR`, because `username` is missing
+
 #### Scenario: Unknown fields are not stored
-- **WHEN** a client posts a valid body that also includes `"id": "<some uuid>"` and `"emailVerified": true`
-- **THEN** the response is `201`, and the user's `id` is not the one sent
+- **WHEN** a client posts a valid body that also includes `"id": "<some uuid>"` and `"email": "a@example.com"`
+- **THEN** the response is `201`, the user's `id` is not the one sent, and the response has no `email`
 
 #### Scenario: Username and password only
 - **WHEN** a client posts `{ "username": "Solo", "password": "correct-horse" }`
-- **THEN** the response is `201` with `username` `solo`, `email` `null`, `firstName` `solo` and `lastName` `""`
-
-#### Scenario: Email and password only
-- **WHEN** a client posts `{ "email": "a@example.com", "password": "correct-horse" }`
-- **THEN** the response is `201` with a username that starts with `a_` followed by 8 hex digits
+- **THEN** the response is `201` with `username` `solo`, `firstName` `solo` and `lastName` `""`
 
 ### Requirement: Log in
-`POST /api/auth/login` SHALL NOT require authentication. It SHALL accept `{ identifier, password }`, where `identifier` is the user's email or username. `email` and `username` SHALL be accepted as other names for `identifier`, with the same meaning, so `{ "username": "ada", "password": … }` and `{ "email": "a@example.com", "password": … }` also work. A body with none of the three SHALL be rejected with `400`. An `identifier` containing `@` SHALL be treated as an email, anything else as a username; both SHALL be compared case-insensitively. With correct credentials it SHALL create a session and respond `200` with `{ "token": string, "user": User }`, where `token` works as a bearer token on protected endpoints. With an unknown email, an unknown or malformed username, or a wrong password it SHALL respond `401` with code `INVALID_CREDENTIALS`, and all these cases SHALL produce identical response bodies.
+`POST /api/auth/login` SHALL NOT require authentication. It SHALL accept `{ username, password }`, where `username` is a non-empty string of at most 254 characters compared case-insensitively. It is not checked against the username rules, so a malformed username fails like an unknown one. A body without `username` or `password` SHALL be rejected with `400`; `identifier` and `email` SHALL NOT be accepted in place of `username`. With correct credentials it SHALL create a session and respond `200` with `{ "token": string, "user": User }`, where `token` works as a bearer token on protected endpoints. With an unknown or malformed username or a wrong password it SHALL respond `401` with code `INVALID_CREDENTIALS` and the message "Invalid username or password", and all these cases SHALL produce identical response bodies.
 
 #### Scenario: Successful login
-- **WHEN** a registered user posts correct credentials
-- **THEN** the response is `200` with a non-empty `token` and the user object
-
-#### Scenario: Login with username
-- **WHEN** a user registered with username `ada_l` posts `{ "identifier": "ADA_L", "password": <correct> }`
+- **WHEN** a user registered with username `ada_l` posts `{ "username": "ADA_L", "password": <correct> }`
 - **THEN** the response is `200` with a non-empty `token` and that user's user object
 
 #### Scenario: Token works on protected routes
@@ -147,12 +130,16 @@ On success it SHALL create the user and respond `201` with the user object. It S
 - **THEN** the response is `200`
 
 #### Scenario: Wrong password
-- **WHEN** a client posts a registered email with the wrong password
+- **WHEN** a client posts a registered username with the wrong password
 - **THEN** the response is `401` with `error.code` equal to `INVALID_CREDENTIALS`
 
-#### Scenario: Unknown email or username is indistinguishable
-- **WHEN** a client posts an unregistered email, an unregistered username, or a malformed username such as `a`
+#### Scenario: Unknown username is indistinguishable
+- **WHEN** a client posts an unregistered username or a malformed username such as `a`
 - **THEN** the response status and body are identical to the wrong-password case
+
+#### Scenario: Old field names are rejected
+- **WHEN** a client posts `{ "identifier": "ada_l", "password": <correct> }` or `{ "email": "ada_l", "password": <correct> }`
+- **THEN** the response is `400` with `error.code` equal to `VALIDATION_ERROR`
 
 #### Scenario: Login does not set cookies
 - **WHEN** a login succeeds
@@ -199,40 +186,6 @@ On success it SHALL create the user and respond `201` with the user object. It S
 - **WHEN** a user posts a 7-character `newPassword`
 - **THEN** the response is `400` with `error.code` equal to `VALIDATION_ERROR` and the password is unchanged
 
-### Requirement: Change email
-`POST /api/auth/change-email` SHALL require bearer authentication and accept `{ newEmail, currentPassword }` (`newEmail` a valid email of at most 254 characters). The new email SHALL be stored lowercased and SHALL take effect immediately, without email verification.
-- On success it SHALL respond `200` with the updated user object.
-- If `currentPassword` is wrong it SHALL respond `403` with code `INVALID_PASSWORD`.
-- If another user already has that email (compared case-insensitively) it SHALL respond `409` with code `EMAIL_TAKEN`.
-- Submitting the caller's current email SHALL succeed without changes.
-- A user without an email SHALL be able to add one this way.
-
-The password check SHALL happen before the email-taken check. Existing sessions SHALL stay valid.
-
-#### Scenario: Successful change
-- **WHEN** a user posts `{ "newEmail": "New@Example.com", "currentPassword": "<correct>" }`
-- **THEN** the response is `200` with `email` equal to `new@example.com`, and login works with the new email and fails with the old one
-
-#### Scenario: Add an email
-- **WHEN** a user registered without an email posts a new email and the correct password
-- **THEN** the response is `200` with that email, and they can log in with it
-
-#### Scenario: Wrong current password
-- **WHEN** a user posts an incorrect `currentPassword`
-- **THEN** the response is `403` with `error.code` equal to `INVALID_PASSWORD` and the email is unchanged
-
-#### Scenario: Email already used
-- **WHEN** a user posts the correct password and an email that another user registered (in any letter case)
-- **THEN** the response is `409` with `error.code` equal to `EMAIL_TAKEN` and neither user is changed
-
-#### Scenario: Wrong password and taken email
-- **WHEN** a user posts an incorrect `currentPassword` and an email that another user registered
-- **THEN** the response is `403` with `error.code` equal to `INVALID_PASSWORD`, not `409`
-
-#### Scenario: Token keeps working
-- **WHEN** a user changes the email and then calls `GET /api/auth/me` with the same token
-- **THEN** the response is `200` with the new email
-
 ### Requirement: Password hashing
 Passwords SHALL be hashed with argon2id before storage, with at least OWASP's minimum parameters (19 MiB memory, 2 iterations, parallelism 1) and a random salt per hash, in the self-describing PHC string format. Plaintext passwords SHALL NOT be stored or logged. When a login names an unknown user, the backend SHALL still verify the password against a fixed dummy hash, so the response time doesn't reveal whether the account exists.
 
@@ -262,3 +215,17 @@ A successful login or password change SHALL create a session whose token is at l
 - **WHEN** a session's `expires_at` is in the past and its token is used
 - **THEN** the response is `401` with `error.code` equal to `UNAUTHORIZED`
 
+### Requirement: Expired sessions are removed on login
+A successful login SHALL delete every session of that user whose `expires_at` is in the past, in the same transaction that creates the new session. Sessions that have not expired, including the user's other active sessions, SHALL NOT be affected, and a failed login SHALL NOT delete anything.
+
+#### Scenario: Expired sessions are deleted
+- **WHEN** a user with one expired and one active session logs in successfully
+- **THEN** the expired session row is gone, and the active session and the new one remain
+
+#### Scenario: Other users are untouched
+- **WHEN** a user logs in successfully while another user has an expired session
+- **THEN** the other user's expired session row remains
+
+#### Scenario: Failed login deletes nothing
+- **WHEN** a user with an expired session tries to log in with a wrong password
+- **THEN** the expired session row remains
