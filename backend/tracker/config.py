@@ -6,8 +6,10 @@ the policy resolve against the directory of the policy file, so the root `config
 puts reports, traces and state at the repository root.
 """
 
+import importlib
 import os
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -23,6 +25,11 @@ ENV_FILE = BACKEND_DIR / ".env"
 CONFIG_NAME = "config.yaml"
 
 SAFE_SCHEMES = {"http", "https"}
+AGENT_NAME = re.compile(r"[a-z][a-z0-9_]*")
+# Use cases the tracker can run: name -> module. Fixed in code, never a free-form import
+# path. A use case module registers its tools on import and defines `stages(policy)` and,
+# optionally, `report_writer`.
+USE_CASES: dict[str, str] = {}
 
 
 class _Strict(BaseModel):
@@ -103,13 +110,90 @@ class FetchSettings(_Strict):
     @field_validator("allowed_hosts")
     @classmethod
     def host_patterns(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        if not value:
-            raise ValueError("at least one host pattern is required (use '*' for any)")
-        for pattern in value:
-            bare = pattern.removeprefix("*.")
-            if pattern != "*" and (not bare or "*" in bare or "/" in bare):
-                raise ValueError(f"'{pattern}' is not an exact host, '*.domain' or '*'")
-        return tuple(p.lower().rstrip(".") for p in value)
+        return _host_patterns(value)
+
+
+def _host_patterns(value: tuple[str, ...]) -> tuple[str, ...]:
+    if not value:
+        raise ValueError("at least one host pattern is required (use '*' for any)")
+    for pattern in value:
+        bare = pattern.removeprefix("*.")
+        if pattern != "*" and (not bare or "*" in bare or "/" in bare):
+            raise ValueError(f"'{pattern}' is not an exact host, '*.domain' or '*'")
+    return tuple(p.lower().rstrip(".") for p in value)
+
+
+def _covers(allowed: tuple[str, ...], pattern: str) -> bool:
+    """Whether every host `pattern` matches is also matched by `allowed`."""
+    from tracker.guard import host_allowed
+
+    if not pattern.startswith("*."):
+        return host_allowed(pattern, allowed)  # an exact host, or "*" (only "*" covers it)
+    bare = pattern[2:]
+    return any(
+        a == "*" or (a.startswith("*.") and (bare == a[2:] or bare.endswith(a[1:])))
+        for a in allowed
+    )
+
+
+class AgentLimits(_Strict):
+    max_steps: int = Field(gt=0)
+    max_tokens: int = Field(gt=0)
+    max_searches: int | None = Field(default=None, ge=0)
+    max_fetches: int | None = Field(default=None, ge=0)
+
+
+class AgentProfile(_Strict):
+    # Fields left out under `agents.<name>.model` are filled from the top-level `model`.
+    model: ModelSettings
+    tools: tuple[str, ...]
+    limits: AgentLimits
+    instructions: str = Field(min_length=1)
+    fetch_hosts: tuple[str, ...] | None = None
+    enabled: bool = True
+    options: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("tools")
+    @classmethod
+    def registered_tools(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        from tracker.tools import REGISTRY
+
+        if unknown := [name for name in value if name not in REGISTRY]:
+            raise ValueError(
+                f"unknown tool {', '.join(unknown)}; tools are registered in code, "
+                f"known: {', '.join(REGISTRY)}"
+            )
+        return value
+
+    @field_validator("fetch_hosts")
+    @classmethod
+    def fetch_host_patterns(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
+        return None if value is None else _host_patterns(value)
+
+    @model_validator(mode="after")
+    def tool_limits(self) -> "AgentProfile":
+        for tool, limit in (("search_web", "max_searches"), ("fetch_article", "max_fetches")):
+            if tool in self.tools and getattr(self.limits, limit) is None:
+                raise ValueError(f"limits.{limit} is required when tools include {tool}")
+        return self
+
+    @classmethod
+    def from_policy(cls, policy: "Policy") -> "AgentProfile":
+        """The single-agent tracker as a profile: the top-level model, the core tools."""
+        from tracker.tools import CORE_TOOLS
+
+        limits = policy.limits
+        return cls(
+            model=policy.model,
+            tools=CORE_TOOLS,
+            limits=AgentLimits(
+                max_steps=limits.max_steps,
+                max_tokens=limits.max_tokens,
+                max_searches=limits.max_searches,
+                max_fetches=limits.max_fetches,
+            ),
+            instructions=policy.instructions,
+        )
 
 
 class Policy(_Strict):
@@ -125,8 +209,40 @@ class Policy(_Strict):
     state_path: str = ".tracker/state.sqlite"
     reports_dir: str = "reports"
     traces_dir: str = "traces"
+    use_case: str | None = None
+    agents: dict[str, AgentProfile] = Field(default_factory=dict)
     # The directory relative paths resolve against: the policy file's directory.
     base_dir: Path
+
+    @model_validator(mode="before")
+    @classmethod
+    def prepare_agents(cls, data: Any) -> Any:
+        """Load the use case (so its tools are registered) and fill inherited model fields."""
+        if not isinstance(data, dict):
+            return data
+        if (name := data.get("use_case")) is not None:
+            load_use_case(name)
+        agents, model = data.get("agents"), data.get("model")
+        if isinstance(agents, dict) and isinstance(model, dict):
+            data = {
+                **data,
+                "agents": {
+                    name: {**profile, "model": {**model, **(profile.get("model") or {})}}
+                    if isinstance(profile, dict)
+                    else profile
+                    for name, profile in agents.items()
+                },
+            }
+        return data
+
+    @field_validator("agents")
+    @classmethod
+    def agent_names(cls, value: dict[str, AgentProfile]) -> dict[str, AgentProfile]:
+        if bad := [name for name in value if not AGENT_NAME.fullmatch(name)]:
+            raise ValueError(
+                f"agent name {', '.join(repr(n) for n in bad)} must be a lowercase identifier"
+            )
+        return value
 
     @field_validator("k")
     @classmethod
@@ -141,13 +257,42 @@ class Policy(_Strict):
             raise ValueError(f"model.provider '{self.model.provider}' has no entry under providers")
         return self
 
+    @model_validator(mode="after")
+    def agents_fit_run(self) -> "Policy":
+        errors = []
+        for name, profile in self.agents.items():
+            if profile.model.provider not in self.providers:
+                errors.append(
+                    f"agents.{name}.model.provider '{profile.model.provider}' has no entry "
+                    "under providers"
+                )
+            outside = [
+                p for p in profile.fetch_hosts or () if not _covers(self.fetch.allowed_hosts, p)
+            ]
+            if outside:
+                errors.append(
+                    f"agents.{name}.fetch_hosts: {', '.join(outside)} not covered by "
+                    "fetch.allowed_hosts"
+                )
+        enabled = [p for p in self.agents.values() if p.enabled]
+        for limit in ("max_steps", "max_tokens", "max_searches", "max_fetches"):
+            total = sum(getattr(p.limits, limit) or 0 for p in enabled)
+            if total > (cap := getattr(self.limits, limit)):
+                errors.append(
+                    f"limits.{limit}: enabled agents add up to {total:,}, more than {cap:,}"
+                )
+        if errors:
+            raise ValueError("; ".join(errors))
+        return self
+
     @property
     def provider(self) -> ProviderSettings:
         return self.providers[self.model.provider]
 
-    def model_provider(self) -> Provider:
-        p = self.provider
-        return Provider(self.model.provider, p.key_env, p.quota_patterns)
+    def model_provider(self, name: str | None = None) -> Provider:
+        name = name or self.model.provider
+        p = self.providers[name]
+        return Provider(name, p.key_env, p.quota_patterns)
 
     def search_provider(self) -> Provider:
         s = self.search
@@ -169,8 +314,30 @@ class Policy(_Strict):
         return self.path(self.traces_dir)
 
     def system_prompt(self) -> str:
+        return self.fill(self.instructions)
+
+    def fill(self, instructions: str) -> str:
         # Plain replacement, so braces elsewhere in the instructions need no escaping.
-        return self.instructions.replace("{topic}", self.topic).replace("{k}", str(self.k))
+        return instructions.replace("{topic}", self.topic).replace("{k}", str(self.k))
+
+    def needs_search(self) -> bool:
+        if not self.agents:
+            return True
+        return any(p.enabled and "search_web" in p.tools for p in self.agents.values())
+
+    def model_providers(self) -> list[str]:
+        """The top-level model's provider, then every enabled agent's."""
+        names = [self.model.provider]
+        names += [p.model.provider for p in self.agents.values() if p.enabled]
+        return list(dict.fromkeys(names))
+
+
+def load_use_case(name: str) -> Any:
+    """Import a known use case. Raises ValueError for any other name."""
+    if name not in USE_CASES:
+        known = ", ".join(USE_CASES) or "none yet"
+        raise ValueError(f"use_case '{name}' is not a known use case (known: {known})")
+    return importlib.import_module(USE_CASES[name])
 
 
 def find_root(start: Path = PACKAGE_DIR) -> Path:
@@ -224,6 +391,8 @@ class TrackerSecrets:
 
     model_key: str
     search_key: str
+    # Keys of agent providers other than the top-level model's, by provider name.
+    provider_keys: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def load(
@@ -236,10 +405,12 @@ class TrackerSecrets:
             value = os.environ.get(name) or file_values.get(name)
             return value.strip() if value and value.strip() else None
 
+        # Role -> env var: "search", or a model provider's name.
         needed: dict[str, str] = {}
         if model:
-            needed["model"] = policy.provider.key_env
-        if search:
+            for provider in policy.model_providers():
+                needed[provider] = policy.providers[provider].key_env
+        if search and policy.needs_search():
             needed["search"] = policy.search.key_env
         values = {role: read(name) for role, name in needed.items()}
         if missing := [needed[role] for role, value in values.items() if value is None]:
@@ -247,7 +418,16 @@ class TrackerSecrets:
                 f"{', '.join(dict.fromkeys(missing))} is not set. Copy backend/.env.example "
                 "to backend/.env and fill it in, or set it in the environment."
             )
-        return cls(values.get("model") or "", values.get("search") or "")
+        main = policy.model.provider
+        others = {
+            role: value
+            for role, value in values.items()
+            if role not in (main, "search") and value is not None
+        }
+        return cls(values.get(main) or "", values.get("search") or "", others)
+
+    def key_for(self, provider: str) -> str:
+        return self.provider_keys.get(provider, self.model_key)
 
     def values(self) -> list[str]:
-        return [v for v in (self.model_key, self.search_key) if v]
+        return [v for v in (self.model_key, self.search_key, *self.provider_keys.values()) if v]

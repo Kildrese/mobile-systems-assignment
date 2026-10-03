@@ -14,6 +14,7 @@ import json
 import socket
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -71,13 +72,7 @@ class FinishArgs(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
 
 
-ARG_MODELS: dict[str, type[BaseModel]] = {
-    "search_web": SearchArgs,
-    "fetch_article": FetchArgs,
-    "finish": FinishArgs,
-}
-
-TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
+_CORE_SCHEMAS: dict[str, dict[str, Any]] = {
     "search_web": {
         "type": "function",
         "function": {
@@ -219,8 +214,10 @@ class Toolbox:
         search_client: SearchClient | None = None,
         resolver: Resolver = socket.getaddrinfo,
         transport: httpx.BaseTransport | None = None,
+        fetch_hosts: tuple[str, ...] | None = None,
     ) -> None:
         self.policy = policy
+        self.fetch_hosts = fetch_hosts
         self.trace = trace
         self.run_id = run_id
         self.state = state
@@ -294,7 +291,8 @@ class Toolbox:
         traced = {"url": url}
         try:
             args = FetchArgs(url=url)
-            check(args.url, self.policy.fetch, resolve=False)  # scheme and host, no DNS
+            # Scheme and host, no DNS yet.
+            check(args.url, self.policy.fetch, resolve=False, allowed_hosts=self.fetch_hosts)
             cached = self.state.get_article(args.url) if self.state is not None else None
             if cached is not None:
                 return self._article_outcome(
@@ -307,7 +305,11 @@ class Toolbox:
                     cached=True,
                 )
             page = fetch_page(
-                args.url, self.policy.fetch, resolver=self.resolver, transport=self.transport
+                args.url,
+                self.policy.fetch,
+                resolver=self.resolver,
+                transport=self.transport,
+                allowed_hosts=self.fetch_hosts,
             )
         except ValidationError as err:
             outcome = ToolOutcome.failure("error", "invalid_arguments", validation_message(err))
@@ -368,6 +370,52 @@ class Toolbox:
         return outcome
 
 
+# Registry: the only tools any agent can be offered. Policy selects from it, never adds.
+
+
+@dataclass(frozen=True)
+class ToolSpec:
+    name: str
+    args_model: type[BaseModel]
+    schema: dict[str, Any]
+    # Runs a validated call. None for `finish`, which the agent loop's finish handler ends.
+    handler: Callable[[Toolbox, Any, int], ToolOutcome] | None
+    # Whether `python -m tracker.tools <name>` runs it (one positional per argument).
+    cli: bool = False
+
+
+REGISTRY: dict[str, ToolSpec] = {}
+
+
+def register(spec: ToolSpec) -> ToolSpec:
+    """Add a tool. Use cases call this at import time."""
+    if spec.name in REGISTRY:
+        raise ValueError(f"tool '{spec.name}' is already registered")
+    REGISTRY[spec.name] = spec
+    return spec
+
+
+CORE_TOOLS = ("search_web", "fetch_article", "finish")
+register(
+    ToolSpec(
+        "search_web",
+        SearchArgs,
+        _CORE_SCHEMAS["search_web"],
+        lambda toolbox, args, step: toolbox.search_web(args.query, step),
+    )
+)
+register(
+    ToolSpec(
+        "fetch_article",
+        FetchArgs,
+        _CORE_SCHEMAS["fetch_article"],
+        lambda toolbox, args, step: toolbox.fetch_article(args.url, step),
+    )
+)
+register(ToolSpec("finish", FinishArgs, _CORE_SCHEMAS["finish"], None))
+TOOL_SCHEMAS = {name: REGISTRY[name].schema for name in CORE_TOOLS}
+
+
 # Command line
 
 
@@ -392,6 +440,11 @@ def main(argv: list[str] | None = None) -> int:
     p_finish = sub.add_parser("finish", help="render a report from a JSON file")
     p_finish.add_argument("report_json")
     p_finish.add_argument("--out", help="report path (default: reports/<id>.md)")
+    for spec in REGISTRY.values():
+        if spec.cli and spec.name not in CORE_TOOLS:
+            p_tool = sub.add_parser(spec.name, help=spec.schema["function"].get("description"))
+            for name in spec.args_model.model_fields:
+                p_tool.add_argument(name)
     args = parser.parse_args(argv)
 
     try:
@@ -402,6 +455,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.tool == "finish":
         return _finish_cli(policy, Path(args.report_json), args.out)
+    if args.tool not in CORE_TOOLS:
+        return _registered_cli(policy, REGISTRY[args.tool], vars(args))
 
     state: StateStore | None = None
     try:
@@ -423,6 +478,32 @@ def main(argv: list[str] | None = None) -> int:
             outcome = toolbox.search_web(" ".join(args.query))
         else:
             outcome = toolbox.fetch_article(args.url)
+    except TerminalError as err:
+        _print({"ok": False, "error": err.kind, "provider": err.provider, "detail": err.message})
+        return 3
+    finally:
+        if state is not None:
+            state.close()
+    _print({"ok": outcome.ok, **outcome.data})
+    return 0 if outcome.ok else 1
+
+
+def _registered_cli(policy: Policy, spec: ToolSpec, values: dict[str, Any]) -> int:
+    assert spec.handler is not None
+    try:
+        args = spec.args_model.model_validate(
+            {name: values[name] for name in spec.args_model.model_fields}
+        )
+    except ValidationError as err:
+        _print({"ok": False, "error": "invalid_arguments", "detail": validation_message(err)})
+        return 1
+    state: StateStore | None = None
+    try:
+        state = StateStore(policy.state_file)
+    except StateLocked:
+        print("State file is locked by a run; continuing without state.", file=sys.stderr)
+    try:
+        outcome = spec.handler(Toolbox(policy, Trace(None, "cli"), "cli", state=state), args, 0)
     except TerminalError as err:
         _print({"ok": False, "error": err.kind, "provider": err.provider, "detail": err.message})
         return 3

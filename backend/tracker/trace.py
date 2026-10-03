@@ -48,10 +48,28 @@ class Trace:
             self._file.flush()
         return record
 
+    def bind(self, **fields: Any) -> "BoundTrace":
+        """A view that adds `fields` (such as `stage` and `agent`) to every event."""
+        return BoundTrace(self, fields)
+
     def close(self) -> None:
         if self._file is not None:
             self._file.close()
             self._file = None
+
+
+class BoundTrace(Trace):
+    def __init__(self, trace: Trace, fields: dict[str, Any]) -> None:
+        self._trace = trace
+        self._fields = fields
+        self.path = trace.path
+        self.run_id = trace.run_id
+
+    def event(self, kind: str, **fields: Any) -> dict[str, Any]:
+        return self._trace.event(kind, **{**self._fields, **fields})
+
+    def close(self) -> None:
+        pass  # the run's trace owns the file
 
 
 def _truncate(value: Any) -> tuple[Any, int | None]:

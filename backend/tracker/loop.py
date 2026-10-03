@@ -1,9 +1,7 @@
-"""The hand-written agent loop: model call, tool calls, observations, repeated.
+"""The single-agent tracker run: one `AgentLoop` with the core tools, then a report.
 
-Code checks the budgets before every model call and every tool call. The model sees only
-the tools enabled in policy, with fixed schemas; retrieved text reaches it only inside
-untrusted data blocks. Every outcome ends in a report: complete when the model calls
-`finish`, partial when a budget runs out or a provider fails for good.
+Every outcome ends in a report: complete when the model calls `finish`, partial when a
+budget runs out or a provider fails for good.
 """
 
 import json
@@ -18,32 +16,19 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from pydantic import ValidationError
 
 from tracker import report
+from tracker.agents import AgentLoop, Stop
 from tracker.budget import Budget
-from tracker.config import Policy, TrackerSecrets
+from tracker.config import AgentProfile, Policy, TrackerSecrets
 from tracker.errors import TerminalError, WallClockExceeded
 from tracker.guard import Resolver
 from tracker.llm import ChatClient, ModelOutputError
 from tracker.search import SearchClient
 from tracker.state import StateStore
-from tracker.tools import (
-    ARG_MODELS,
-    TOOL_SCHEMAS,
-    FinishResult,
-    Toolbox,
-    ToolOutcome,
-    validate_finish,
-    validation_message,
-)
+from tracker.tools import Toolbox, validate_finish
 from tracker.trace import Trace
 from tracker.untrusted import DATA_RULES, wrap
-
-# Older tool results are shortened before each model call, to stay within per-minute
-# token limits; the newest ones keep their full text.
-KEEP_FULL_RESULTS = 3
-SHORTENED_CHARS = 500
 
 NUDGE = (
     "You did not call a tool. Call search_web or fetch_article to gather evidence, "
@@ -82,21 +67,6 @@ class RunResult:
     @property
     def exit_code(self) -> int:
         return EXIT_CODES[self.status]
-
-
-@dataclass
-class _ToolMessage:
-    index: int
-    source: str
-    text: str
-    attributes: dict[str, str]
-
-
-@dataclass
-class _Stop:
-    reason: str | None = None
-    terminal: TerminalError | None = None
-    finish: FinishResult | None = None
 
 
 class Runner:
@@ -163,7 +133,16 @@ class Runner:
                 resolver=self._resolver,
                 transport=self._fetch_transport,
             )
-            stop = self._loop(chat, toolbox, budget, trace)
+            stop = AgentLoop(
+                policy,
+                AgentProfile.from_policy(policy),
+                toolbox,
+                budget,
+                trace,
+                chat,
+                task_prompt(policy),
+                nudge=NUDGE,
+            ).run()
             result = self._finish_run(stop, chat, toolbox, budget, trace, state)
         except KeyboardInterrupt:
             state.end_run(self.run_id, "failed", "interrupted", budget.usage())
@@ -174,174 +153,11 @@ class Runner:
             trace.close()
         return result
 
-    # The loop
-
-    def _loop(self, chat: ChatClient, toolbox: Toolbox, budget: Budget, trace: Trace) -> _Stop:
-        policy = self.policy
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": f"{policy.system_prompt()}\n\n{DATA_RULES}"},
-            {"role": "user", "content": task_prompt(policy)},
-        ]
-        tool_messages: list[_ToolMessage] = []
-        schemas = list(TOOL_SCHEMAS.values())
-        while True:
-            if reason := budget.check_model_call():
-                return _Stop(reason=reason)
-            budget.steps += 1
-            step = budget.steps
-            _shorten_old_results(messages, tool_messages)
-            try:
-                reply = chat.chat(messages, schemas, step)
-            except ModelOutputError as err:
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": "The provider rejected your last tool call as malformed "
-                        f"({err.args[0][:200]}). Call one tool with valid JSON arguments.",
-                    }
-                )
-                continue
-            except TerminalError as err:
-                return _Stop(terminal=err)
-            except WallClockExceeded:
-                return _Stop(reason="max_wall_seconds")
-            budget.charge_tokens(reply.usage.prompt_tokens, reply.usage.completion_tokens)
-            messages.append(reply.as_message())
-            if not reply.tool_calls:
-                messages.append({"role": "user", "content": NUDGE})
-                continue
-
-            for call in reply.tool_calls:
-                if call.name == "finish" and call.arguments:
-                    content, finished = self._finish_call(call.arguments, step, toolbox, trace)
-                    if finished is not None:
-                        return _Stop(finish=finished)
-                    messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
-                    continue
-                try:
-                    outcome = self._dispatch(
-                        call.name, call.arguments, call.parse_error, step, toolbox, budget, trace
-                    )
-                except TerminalError as err:
-                    return _Stop(terminal=err)
-                except WallClockExceeded:
-                    return _Stop(reason="max_wall_seconds")
-                if outcome.ok and outcome.untrusted is not None:
-                    content = wrap(call.name, outcome.untrusted, **outcome.attributes)
-                    tool_messages.append(
-                        _ToolMessage(
-                            len(messages), call.name, outcome.untrusted, outcome.attributes
-                        )
-                    )
-                else:
-                    content = json.dumps(outcome.data, ensure_ascii=False)
-                messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
-
-    def _dispatch(
-        self,
-        name: str,
-        arguments: dict[str, Any] | None,
-        parse_error: str | None,
-        step: int,
-        toolbox: Toolbox,
-        budget: Budget,
-        trace: Trace,
-    ) -> ToolOutcome:
-        """Validate a tool call, check its budget and run it."""
-
-        def refuse(status: str, reason: str, detail: str) -> ToolOutcome:
-            outcome = ToolOutcome.failure(status, reason, detail)
-            trace.event(
-                "tool",
-                step=step,
-                tool=name,
-                args=arguments,
-                status=status,
-                reason=reason,
-                detail=detail,
-            )
-            return outcome
-
-        if name not in ARG_MODELS or name == "finish":
-            budget.steps += 1  # an invalid call costs a step
-            if name == "finish":
-                return refuse("error", "invalid_arguments", parse_error or "items are required")
-            return refuse(
-                "error",
-                "unknown_tool",
-                f"'{name}' is not a tool. Allowed tools: {', '.join(ARG_MODELS)}",
-            )
-        if arguments is None:
-            budget.steps += 1
-            return refuse("error", "invalid_arguments", parse_error or "arguments missing")
-        try:
-            args = ARG_MODELS[name].model_validate(arguments)
-        except ValidationError as err:
-            budget.steps += 1
-            return refuse("error", "invalid_arguments", validation_message(err))
-
-        if name == "search_web":
-            if reason := budget.check_tool(name):
-                return refuse("budget", "budget_exhausted", f"{reason} reached")
-            outcome = toolbox.search_web(args.query, step)
-            if outcome.ok:
-                budget.searches += 1
-                budget.credits += float(outcome.data.get("credits", 0))
-            return outcome
-
-        # fetch_article: a cached article costs no fetch.
-        cached = toolbox.is_cached(args.url)
-        if not cached and (reason := budget.check_tool(name)):
-            return refuse("budget", "budget_exhausted", f"{reason} reached")
-        outcome = toolbox.fetch_article(args.url, step)
-        if outcome.status == "ok" or (
-            outcome.status == "error" and outcome.reason != "invalid_arguments"
-        ):
-            budget.fetches += 1  # a request went out
-        return outcome
-
-    def _finish_call(
-        self, arguments: dict[str, Any], step: int, toolbox: Toolbox, trace: Trace
-    ) -> tuple[str, FinishResult | None]:
-        try:
-            result = validate_finish(arguments, self.policy.k, toolbox.seen)
-        except ValidationError as err:
-            detail = validation_message(err)
-            trace.event(
-                "tool",
-                step=step,
-                tool="finish",
-                args=arguments,
-                status="error",
-                reason="invalid_arguments",
-                detail=detail,
-            )
-            return json.dumps({"error": "invalid_arguments", "detail": detail}), None
-        trace.event(
-            "tool",
-            step=step,
-            tool="finish",
-            args=arguments,
-            status="ok" if result.items else "error",
-            reason=None if result.items else "no_valid_items",
-            kept=len(result.items),
-            dropped=result.dropped,
-            truncated=result.truncated,
-        )
-        if not result.items:
-            return json.dumps(
-                {
-                    "error": "no_valid_items",
-                    "detail": "Every item cited only URLs this run never searched or fetched.",
-                }
-            ), None
-        return "", result
-
     # Ending the run
 
     def _finish_run(
         self,
-        stop: _Stop,
+        stop: Stop,
         chat: ChatClient,
         toolbox: Toolbox,
         budget: Budget,
@@ -478,11 +294,3 @@ def _json_object(text: str) -> Any:
     if start == -1 or end < start:
         raise ValueError("reply contains no JSON object")
     return json.loads(text[start : end + 1])
-
-
-def _shorten_old_results(messages: list[dict[str, Any]], tool_messages: list[_ToolMessage]) -> None:
-    for record in tool_messages[:-KEEP_FULL_RESULTS]:
-        if len(record.text) > SHORTENED_CHARS:
-            shortened = record.text[:SHORTENED_CHARS] + "\n[... older result shortened ...]"
-            messages[record.index]["content"] = wrap(record.source, shortened, **record.attributes)
-            record.text = shortened

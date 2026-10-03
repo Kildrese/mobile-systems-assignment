@@ -70,7 +70,7 @@ A stage SHALL receive the policy, its own profile, the state store, the trace an
 ### Requirement: Stage and run outcomes
 Each stage SHALL end as `complete`, `partial` (stopped by a budget, or ended early with work left over), `skipped` (disabled, or skipped after a terminal failure), or `failed`. The run SHALL be:
 - `failed` when a stage marked `required` failed;
-- `partial` when any stage is partial, or was skipped after a terminal failure;
+- `partial` when any stage is partial, failed without being marked `required`, or was skipped after a terminal failure;
 - `complete` otherwise.
 
 Exit codes SHALL follow the core: `0` complete, `2` partial, `3` failed. A report SHALL be written in every outcome.
