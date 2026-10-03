@@ -18,6 +18,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from tracker.config import FetchSettings
+from tracker.errors import parse_retry_after
 from tracker.guard import Resolver, check
 
 ALLOWED_TYPES = {"text/html", "application/xhtml+xml", "text/plain", "application/json"}
@@ -26,11 +27,18 @@ USER_AGENT = "mobile-systems-tracker/0.1 (+https://github.com/kildrese/mobile-sy
 
 
 class FetchError(Exception):
-    def __init__(self, reason: str, detail: str, status: int | None = None) -> None:
+    def __init__(
+        self,
+        reason: str,
+        detail: str,
+        status: int | None = None,
+        retry_after: float | None = None,
+    ) -> None:
         super().__init__(f"{reason}: {detail}")
         self.reason = reason
         self.detail = detail
         self.status = status  # the HTTP status, for `http_error`
+        self.retry_after = retry_after  # seconds from a `Retry-After` header, if any
 
 
 @dataclass(frozen=True)
@@ -155,7 +163,12 @@ def _read(
     if response.status_code == 304:
         return Page(url, final_url, final_url, "", "", 304, redirects, etag, last_modified)
     if response.status_code >= 400:
-        raise FetchError("http_error", f"HTTP {response.status_code}", response.status_code)
+        raise FetchError(
+            "http_error",
+            f"HTTP {response.status_code}",
+            response.status_code,
+            parse_retry_after(response.headers),
+        )
     media, charset = _media_type(response.headers.get("content-type", ""))
     if media not in ALLOWED_TYPES:
         raise FetchError("unsupported_content_type", f"content type '{media or '(none)'}'")

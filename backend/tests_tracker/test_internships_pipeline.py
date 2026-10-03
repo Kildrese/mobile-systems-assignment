@@ -365,6 +365,37 @@ def test_network_cut_with_empty_state(ipolicy, keys):
 
 
 @respx.mock
+def test_network_cut_after_a_good_run(ipolicy, keys):
+    respx.post(LLM_URL).mock(side_effect=FakeModel(*scout_script(), *curate_script()))
+    respx.post(SEARCH_URL).respond(200, json=search_body(EVIDENCE))
+    mock_boards()
+    run(ipolicy, keys, "run-1")
+
+    respx.routes.clear()
+    cut = httpx.ConnectError("network is unreachable")
+    respx.post(LLM_URL).mock(side_effect=cut)
+    respx.post(SEARCH_URL).mock(side_effect=cut)
+    mock_boards(acme=cut, gamma=cut)
+    result = run(ipolicy, keys, "run-2")
+
+    assert result.status == "partial"
+    stages = {s["name"]: s for s in read_trace(result.trace_path)[-1]["stages"]}
+    assert stages["collect"]["outcome"] == "partial"
+    assert stages["collect"]["reason"] == "no_source_readable"
+    report = result.report_path.read_text()
+    assert "## Still open (2)" in report  # an unreadable board closes nothing
+    assert "## Closed since last run (0)" in report
+
+
+def test_detail_fetches_need_a_fetch_limit(tmp_path):
+    data = policy_data()
+    del data["agents"]["curator"]["limits"]["max_fetches"]
+    with pytest.raises(PolicyError) as err:
+        policy_from_dict(data, tmp_path)
+    assert "max_fetches is required when tools include fetch_posting_detail" in str(err.value)
+
+
+@respx.mock
 def test_scout_disabled_starts_at_collect(tmp_path, keys):
     policy = policy_from_dict(policy_data(agents={"scout": {"enabled": False}}), tmp_path)
     model = FakeModel(
@@ -439,7 +470,8 @@ def test_injection_page_is_contained(tmp_path, keys):
         }
     ]
     model = FakeModel(
-        # Scout "obeys" a planted page: proposes an internal careers page.
+        # Scout "obeys" a planted page: proposes an internal careers page. The Scout may
+        # propose job boards only, so no page it read can put itself on the watchlist.
         chat_body(tool_call("search_web", {"query": "interns"}, "s1")),
         chat_body(
             tool_call(
@@ -485,7 +517,7 @@ def test_injection_page_is_contained(tmp_path, keys):
     for event in trace:
         if event["kind"] == "tool":
             by_tool.setdefault(event.get("tool"), []).append(event)
-    assert by_tool["propose_source"][0]["reason"] == "blocked_address"
+    assert by_tool["propose_source"][0]["reason"] == "unknown_kind"
     assert by_tool["mark_same"][0]["reason"] == "company_mismatch"
     assert by_tool["fetch_posting_detail"][0]["reason"] == "host_not_allowed"
     assert by_tool["get_posting"][0]["injection_suspected"] is True
@@ -507,8 +539,11 @@ def test_injection_page_is_contained(tmp_path, keys):
 @respx.mock
 def test_detail_fetches_draw_on_the_fetch_budget(ipolicy, keys):
     detail = {"posting_id": 1, "url": "https://boards.greenhouse.io/acme/jobs/11"}
+    wrong_url = "https://boards.greenhouse.io/acme/jobs/12"
     model = FakeModel(
         chat_body(tool_call("finish", {}, "s1")),
+        # Refused before any request: it must not use one of the two fetches.
+        chat_body(tool_call("fetch_posting_detail", {**detail, "url": wrong_url}, "c0")),
         chat_body(tool_call("fetch_posting_detail", detail, "c1")),
         chat_body(tool_call("fetch_posting_detail", detail, "c2")),
         chat_body(tool_call("fetch_posting_detail", detail, "c3")),  # curator max_fetches is 2
@@ -524,7 +559,8 @@ def test_detail_fetches_draw_on_the_fetch_budget(ipolicy, keys):
     detail_events = [
         e for e in read_trace(result.trace_path) if e.get("tool") == "fetch_posting_detail"
     ]
-    assert [e["status"] for e in detail_events] == ["ok", "ok", "budget"]
+    assert [e["status"] for e in detail_events] == ["error", "ok", "ok", "budget"]
+    assert detail_events[0]["reason"] == "url_mismatch"
     assert page.call_count == 2
 
 

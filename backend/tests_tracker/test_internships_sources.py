@@ -7,9 +7,8 @@ import respx
 
 from tests_tracker.conftest import PUBLIC_IP, read_trace, resolver_for
 from tests_tracker.internships_helpers import RUN1, RUN2, open_store, posting
-from tracker.guard import check
 from tracker.trace import Trace
-from tracker.usecases.internships.http import GuardedHttp
+from tracker.usecases.internships.http import GuardedHttp, HttpFailure
 from tracker.usecases.internships.sources import (
     Filters,
     SourceError,
@@ -192,7 +191,7 @@ def test_collect_all_one_board_down(store, http, trace, tmp_path):
 
     assert [r.status for r in results] == ["ok", "unreadable", "ok"]
     assert lever.call_count == 3  # retried up to retry.max_attempts
-    titles = sorted(p["title"] for p in store.pending_postings())
+    titles = sorted(p["title"] for p in store.pending_postings(RUN1))
     assert titles == ["Product Engineering Intern", "Software Engineering Intern (Summer 2027)"]
     beta = store.sources()[1]
     assert beta["last_read_status"] == "unreadable"
@@ -245,6 +244,36 @@ def test_collect_respects_guardrails(store, policy, trace):
     assert result.reason == "blocked_address"
 
 
+@respx.mock
+def test_retry_after_and_run_deadline(policy):
+    url = board_url("lever", "beta")
+    limited = httpx.Response(429, headers={"retry-after": "3"})
+    route = respx.get(pinned(url)).mock(
+        side_effect=[limited, httpx.Response(200, headers=JSON, json=[])]
+    )
+    waits = []
+    http = GuardedHttp(
+        policy.fetch, policy.retry, resolver=resolver_for(PUBLIC_IP), sleep=waits.append
+    )
+    assert http.get(url).status == 200
+    assert waits == [3.0]  # the server's Retry-After, not the backoff
+
+    # A wait that would pass the run's deadline is not taken.
+    route.side_effect = [limited]
+    late = GuardedHttp(
+        policy.fetch,
+        policy.retry,
+        resolver=resolver_for(PUBLIC_IP),
+        sleep=waits.append,
+        clock=lambda: 0.0,
+        deadline=2.0,
+    )
+    with pytest.raises(HttpFailure) as err:
+        late.get(url)
+    assert err.value.reason == "max_wall_seconds"
+    assert waits == [3.0]
+
+
 # Pre-filter
 
 
@@ -277,7 +306,6 @@ def _propose(store, seen, **overrides):
         run_id=RUN1,
         seen_urls=seen,
         cap=2,
-        check_url=lambda url: None,
         **args,
     )
 
@@ -315,21 +343,8 @@ def test_proposal_bad_identifier_and_kind(store):
     assert _propose(store, SEEN, kind="workday").reason == "unknown_kind"
 
 
-def test_proposal_page_goes_through_guardrails(store, policy):
-    def guard(url):
-        check(url, policy.fetch, resolver=resolver_for("127.0.0.1"))
-
-    outcome = propose_source(
-        store,
-        run_id=RUN1,
-        seen_urls=SEEN,
-        cap=2,
-        check_url=guard,
-        company="Evil",
-        kind="page",
-        board_or_url="http://internal.example.com/careers",
-        evidence_url="https://news.example.com/delta-hiring",
-    )
-    assert outcome.status == "blocked"
-    assert outcome.reason == "blocked_address"
+def test_scout_cannot_propose_a_page(store):
+    # A page the Scout read could otherwise put itself on the watchlist for every run.
+    outcome = _propose(store, SEEN, kind="page", board_or_url="https://evil.example.com/careers")
+    assert outcome.reason == "unknown_kind"
     assert store.sources() == []

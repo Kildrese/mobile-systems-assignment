@@ -166,6 +166,20 @@ def test_detail_fetch_off_list_host(store, policy):
     assert calls == []
 
 
+def test_detail_fetch_of_another_posting(store):
+    # Quotes are checked against the detail text, so it must be this posting's own page.
+    pid = _one_posting(store)
+
+    class Refuse:
+        def get(self, url, **_):
+            raise AssertionError("no request should be made")
+
+    outcome = fetch_posting_detail(
+        store, pid, "https://boards.greenhouse.io/acme/jobs/2", hosts=POSTING_HOSTS, http=Refuse()
+    )
+    assert outcome.reason == "url_mismatch"
+
+
 def test_get_posting_wraps_text_as_untrusted(store):
     pid = _one_posting(store)
     outcome = get_posting(store, pid)
@@ -201,6 +215,8 @@ def test_candidates_same_company_only(store):
     )
     assert [c["opportunity_id"] for c in candidates(store, store.posting(same))] == [oid]
     assert candidates(store, store.posting(other)) == []
+    # The model sees only the untrusted block, so the candidates must be in it.
+    assert f'"opportunity_id": {oid}' in get_posting(store, same).untrusted
 
 
 def test_mark_same_and_company_mismatch(store):

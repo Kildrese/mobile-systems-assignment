@@ -75,7 +75,11 @@ def test_pending_postings_survive_across_runs(tmp_path):
 
     state, store = open_store(path)
     try:
-        assert [p["id"] for p in store.pending_postings()] == [ids[1]]
+        assert [p["id"] for p in store.pending_postings(RUN1)] == [ids[1]]
+        # Not listed in RUN2 (yet): not worth curating in it.
+        assert store.pending_postings(RUN2) == []
+        store.upsert_postings(source_id, [posting("2")], RUN2)
+        assert [p["id"] for p in store.pending_postings(RUN2)] == [ids[1]]
     finally:
         state.close()
 

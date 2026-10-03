@@ -8,7 +8,7 @@ months that are not in the record: those are where an invented fact shows first.
 
 import json
 import re
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -47,25 +47,16 @@ _MONTHS = [
 _MONTH = re.compile(r"\b(" + "|".join(_MONTHS) + r")\b", re.IGNORECASE)
 _SENTENCE_END = re.compile(r"[.!?]+(?=\s|$)")
 
-Which = Literal["new", "top_k", "needs_summary"]
 
-
-def wanted(store: OpportunityStore, run_id: str, which: Which) -> list[dict[str, Any]]:
-    """Opportunities the Editor should summarize, by this run's rank."""
+def wanted(store: OpportunityStore, run_id: str) -> list[dict[str, Any]]:
+    """Opportunities the Editor should summarize: new or top K, by this run's rank."""
     ranks = store.ranks(run_id)
     live = [o for o in store.opportunities(("open", "unknown")) if o["id"] in ranks]
     live.sort(key=lambda o: ranks[o["id"]]["rank"])
-    new = [o for o in live if o["first_seen_run"] == run_id]
-    top = [o for o in live if ranks[o["id"]]["top_k"]]
-    if which == "new":
-        return new
-    if which == "top_k":
-        return top
-    ids = {o["id"] for o in new} | {o["id"] for o in top}
-    return [o for o in live if o["id"] in ids]
+    return [o for o in live if o["first_seen_run"] == run_id or ranks[o["id"]]["top_k"]]
 
 
-def get_opportunities(store: OpportunityStore, run_id: str, which: Which) -> ToolOutcome:
+def get_opportunities(store: OpportunityStore, run_id: str) -> ToolOutcome:
     items = [
         {
             "opportunity_id": o["id"],
@@ -74,14 +65,13 @@ def get_opportunities(store: OpportunityStore, run_id: str, which: Which) -> Too
             "fields": o["fields"],
             "url": o["url"],
         }
-        for o in wanted(store, run_id, which)
+        for o in wanted(store, run_id)
     ]
     return ToolOutcome(
         "ok",
         {"ids": [i["opportunity_id"] for i in items], "count": len(items)},
         # Field values and quotes come from postings: untrusted text.
         untrusted=json.dumps(items, ensure_ascii=False, indent=1),
-        attributes={"which": which},
     )
 
 

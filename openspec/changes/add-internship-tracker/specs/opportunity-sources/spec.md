@@ -14,18 +14,22 @@ State SHALL hold a watchlist of sources. Each source has a company name, a kind 
 - **THEN** after the run starts, state holds that source with `added_by: config`
 
 ### Requirement: Scout proposes sources
-The Scout agent SHALL have a `propose_source(company, kind, board_or_url, evidence_url)` tool. Code SHALL accept a proposal only if: the kind is known; the board identifier matches that job board's format, or the page URL passes the fetch guardrails; `evidence_url` was returned by search or fetched in this run; and the source is not already on the watchlist. A source can be proposed only on a job-board API host or on a host already in the run's allowlist. Accepted proposals SHALL be added with `added_by: scout`. Each run SHALL accept at most `agents.scout.options.max_new_sources` proposals.
+The Scout agent SHALL have a `propose_source(company, kind, board_or_url, evidence_url)` tool. Code SHALL accept a proposal only if: the kind is `greenhouse`, `lever` or `ashby`; the board identifier matches that job board's format; `evidence_url` was returned by search or fetched in this run; and the source is not already on the watchlist. The Scout SHALL NOT propose `page` sources: a page it read would otherwise be re-read every run. Page sources come only from config. Accepted proposals SHALL be added with `added_by: scout`. Each run SHALL accept at most `agents.scout.options.max_new_sources` proposals.
 
 #### Scenario: Valid proposal
 - **WHEN** the Scout proposes a Lever board for a company, citing a page it fetched in this run
 - **THEN** the source is added to the watchlist, and Collect reads it in the same run
+
+#### Scenario: Scout proposes a page
+- **WHEN** the Scout proposes a careers page, for example one an injected page told it to add
+- **THEN** the proposal is rejected with reason `unknown_kind` and the watchlist is unchanged
 
 #### Scenario: Proposal citing an unseen page
 - **WHEN** the Scout proposes a source with an `evidence_url` it never fetched or saw in search results
 - **THEN** the proposal is rejected with reason `unseen_evidence`
 
 ### Requirement: Job-board collectors
-Collect SHALL read each Greenhouse, Lever and Ashby source through its public JSON endpoint, without keys and without a model. It SHALL produce one raw posting per job, with the board's job id, title, location, URL, description text and update time when present. Each request SHALL go through the core fetch guardrails and the transient/terminal failure handling. A failed source SHALL be recorded as `unreadable` for this run and SHALL NOT stop the other sources.
+Collect SHALL read each Greenhouse, Lever and Ashby source through its public JSON endpoint, without keys and without a model. It SHALL produce one raw posting per job, with the board's job id, title, location, URL, description text and update time when present. Each request SHALL go through the core fetch guardrails and the transient/terminal failure handling. A failed source SHALL be recorded as `unreadable` for this run and SHALL NOT stop the other sources. Retries SHALL honor a `Retry-After` up to `retry.max_wait_seconds`, and no request or wait SHALL go past the run's `max_wall_seconds`. When no source is readable, Collect SHALL be `failed` if state holds no opportunities yet, and `partial` otherwise.
 
 #### Scenario: One board down
 - **WHEN** one Greenhouse board returns 503 after the capped retries, and the others succeed
@@ -33,6 +37,10 @@ Collect SHALL read each Greenhouse, Lever and Ashby source through its public JS
 
 ### Requirement: Conditional requests
 Collect and Liveness SHALL store each response's `ETag` and `Last-Modified` and send `If-None-Match` / `If-Modified-Since` on later runs. A `304` SHALL reuse the stored postings for that source and count as a successful read.
+
+#### Scenario: Network cut after an earlier run
+- **WHEN** no source can be read and state holds opportunities from an earlier run
+- **THEN** Collect is `partial`, nothing is closed, and the report lists the earlier opportunities as still open
 
 #### Scenario: Unchanged board
 - **WHEN** a board returns `304 Not Modified` on the second run

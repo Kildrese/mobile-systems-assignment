@@ -74,7 +74,7 @@ ranks(run_id, opportunity_id, rank, score, top_k)
 summaries(run_id, opportunity_id, text)
 http_cache(url PK, etag, last_modified, body_hash, at)
 ```
-`raw_postings` is unique on `(source_id, external_id)`, falling back to `canonical_url` for pages. The `pending` flag survives across runs, so unfinished curation carries over.
+`raw_postings` is unique on `(source_id, external_id)`, falling back to `canonical_url` for pages. The `pending` flag survives across runs, so unfinished curation carries over for postings still listed: Curate takes only pending postings seen in the current run.
 
 ### D7. Quote verification and same-role candidates
 Normalization: NFKC, collapse whitespace, lowercase, and unify straight and curly quotes and dashes. A quote must be at least 3 characters and be a substring of the normalized posting text (board text plus any fetched detail page for that posting). Candidates for same-role matching: same normalized company, and title token Jaccard ≥ 0.5 after removing filler words ("intern", "internship", "summer", years, punctuation). An exact `(board, external_id)` or canonical URL match is linked by code without asking the model.
@@ -101,7 +101,7 @@ agents:
              tools: [get_posting, fetch_posting_detail, save_record, mark_same, flag_unclear],
              limits: { max_steps: 35, max_tokens: 70000, max_fetches: 20 }, options: { batch_size: 5 },
              fetch_hosts: [boards.greenhouse.io, job-boards.greenhouse.io, jobs.lever.co, jobs.ashbyhq.com, "<watchlist domains>"] }
-  editor:  { model: {name: openai/gpt-oss-120b}, tools: [get_opportunities, get_posting, finish],
+  editor:  { model: {name: openai/gpt-oss-120b}, tools: [get_opportunities, finish],
              limits: { max_steps: 6, max_tokens: 25000 } }
 watchlist: [ { company: "...", kind: greenhouse, board: "..." }, ... ]
 filters: { title_keywords: [intern, internship, co-op], locations: ["New York", "NYC", "Brooklyn", "Remote"] }

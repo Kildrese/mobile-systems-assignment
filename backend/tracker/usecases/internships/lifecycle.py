@@ -8,13 +8,13 @@ An opportunity seen again reopens and keeps its first-seen run, so it is never n
 """
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
 from tracker.trace import Trace
-from tracker.usecases.internships.http import BoardHttp, HttpFailure
+from tracker.usecases.internships.http import GuardedHttp, HttpFailure
 from tracker.usecases.internships.store import OpportunityStore
 
 READ_OK = ("ok", "not_modified")
@@ -36,12 +36,10 @@ class LifecycleSettings(BaseModel):
 @dataclass
 class LivenessCounts:
     opened: int = 0
-    kept_open: int = 0
     closed: int = 0
     unchanged: int = 0
     unknown: int = 0
     requests: int = 0
-    changes: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _change(
@@ -57,14 +55,9 @@ def _change(
         return  # still closed: keep the run it closed in and its evidence
     store.set_status(opp["id"], status, run_id, evidence)
     if status == "open":
-        if previous == "open":
-            counts.kept_open += 1
-        else:
-            counts.opened += 1
-            counts.changes.append({"id": opp["id"], "from": previous, "to": "open"})
+        counts.opened += previous != "open"
     elif status == "closed":
         counts.closed += 1
-        counts.changes.append({"id": opp["id"], "from": previous, "to": "closed"})
     else:
         counts.unknown += 1
 
@@ -106,7 +99,7 @@ def _closing_phrase(text: str, patterns: tuple[str, ...]) -> str | None:
 def page_liveness(
     store: OpportunityStore,
     run_id: str,
-    http: BoardHttp,
+    http: GuardedHttp,
     settings: LifecycleSettings,
     counts: LivenessCounts,
     trace: Trace | None = None,
@@ -163,7 +156,7 @@ def page_liveness(
 def run_liveness(
     store: OpportunityStore,
     run_id: str,
-    http: BoardHttp,
+    http: GuardedHttp,
     settings: LifecycleSettings,
     trace: Trace | None = None,
 ) -> LivenessCounts:

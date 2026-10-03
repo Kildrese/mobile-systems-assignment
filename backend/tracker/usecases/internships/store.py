@@ -191,9 +191,8 @@ class OpportunityStore:
         key = source_key(kind, board, url)
         return self.db.execute("SELECT 1 FROM sources WHERE key = ?", (key,)).fetchone() is not None
 
-    def sources(self, *, active_only: bool = True) -> list[dict[str, Any]]:
-        sql = "SELECT * FROM sources" + (" WHERE active = 1" if active_only else "")
-        return [dict(r) for r in self.db.execute(sql + " ORDER BY id")]
+    def sources(self) -> list[dict[str, Any]]:
+        return [dict(r) for r in self.db.execute("SELECT * FROM sources ORDER BY id")]
 
     def source(self, source_id: int) -> dict[str, Any] | None:
         return _row(self.db.execute("SELECT * FROM sources WHERE id = ?", (source_id,)).fetchone())
@@ -277,12 +276,13 @@ class OpportunityStore:
             ).fetchone()
         )
 
-    def pending_postings(self, limit: int | None = None) -> list[dict[str, Any]]:
+    def pending_postings(self, run_id: str, limit: int | None = None) -> list[dict[str, Any]]:
+        """Pending postings listed in `run_id`. One no longer listed is not worth curating."""
         sql = (
             "SELECT p.*, s.company FROM raw_postings p JOIN sources s ON s.id = p.source_id "
-            "WHERE p.curation = 'pending' ORDER BY p.id"
+            "WHERE p.curation = 'pending' AND p.seen_run = ? ORDER BY p.id"
         )
-        rows = self.db.execute(sql + (f" LIMIT {int(limit)}" if limit else ""))
+        rows = self.db.execute(sql + (f" LIMIT {int(limit)}" if limit else ""), (run_id,))
         return [dict(r) for r in rows]
 
     def postings_with_canonical_url(self, canonical_url: str) -> list[dict[str, Any]]:

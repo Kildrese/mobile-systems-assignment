@@ -93,7 +93,7 @@ agents:
       Record any sentence about work authorization or visa sponsorship as written;
       never judge it. Use mark_same only for the same role at the same company.
   editor:
-    tools: [get_opportunities, get_posting]
+    tools: [get_opportunities]
     limits: {max_steps: 6, max_tokens: 25000}
     instructions: |
       You write short, factual summaries of internship opportunities for a student

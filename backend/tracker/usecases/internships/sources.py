@@ -1,7 +1,7 @@
 """Where opportunities come from: the watchlist, the job-board collectors, the pre-filter.
 
 Collectors read public board APIs (Greenhouse, Lever, Ashby) without keys and without
-a model. Every request goes through `BoardHttp`, so the core fetch guardrails apply.
+a model. Every request goes through `GuardedHttp`, so the core fetch guardrails apply.
 Responses are cached with their validators: a `304` re-parses the stored body, so a
 board that did not change still counts as read and still lists its postings.
 """
@@ -22,11 +22,10 @@ from tracker.fetch import extract
 from tracker.state import canonicalize
 from tracker.tools import ToolOutcome
 from tracker.trace import Trace
-from tracker.usecases.internships.http import BoardHttp, HttpFailure
+from tracker.usecases.internships.http import GuardedHttp, HttpFailure
 from tracker.usecases.internships.store import OpportunityStore, RawPosting
 
 BOARD_KINDS = ("greenhouse", "lever", "ashby")
-SOURCE_KINDS = (*BOARD_KINDS, "page")
 BOARD_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$")
 BOARD_API_HOSTS = {
     "greenhouse": "boards-api.greenhouse.io",
@@ -99,13 +98,10 @@ def read_watchlist(path: Path = WATCHLIST_FILE) -> list[WatchlistEntry]:
     return [WatchlistEntry.model_validate(entry) for entry in data]
 
 
-def load_watchlist(
-    store: OpportunityStore, entries: list[WatchlistEntry], run_id: str
-) -> list[int]:
+def load_watchlist(store: OpportunityStore, entries: list[WatchlistEntry], run_id: str) -> None:
     """Seed the watchlist from config. Existing sources are left as they are."""
-    ids = []
     for entry in entries:
-        source_id, _ = store.add_source(
+        store.add_source(
             company=entry.company,
             kind=entry.kind,
             board=entry.board,
@@ -113,8 +109,6 @@ def load_watchlist(
             added_by="config",
             run_id=run_id,
         )
-        ids.append(source_id)
-    return ids
 
 
 # Board responses
@@ -293,7 +287,7 @@ def source_url(source: dict[str, Any]) -> str:
 def collect_source(
     store: OpportunityStore,
     source: dict[str, Any],
-    http: BoardHttp,
+    http: GuardedHttp,
     trace: Trace,
     run_id: str,
 ) -> CollectResult:
@@ -387,7 +381,7 @@ def prefilter(postings: list[RawPosting], filters: Filters) -> tuple[list[RawPos
 
 def collect_all(
     store: OpportunityStore,
-    http: BoardHttp,
+    http: GuardedHttp,
     trace: Trace,
     run_id: str,
     filters: Filters,
@@ -424,19 +418,19 @@ def propose_source(
     kind: str,
     board_or_url: str,
     evidence_url: str,
-    check_url: Callable[[str], None],
 ) -> ToolOutcome:
     """Validate a Scout proposal and add it to the watchlist.
 
-    `seen_urls` holds canonical URLs returned by search or fetched in this run.
-    `check_url` applies the fetch guardrails to a page URL (raising on rejection).
+    `seen_urls` holds canonical URLs returned by search or fetched in this run. The Scout
+    may add job boards only: a page it proposed would be re-read every run, so a page that
+    talked the Scout into proposing it would stay in the pipeline. Pages come from config.
     """
     company = company.strip()
     if not company or len(company) > 120:
         return ToolOutcome.failure("error", "invalid_arguments", "company is required")
-    if kind not in SOURCE_KINDS:
+    if kind not in BOARD_KINDS:
         return ToolOutcome.failure(
-            "error", "unknown_kind", f"kind must be one of {', '.join(SOURCE_KINDS)}"
+            "error", "unknown_kind", f"kind must be one of {', '.join(BOARD_KINDS)}"
         )
     if canonicalize(evidence_url) not in seen_urls:
         return ToolOutcome.failure(
@@ -444,18 +438,12 @@ def propose_source(
             "unseen_evidence",
             "evidence_url must be a URL returned by search_web or fetched in this run",
         )
-    board, url = (None, board_or_url.strip()) if kind == "page" else (board_or_url.strip(), None)
+    board = board_or_url.strip()
     try:
-        if board is not None:
-            check_board_id(board)
-        else:
-            check_url(url or "")
+        check_board_id(board)
     except SourceError as err:
         return ToolOutcome.failure("error", err.reason, err.detail)
-    except Exception as err:  # a guardrail rejection
-        reason = getattr(err, "reason", "invalid_url")
-        return ToolOutcome.failure("blocked", reason, str(getattr(err, "detail", err)))
-    if store.has_source(kind, board, url):
+    if store.has_source(kind, board, None):
         return ToolOutcome.failure("error", "duplicate_source", "already on the watchlist")
     if store.count_sources_added(run_id, "scout") >= cap:
         return ToolOutcome.failure(
@@ -465,7 +453,7 @@ def propose_source(
         company=company,
         kind=kind,
         board=board,
-        url=url,
+        url=None,
         added_by="scout",
         run_id=run_id,
         evidence_url=evidence_url,

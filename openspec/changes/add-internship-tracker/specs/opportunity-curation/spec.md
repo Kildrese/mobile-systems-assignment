@@ -14,9 +14,9 @@ An opportunity record SHALL have: company, title, role type (`internship`, `new_
 - **THEN** the record's term is `unknown`, with no quote
 
 ### Requirement: Curator tools
-The Curator agent SHALL work through pending postings in batches and have exactly these tools:
+The Curator agent SHALL work through pending postings listed in this run, in batches, and have exactly these tools:
 - `get_posting(id)` returns stored posting text as untrusted data.
-- `fetch_posting_detail(posting_id, url)` fetches a posting's page, limited to the Curator's `fetch_hosts`, and keeps its text with that posting so quotes can come from it.
+- `fetch_posting_detail(posting_id, url)` fetches a posting's own page, limited to the Curator's `fetch_hosts`, and keeps its text with that posting so quotes can come from it. A `url` that is not the posting's own URL is rejected with reason `url_mismatch`.
 - `save_record(posting_id, record)` stores an opportunity record.
 - `mark_same(posting_id, opportunity_id, reason)` links a posting to an existing opportunity.
 - `flag_unclear(posting_id, reason)` parks a posting it cannot resolve.
@@ -26,6 +26,10 @@ The Curator SHALL NOT have `search_web` or source-proposal tools. Each pending p
 #### Scenario: Missing location
 - **WHEN** a posting's board JSON has no location, but its detail page does
 - **THEN** the Curator may call `fetch_posting_detail` and save a record whose location quote comes from that page
+
+#### Scenario: Detail page of another posting
+- **WHEN** the Curator calls `fetch_posting_detail` for a posting with the URL of a different job
+- **THEN** the call is rejected with reason `url_mismatch` and no request is made
 
 #### Scenario: Budget runs out
 - **WHEN** the Curator's step budget runs out with 4 postings unprocessed

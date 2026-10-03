@@ -7,6 +7,7 @@ the source and the posting. Same-role links are made by code where an exact key
 matches, and by the Curator (`mark_same`) only between postings of the same company.
 """
 
+import json
 import re
 import unicodedata
 from typing import Any
@@ -15,8 +16,9 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from tracker.guard import host_allowed
+from tracker.state import canonicalize
 from tracker.tools import ToolOutcome, validation_message
-from tracker.usecases.internships.http import BoardHttp, HttpFailure
+from tracker.usecases.internships.http import GuardedHttp, HttpFailure
 from tracker.usecases.internships.store import OpportunityStore
 
 UNKNOWN = "unknown"
@@ -238,14 +240,18 @@ def get_posting(store: OpportunityStore, posting_id: int, max_chars: int = 6000)
     posting = store.posting(posting_id)
     if posting is None:
         return ToolOutcome.failure("error", "unknown_posting", f"no posting {posting_id}")
+    found = candidates(store, posting)
     text = posting_text(posting)[:max_chars]
+    if found:
+        # The model sees only the untrusted block, and candidate titles come from postings.
+        text += "\n\nSame-company candidates for mark_same: " + json.dumps(found)
     data = {
         "posting_id": posting["id"],
         "company": posting["company"],
         "url": posting["url"],
         "curation": posting["curation"],
         "has_detail_page": bool(posting.get("detail_text")),
-        "candidates": candidates(store, posting),
+        "candidates": found,
     }
     return ToolOutcome(
         "ok", data, untrusted=text, attributes={"url": posting["url"], "posting": str(posting_id)}
@@ -258,7 +264,7 @@ def fetch_posting_detail(
     url: str,
     *,
     hosts: tuple[str, ...],
-    http: BoardHttp,
+    http: GuardedHttp,
     max_chars: int = 6000,
 ) -> ToolOutcome:
     """Fetch a posting's own page, only on the agent's hosts, and keep its text for quotes."""
@@ -267,23 +273,34 @@ def fetch_posting_detail(
         return check
     try:
         host = (urlsplit(url).hostname or "").rstrip(".")
+        canonical = canonicalize(url)
     except ValueError:
-        host = ""
+        host = canonical = ""
     if not host or not host_allowed(host, hosts):
         return ToolOutcome.failure(
             "blocked", "host_not_allowed", f"host '{host or url}' is not in this agent's hosts"
         )
+    # Quotes are checked against this text, so it must be this posting's page.
+    if canonical != posting["canonical_url"]:
+        return ToolOutcome.failure(
+            "error",
+            "url_mismatch",
+            f"url must be posting {posting_id}'s own page: {posting['url']}",
+        )
     try:
         result = http.get(url)
     except HttpFailure as err:
-        status = "blocked" if err.reason in {"blocked_address", "scheme_not_allowed"} else "error"
-        return ToolOutcome.failure(status, err.reason, err.detail)
+        blocked = err.reason in {"blocked_address", "scheme_not_allowed"}
+        outcome = ToolOutcome.failure("blocked" if blocked else "error", err.reason, err.detail)
+        outcome.requested = not blocked
+        return outcome
     store.set_detail_text(posting_id, result.text)
     return ToolOutcome(
         "ok",
         {"posting_id": posting_id, "url": url, "chars": len(result.text)},
         untrusted=result.text[:max_chars],
         attributes={"url": url, "posting": str(posting_id)},
+        requested=True,
     )
 
 

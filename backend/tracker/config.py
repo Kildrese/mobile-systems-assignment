@@ -172,9 +172,14 @@ class AgentProfile(_Strict):
 
     @model_validator(mode="after")
     def tool_limits(self) -> "AgentProfile":
-        for tool, limit in (("search_web", "max_searches"), ("fetch_article", "max_fetches")):
-            if tool in self.tools and getattr(self.limits, limit) is None:
-                raise ValueError(f"limits.{limit} is required when tools include {tool}")
+        from tracker.tools import REGISTRY
+
+        # A tool draws on its own budget, or on the one its spec names.
+        drawn = {name: REGISTRY[name].budget or name for name in self.tools if name in REGISTRY}
+        for kind, limit in (("search_web", "max_searches"), ("fetch_article", "max_fetches")):
+            users = [name for name, budget in drawn.items() if budget == kind]
+            if users and getattr(self.limits, limit) is None:
+                raise ValueError(f"limits.{limit} is required when tools include {users[0]}")
         return self
 
     @classmethod

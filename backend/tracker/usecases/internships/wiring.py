@@ -9,7 +9,7 @@ fixed pipeline: Scout (agent), Collect (code, required), Curate (agent), Livenes
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -18,7 +18,7 @@ from tracker.agents import Stop
 from tracker.conductor import StageContext, StageOutcome
 from tracker.config import Policy
 from tracker.errors import PolicyError
-from tracker.guard import check, host_allowed
+from tracker.guard import host_allowed
 from tracker.report import ReportMeta
 from tracker.tools import Toolbox, ToolOutcome, ToolSpec, register, validation_message
 from tracker.trace import Trace
@@ -106,6 +106,8 @@ def board_http(ctx: StageContext, opts: InternshipOptions) -> GuardedHttp:
         resolver=ctx.clients.resolver,
         transport=ctx.clients.fetch_transport,
         sleep=ctx.clients.sleep,
+        clock=ctx.budget.clock,
+        deadline=ctx.budget.deadline,
     )
 
 
@@ -122,22 +124,11 @@ def _toolbox_http(toolbox: Toolbox) -> GuardedHttp:
 # Tools
 
 
-def _store(toolbox: Toolbox) -> OpportunityStore | None:
-    if toolbox.state is None:
-        return None
-    store = getattr(toolbox, "_internships_store", None)
-    if store is None:
-        store = OpportunityStore(toolbox.state)
-        toolbox._internships_store = store  # type: ignore[attr-defined]
-    return store
-
-
 def _needs_store(handler):
     def run(toolbox: Toolbox, args: Any, step: int) -> ToolOutcome:
-        store = _store(toolbox)
-        if store is None:
+        if toolbox.state is None:
             return ToolOutcome.failure("error", "no_state", "the state file is not available")
-        outcome = handler(store, toolbox, args)
+        outcome = handler(OpportunityStore(toolbox.state), toolbox, args)
         extra = {}
         if outcome.untrusted is not None:
             extra["injection_suspected"] = injection_suspected(outcome.untrusted)
@@ -198,7 +189,7 @@ class FlagUnclearArgs(_Args):
 
 
 class OpportunitiesArgs(_Args):
-    which: Literal["new", "top_k", "needs_summary"] = "needs_summary"
+    pass
 
 
 def _propose_source(store: OpportunityStore, toolbox: Toolbox, args: ProposeSourceArgs):
@@ -217,7 +208,6 @@ def _propose_source(store: OpportunityStore, toolbox: Toolbox, args: ProposeSour
         kind=args.kind,
         board_or_url=args.board_or_url,
         evidence_url=args.evidence_url,
-        check_url=lambda url: check(url, policy.fetch, resolver=toolbox.resolver),
     )
 
 
@@ -249,7 +239,7 @@ def _flag_unclear(store: OpportunityStore, toolbox: Toolbox, args: FlagUnclearAr
 
 
 def _get_opportunities(store: OpportunityStore, toolbox: Toolbox, args: OpportunitiesArgs):
-    return editing.get_opportunities(store, toolbox.run_id, args.which)
+    return editing.get_opportunities(store, toolbox.run_id)
 
 
 def _schema(name: str, description: str, properties: dict[str, Any]) -> dict[str, Any]:
@@ -306,9 +296,9 @@ TOOLS = [
         ProposeSourceArgs,
         _schema(
             "propose_source",
-            "Add a company's public job board (or careers page) to the watchlist. kind is "
-            "greenhouse, lever, ashby or page; board_or_url is the board identifier, or the "
-            "page URL for kind page. evidence_url must be a page you found in this run.",
+            "Add a company's public job board to the watchlist. kind is greenhouse, lever or "
+            "ashby; board_or_url is the board identifier. evidence_url must be a page you "
+            "found in this run.",
             {"company": _STR, "kind": _STR, "board_or_url": _STR, "evidence_url": _STR},
         ),
         _needs_store(_propose_source),
@@ -377,8 +367,8 @@ TOOLS = [
         OpportunitiesArgs,
         _schema(
             "get_opportunities",
-            "List this run's opportunities to summarize: new, top_k or needs_summary.",
-            {"which": {"type": "string", "enum": ["new", "top_k", "needs_summary"]}},
+            "List this run's opportunities to summarize: the new ones and the top K.",
+            {},
         ),
         _needs_store(_get_opportunities),
         cli=True,
@@ -434,7 +424,7 @@ class ScoutStage:
         task = (
             f"Find companies hiring for: {ctx.policy.topic}. Search the web, read promising "
             "pages, and for each company with a public Greenhouse, Lever or Ashby job board "
-            f"(or a careers page) call propose_source. Add at most {cap} new sources. "
+            f"call propose_source. Add at most {cap} new sources. "
             f"Already on the watchlist: {known}. Call finish when done."
         )
         stop, _ = ctx.run_agent(task, finish=_note_finish, finish_schema=NOTE_SCHEMA)
@@ -458,31 +448,28 @@ class CollectStage:
         )
         readable = [r for r in results if r.readable]
         usage = {"requests": len(results), "readable": len(readable)}
-        if not readable and not store.opportunities():
+        if not readable:
+            # Without earlier opportunities there is nothing to report: the run fails.
+            outcome = "partial" if store.opportunities() else "failed"
             return StageOutcome(
-                "failed", "no_source_readable", "no source could be read", usage=usage
+                outcome, "no_source_readable", "no source could be read", usage=usage
             )
         unreadable = len(results) - len(readable)
         reason = f"{unreadable} of {len(results)} sources unreadable" if unreadable else None
         return StageOutcome("complete", reason, usage=usage)
 
 
-def _batch_prompt(store: OpportunityStore, batch: list[dict[str, Any]]) -> str:
-    lines = [
+def _batch_prompt(batch: list[dict[str, Any]]) -> str:
+    # Ids only: titles come from the boards, so they reach the model only through
+    # get_posting, inside an untrusted block.
+    return (
         "Turn each posting below into an opportunity record. For each posting id, read it "
         "with get_posting, then do exactly one of: save_record (a new role), mark_same (the "
-        "same role as a listed candidate), or flag_unclear (not a usable internship posting). "
-        "Quote the posting word for word for every field you fill in; use 'unknown' "
-        "otherwise. Call finish when every posting is handled.",
-        "",
-    ]
-    for posting in batch:
-        found = curation.candidates(store, posting)
-        hint = f" candidates: {json.dumps(found)}" if found else ""
-        lines.append(
-            f"- posting {posting['id']}: {posting['company']}, {json.dumps(posting['title'])}{hint}"
-        )
-    return "\n".join(lines)
+        "same role as a candidate get_posting lists), or flag_unclear (not a usable "
+        "internship posting). Quote the posting word for word for every field you fill in; "
+        "use 'unknown' otherwise. Call finish when every posting is handled.\n\n"
+        f"Posting ids: {[p['id'] for p in batch]}"
+    )
 
 
 @dataclass
@@ -496,11 +483,13 @@ class CurateStage:
     def run(self, ctx: StageContext) -> StageOutcome:
         store = OpportunityStore(ctx.state)
         linked = sum(
-            1 for p in store.pending_postings() if curation.link_exact(store, p["id"]) is not None
+            1
+            for p in store.pending_postings(ctx.run_id)
+            if curation.link_exact(store, p["id"]) is not None
         )
         size = _agent_option(ctx.policy, "curator", "batch_size", DEFAULT_BATCH)
         batches = 0
-        while batch := store.pending_postings(size):
+        while batch := store.pending_postings(ctx.run_id, size):
             batches += 1
             stop = self._batch(ctx, store, batch)
             if stop.finish is None:  # budget or provider stop: leftovers stay pending
@@ -524,9 +513,7 @@ class CurateStage:
                 ), None
             return "", {"pending": left}
 
-        stop, _ = ctx.run_agent(
-            _batch_prompt(store, batch), finish=finish, finish_schema=NOTE_SCHEMA
-        )
+        stop, _ = ctx.run_agent(_batch_prompt(batch), finish=finish, finish_schema=NOTE_SCHEMA)
         return stop
 
     def _settle(self, ctx: StageContext, store: OpportunityStore, batch: list[dict]) -> None:
@@ -601,7 +588,7 @@ class EditStage:
 
     def run(self, ctx: StageContext) -> StageOutcome:
         store = OpportunityStore(ctx.state)
-        allowed = {o["id"] for o in editing.wanted(store, ctx.run_id, "needs_summary")}
+        allowed = {o["id"] for o in editing.wanted(store, ctx.run_id)}
         if not allowed:
             return StageOutcome("complete", "nothing to summarize")
 

@@ -234,11 +234,8 @@ class AgentLoop:
         outcome = spec.handler(toolbox, args, step)
         if kind == "search_web" and outcome.ok:
             budget.count(searches=1, credits=float(outcome.data.get("credits", 0)))
-        elif kind == "fetch_article" and (
-            outcome.status == "ok"
-            or (outcome.status == "error" and outcome.reason != "invalid_arguments")
-        ):
-            budget.count(fetches=1)  # a request went out
+        elif kind == "fetch_article" and outcome.requested:
+            budget.count(fetches=1)
         return outcome
 
 

@@ -151,6 +151,8 @@ class ToolOutcome:
     # Retrieved text for the model, wrapped as untrusted data by the loop.
     untrusted: str | None = None
     attributes: dict[str, str] = field(default_factory=dict)
+    # Whether a request went out: only then does a call draw on max_fetches.
+    requested: bool = False
 
     @property
     def ok(self) -> bool:
@@ -317,6 +319,7 @@ class Toolbox:
             outcome = ToolOutcome.failure("blocked", err.reason, err.detail)
         except FetchError as err:
             outcome = ToolOutcome.failure("error", err.reason, err.detail)
+            outcome.requested = True
         else:
             canonical = canonicalize(args.url)
             if self.state is not None:
@@ -357,6 +360,7 @@ class Toolbox:
             data,
             untrusted=f"Title: {title}\nURL: {canonical}\n\n{shown}",
             attributes={"url": canonical},
+            requested=not cached,
         )
         self._trace(
             step,

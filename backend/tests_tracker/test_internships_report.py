@@ -112,7 +112,7 @@ def test_summary_checks(store):
 def test_finish_summaries(store):
     _, [a, b] = _seed(store, 2)
     rank_open(store, RUN1, RankingSettings(), 5, NOW)
-    allowed = {o["id"] for o in wanted(store, RUN1, "needs_summary")}
+    allowed = {o["id"] for o in wanted(store, RUN1)}
     outcome = finish_summaries(
         store,
         RUN1,
@@ -136,8 +136,8 @@ def test_finish_summaries(store):
 def test_get_opportunities_is_untrusted(store):
     _seed(store, 2)
     rank_open(store, RUN1, RankingSettings(), 1, NOW)
-    outcome = get_opportunities(store, RUN1, "top_k")
-    assert outcome.data["count"] == 1
+    outcome = get_opportunities(store, RUN1)
+    assert outcome.data["count"] == 2  # both are new in RUN1, one is the top K
     assert '"company": "Acme"' in outcome.untrusted
 
 

@@ -1,16 +1,15 @@
 """HTTP for job boards and posting pages, through the core fetch guardrails.
 
-`BoardHttp` is the seam the collectors and liveness checks depend on, so tests can
-swap the transport. `GuardedHttp` sends every request through `fetch.fetch_page` (scheme,
-host and address checks, pinned connection, size and time limits), adds conditional
-request headers, and retries transient failures with the core's capped backoff.
+`GuardedHttp` sends every request through `fetch.fetch_page` (scheme, host and address
+checks, pinned connection, size and time limits), adds conditional request headers, and
+retries transient failures with the core's capped backoff or the server's `Retry-After`.
+It never waits past the run's wall-clock deadline.
 """
 
 import socket
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
 
 import httpx
 
@@ -45,12 +44,6 @@ class HttpFailure(Exception):
         self.attempts = attempts
 
 
-class BoardHttp(Protocol):
-    def get(
-        self, url: str, *, etag: str | None = None, last_modified: str | None = None
-    ) -> HttpResult: ...
-
-
 def is_transient(err: FetchError) -> bool:
     return err.reason in TRANSIENT_REASONS or (err.status in TRANSIENT_STATUS)
 
@@ -66,8 +59,10 @@ class GuardedHttp:
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
         allowed_hosts: tuple[str, ...] | None = None,
+        deadline: float | None = None,
     ) -> None:
         self.allowed_hosts = allowed_hosts  # narrower than fetch.allowed_hosts, if set
+        self.deadline = deadline  # on `clock`; no attempt starts and no wait ends past it
         self.fetch = fetch
         self.retry = retry
         self.resolver = resolver
@@ -86,6 +81,8 @@ class GuardedHttp:
         last: FetchError | None = None
         for attempt in range(self.retry.max_attempts):
             started = self.clock()
+            if self.deadline is not None and started >= self.deadline:
+                raise HttpFailure("max_wall_seconds", "the run's wall-clock budget is used up")
             try:
                 page = fetch_page(
                     url,
@@ -104,8 +101,25 @@ class GuardedHttp:
                     raise HttpFailure(
                         err.reason, err.detail, err.status, attempts=attempt + 1
                     ) from None
-                if attempt + 1 < self.retry.max_attempts:
-                    self.sleep(backoff(attempt, self.retry))
+                if attempt + 1 == self.retry.max_attempts:
+                    break
+                wait = err.retry_after
+                if wait is not None and wait > self.retry.max_wait_seconds:
+                    raise HttpFailure(
+                        "rate_limited",
+                        f"asked to wait {wait:.0f} s, more than retry.max_wait_seconds",
+                        err.status,
+                        attempts=attempt + 1,
+                    ) from None
+                wait = backoff(attempt, self.retry) if wait is None else wait
+                if self.deadline is not None and self.clock() + wait > self.deadline:
+                    raise HttpFailure(
+                        "max_wall_seconds",
+                        f"waiting {wait:.0f} s would pass the run's deadline",
+                        err.status,
+                        attempts=attempt + 1,
+                    ) from None
+                self.sleep(wait)
                 continue
             latency = round((self.clock() - started) * 1000, 1)
             return HttpResult(
