@@ -49,7 +49,7 @@
 ## 9. CI and docs
 
 - [x] 9.1 Add the `tracker` CI job (uv sync, ruff check, ruff format check, `pytest tests_tracker`; no services, no secrets). Verify the workflow YAML parses and the same commands pass locally
-- [ ] 9.2 Add a tracker section to `README.md` (keys, `uv run python -m tracker run`, tool CLI) and finish `docs/tracker.md` (policy fields, budgets, failure classes, guardrails, state and trace locations, network allowlist note). Verify the README commands work from a clean clone with fake keys up to the expected terminal `auth` failure
+- [x] 9.2 Add a tracker section to `README.md` (keys, `uv run python -m tracker run`, tool CLI) and finish `docs/tracker.md` (policy fields, budgets, failure classes, guardrails, state and trace locations, network allowlist note). Verify the README commands work from a clean clone with fake keys up to the expected terminal `auth` failure
 
 ## 10. Integration check
 
