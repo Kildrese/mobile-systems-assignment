@@ -23,6 +23,7 @@ from tracker.usecases.internships.sources import (
     parse_lever,
     prefilter,
     propose_source,
+    read_watchlist,
 )
 
 GREENHOUSE = {
@@ -120,6 +121,14 @@ def test_watchlist_seeded_from_config(store):
     sources = store.sources()
     assert [s["added_by"] for s in sources] == ["config", "config"]
     assert [s["added_run"] for s in sources] == [RUN1, RUN1]
+
+
+def test_shipped_watchlist_is_valid():
+    entries = read_watchlist()
+    assert len(entries) >= 10
+    assert len({(e.kind, e.board.lower()) for e in entries}) == len(entries)
+    for entry in entries:
+        assert board_url(entry.kind, entry.board).startswith("https://")
 
 
 @pytest.mark.parametrize("board", ["../admin", "acme/jobs", "a b", "", "x" * 90, "acme?x=1"])

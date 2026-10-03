@@ -11,9 +11,11 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from tracker.fetch import extract
@@ -86,6 +88,15 @@ class WatchlistEntry(BaseModel):
                 raise ValueError(f"a {self.kind} source needs a board identifier")
             check_board_id(self.board)
         return self
+
+
+WATCHLIST_FILE = Path(__file__).with_name("watchlist.yaml")
+
+
+def read_watchlist(path: Path = WATCHLIST_FILE) -> list[WatchlistEntry]:
+    """The seed watchlist shipped with the use case. Raises on any invalid entry."""
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or []
+    return [WatchlistEntry.model_validate(entry) for entry in data]
 
 
 def load_watchlist(

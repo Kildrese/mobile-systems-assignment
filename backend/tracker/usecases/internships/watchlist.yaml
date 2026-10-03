@@ -1,0 +1,42 @@
+# Seed watchlist for the internship tracker: NYC startups (or companies with an NYC
+# engineering hub) whose public job boards listed software or ML internships for
+# Summer 2027 in early October 2026. Each board identifier comes from a posting URL
+# found by web search (the URL is noted next to it).
+#
+# NOT YET CHECKED against the live board APIs: the cloud dev environment blocks
+# boards-api.greenhouse.io, api.lever.co and api.ashbyhq.com. Before the graded runs,
+# open each board's API URL (`sources.board_url(kind, board)`) on a machine that can
+# reach them, and drop entries that do not answer with JSON.
+#
+# The Scout agent adds more sources at run time; these are only the starting set.
+
+- company: Viam
+  kind: greenhouse
+  board: viamrobotics  # job-boards.greenhouse.io/viamrobotics/jobs/6185046004
+- company: Sage
+  kind: greenhouse
+  board: sage49  # job-boards.greenhouse.io/sage49/jobs/6131185004
+- company: Figma
+  kind: greenhouse
+  board: figma  # job-boards.greenhouse.io/figma/jobs/6143238004
+- company: Harvey
+  kind: ashby
+  board: harvey  # jobs.ashbyhq.com/harvey/06d64648-b84b-48ae-94a2-d9c06dfdcb5d
+- company: Genius AI
+  kind: ashby
+  board: geniusai  # jobs.ashbyhq.com/geniusai/06198681-5c9d-40fa-aa68-ac92b65227c4
+- company: Notion
+  kind: ashby
+  board: notion  # jobs.ashbyhq.com/notion/3fba1c39-c5cb-47d7-9ad2-1cec4d7e9d0c
+- company: Whatnot
+  kind: ashby
+  board: whatnot  # jobs.ashbyhq.com/whatnot/928ffdca-b316-40ce-b82b-94b570919bcd
+- company: Ramp
+  kind: ashby
+  board: ramp  # jobs.ashbyhq.com/ramp/a13ae586-f4cb-4385-8822-c42b9b54ed74
+- company: Talos
+  kind: ashby
+  board: talos-trading  # jobs.ashbyhq.com/talos-trading/2c833180-484f-4657-80e3-f822cf1a0285
+- company: Gecko Robotics
+  kind: ashby
+  board: gecko-robotics  # jobs.ashbyhq.com/gecko-robotics/c097505b-0a28-4a33-a917-268f463641e8
