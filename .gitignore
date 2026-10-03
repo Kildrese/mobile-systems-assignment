@@ -14,8 +14,12 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 
-# Tracker state (backend/tracker): local SQLite, not part of the submission
+# Tracker output (backend/tracker): local state, reports and traces of each run
 .tracker/
+reports/*
+!reports/.gitkeep
+traces/*
+!traces/.gitkeep
 
 # Tools
 .vercel
@@ -23,3 +27,6 @@ __pycache__/
 .DS_Store
 *.log
 *.pem
+.idea/
+.mcp.json
+.claude/settings.json
