@@ -152,3 +152,39 @@ def test_plain_text(policy):
     page = fetch("https://news.example.com/notes.txt", policy)
     assert page.text == "plain notes"
     assert page.title == "https://news.example.com/notes.txt"
+
+
+@respx.mock
+def test_conditional_headers_and_not_modified(policy):
+    route = respx.get(f"https://{PUBLIC_IP}/board").respond(
+        304, headers={"etag": '"v2"', "last-modified": "Wed, 01 Oct 2026 12:00:00 GMT"}
+    )
+    page = fetch(
+        "https://news.example.com/board",
+        policy,
+        headers={"If-None-Match": '"v1"', "Host": "evil.example.com"},
+    )
+    request = route.calls.last.request
+    assert request.headers["if-none-match"] == '"v1"'
+    assert request.headers["host"] == "news.example.com"  # extra headers cannot replace Host
+    assert page.status == 304
+    assert page.text == ""
+    assert page.etag == '"v2"'
+    assert page.last_modified == "Wed, 01 Oct 2026 12:00:00 GMT"
+
+
+@respx.mock
+def test_validators_on_ok_page(policy):
+    respx.get(f"https://{PUBLIC_IP}/news").respond(
+        200, headers={**HTML, "etag": '"abc"'}, content=PAGE
+    )
+    assert fetch("https://news.example.com/news", policy).etag == '"abc"'
+
+
+@respx.mock
+def test_http_error_carries_status(policy):
+    respx.get(f"https://{PUBLIC_IP}/gone").respond(410)
+    with pytest.raises(FetchError) as err:
+        fetch("https://news.example.com/gone", policy)
+    assert err.value.reason == "http_error"
+    assert err.value.status == 410

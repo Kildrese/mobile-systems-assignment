@@ -61,7 +61,9 @@ In `usecases/internships/sources.py`, one collector per board type, each `collec
 
 All of them go through the `BoardHttp` seam (D12) over the core `fetch` path, so guardrails and address pinning apply, with a JSON content type and a larger `max_bytes` for boards (config `collect.max_bytes`). Board identifiers are checked with `^[a-z0-9][a-z0-9-_.]{0,80}$` before any URL is built. ETag and Last-Modified values are stored in `http_cache(url, etag, last_modified, body_hash, at)`. A `304` reuses the `raw_postings` from the last successful read.
 
-### D6. State migration 2
+### D6. Internship schema
+The use case keeps its own schema version in a `component_versions(name, version)` table, not in the core's `PRAGMA user_version`, so the core never needs to know these tables exist. `http_cache` stores the response body, so a `304` re-parses the last body and the board still counts as read with its current postings.
+
 ```
 sources(id PK, company, kind, board, url, added_by, added_run, active, last_read_run, last_read_status)
 raw_postings(id PK, source_id, external_id, url, title, location, text, updated_at, content_hash, seen_run, pending)
@@ -121,7 +123,7 @@ This change is implemented while `add-agent-orchestration` is still being built,
 
 ```
 backend/tracker/usecases/internships/
-  store.py        OpportunityStore: migration 2 tables, over the core StateStore connection   [parallel]
+  store.py        OpportunityStore: the internship tables, over the core StateStore connection   [parallel]
   sources.py      watchlist, identifier checks, Greenhouse/Lever/Ashby collectors, prefilter   [parallel]
   curation.py     quote checks, matching, candidates, the Curator's tool functions             [parallel]
   lifecycle.py    board and page liveness                                                        [parallel]
@@ -155,7 +157,7 @@ They never import `tracker.conductor`, `tracker.agents`, or registry symbols. HT
 
 ## Migration Plan
 
-State migration 2 is additive. A state file from the core works as is, and its `articles` and `items` tables stay. Archive order: `add-agent-orchestration`, then this change. Rollback means reverting the change. Old state files remain readable by the core, which ignores the extra tables.
+The internship schema is additive. A state file from the core works as is, and its `articles` and `items` tables stay. Archive order: `add-agent-orchestration`, then this change. Rollback means reverting the change. Old state files remain readable by the core, which ignores the extra tables.
 
 ## Open Questions
 

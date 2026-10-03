@@ -2,17 +2,17 @@
 
 Tasks marked **[parallel]** depend only on the merged core and can be built now. Tasks marked **[after orchestration]** need `add-agent-orchestration` implemented and merged into this branch. Design D12 describes the boundary between the two.
 
-## 1. State migration 2 (all opportunity capabilities)
+## 1. Internship schema (all opportunity capabilities)
 
-- [ ] 1.1 [parallel] Add migration 2 (`sources`, `raw_postings`, `opportunities`, `opportunity_links`, `ranks`, `summaries`, `http_cache`; design D6) and `OpportunityStore` over the core state connection. Verify with unit tests: a core-only state file upgrades in place, `(source_id, external_id)` is unique, pending postings survive across runs
+- [x] 1.1 [parallel] Add the internship schema (`sources`, `raw_postings`, `opportunities`, `opportunity_links`, `ranks`, `summaries`, `http_cache`; design D6), versioned in its own `component_versions` row, and `OpportunityStore` over the core state connection. Verify with unit tests: a core-only state file upgrades in place, `(source_id, external_id)` is unique, pending postings survive across runs
 
 ## 2. Sources and collectors (opportunity-sources)
 
-- [ ] 2.1 [parallel] Implement watchlist loading into state, with board-identifier validation. Verify with unit tests: entries are seeded with `added_by: config`, an invalid identifier is rejected before any URL is built
-- [ ] 2.2 [parallel] Implement the `BoardHttp` seam over the core fetch path, and the Greenhouse, Lever and Ashby collectors with pydantic response models and HTML-to-text (design D5). Verify with respx tests using JSON fixtures for each board type, including a 503 source marked `unreadable` while the others succeed
-- [ ] 2.3 [parallel] Implement conditional requests with `http_cache` (ETag/Last-Modified; a `304` reuses postings). Verify with a respx test: the second read sends `If-None-Match`, gets `304`, and the trace shows `not_modified`
-- [ ] 2.4 [parallel] Implement the title and location pre-filter with traced counts. Verify with a unit test: a senior role is filtered out, an intern role with no location is kept
-- [ ] 2.5 [parallel] Implement the `propose_source` domain function (known kind, identifier format, evidence URL seen this run, not a duplicate, per-run cap). Verify with unit tests for `unseen_evidence`, a duplicate, the cap, and acceptance
+- [x] 2.1 [parallel] Implement watchlist loading into state, with board-identifier validation. Verify with unit tests: entries are seeded with `added_by: config`, an invalid identifier is rejected before any URL is built
+- [x] 2.2 [parallel] Implement the `BoardHttp` seam over the core fetch path, and the Greenhouse, Lever and Ashby collectors with pydantic response models and HTML-to-text (design D5). Verify with respx tests using JSON fixtures for each board type, including a 503 source marked `unreadable` while the others succeed
+- [x] 2.3 [parallel] Implement conditional requests with `http_cache` (ETag/Last-Modified; a `304` reuses postings). Verify with a respx test: the second read sends `If-None-Match`, gets `304`, and the trace shows `not_modified`
+- [x] 2.4 [parallel] Implement the title and location pre-filter with traced counts. Verify with a unit test: a senior role is filtered out, an intern role with no location is kept
+- [x] 2.5 [parallel] Implement the `propose_source` domain function (known kind, identifier format, evidence URL seen this run, not a duplicate, per-run cap). Verify with unit tests for `unseen_evidence`, a duplicate, the cap, and acceptance
 
 ## 3. Curation (opportunity-curation)
 

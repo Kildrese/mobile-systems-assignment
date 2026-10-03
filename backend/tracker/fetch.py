@@ -10,6 +10,7 @@ and size by a streamed byte cap.
 import re
 import socket
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from urllib.parse import urljoin
 
@@ -25,10 +26,11 @@ USER_AGENT = "mobile-systems-tracker/0.1 (+https://github.com/kildrese/mobile-sy
 
 
 class FetchError(Exception):
-    def __init__(self, reason: str, detail: str) -> None:
+    def __init__(self, reason: str, detail: str, status: int | None = None) -> None:
         super().__init__(f"{reason}: {detail}")
         self.reason = reason
         self.detail = detail
+        self.status = status  # the HTTP status, for `http_error`
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,9 @@ class Page:
     content_type: str
     status: int
     redirects: int
+    # Validators for conditional requests. A `304` page has empty text.
+    etag: str | None = None
+    last_modified: str | None = None
 
 
 def extract(html: bytes | str, charset: str | None = None) -> tuple[str, str]:
@@ -81,8 +86,14 @@ def fetch_page(
     transport: httpx.BaseTransport | None = None,
     clock=time.monotonic,
     allowed_hosts: tuple[str, ...] | None = None,
+    headers: Mapping[str, str] | None = None,
 ) -> Page:
-    """Fetch a page. Raises `Blocked` for a guardrail and `FetchError` for anything else."""
+    """Fetch a page. Raises `Blocked` for a guardrail and `FetchError` for anything else.
+
+    `headers` adds request headers such as `If-None-Match`; they cannot replace `Host`.
+    A `304 Not Modified` answer returns a `Page` with status 304 and no text.
+    """
+    extra = {k: v for k, v in (headers or {}).items() if k.lower() != "host"}
     deadline = clock() + cfg.deadline_seconds
     current = url
     with httpx.Client(transport=transport, follow_redirects=False, trust_env=False) as client:
@@ -101,9 +112,10 @@ def fetch_page(
                 "GET",
                 vetted.pinned_url(),
                 headers={
-                    "Host": vetted.host_header(),
                     "User-Agent": USER_AGENT,
                     "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
+                    **extra,
+                    "Host": vetted.host_header(),
                 },
                 timeout=timeout,
                 extensions={"sni_hostname": vetted.host} if vetted.scheme == "https" else {},
@@ -115,7 +127,7 @@ def fetch_page(
             except httpx.HTTPError as err:
                 raise FetchError("connection_error", str(err) or type(err).__name__) from None
             try:
-                if response.is_redirect:
+                if response.is_redirect and response.status_code != 304:
                     location = response.headers.get("location")
                     if not location:
                         raise FetchError(
@@ -138,8 +150,12 @@ def _read(
     deadline: float,
     clock,
 ) -> Page:
+    etag = response.headers.get("etag")
+    last_modified = response.headers.get("last-modified")
+    if response.status_code == 304:
+        return Page(url, final_url, final_url, "", "", 304, redirects, etag, last_modified)
     if response.status_code >= 400:
-        raise FetchError("http_error", f"HTTP {response.status_code}")
+        raise FetchError("http_error", f"HTTP {response.status_code}", response.status_code)
     media, charset = _media_type(response.headers.get("content-type", ""))
     if media not in ALLOWED_TYPES:
         raise FetchError("unsupported_content_type", f"content type '{media or '(none)'}'")
@@ -164,4 +180,14 @@ def _read(
         title, text = extract(bytes(body), charset)
     else:
         title, text = "", _decode(bytes(body), charset)
-    return Page(url, final_url, title or final_url, text, media, response.status_code, redirects)
+    return Page(
+        url,
+        final_url,
+        title or final_url,
+        text,
+        media,
+        response.status_code,
+        redirects,
+        etag,
+        last_modified,
+    )
