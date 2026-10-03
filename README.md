@@ -4,6 +4,7 @@ User accounts for the Mobile Systems coursework at NYU: register, log in with a 
 
 - **`backend/`**: JSON API in Python (FastAPI, SQLAlchemy, Alembic, PostgreSQL)
 - **`frontend/`**: single-page app (Vite, React, Tailwind CSS, shadcn/ui) that calls the backend over HTTP
+- **`backend/tracker/`**: agentic tracker (Assignment 1B) that finds and ranks the top developments on a topic, with its policy in [`config.yaml`](config.yaml)
 
 ## Quick start
 
@@ -42,6 +43,27 @@ Ctrl-C stops both servers. The database keeps running; stop it with `./scripts/d
 - **Port 5432 is taken** (e.g. by a local Postgres): set `POSTGRES_PORT=5433` in `.env` and the same port in `DATABASE_URL` in `backend/.env`, then `./scripts/db-down.sh && ./scripts/start.sh`.
 - **Port 8000 or 5173 is taken**: stop whatever is using it; both dev servers use fixed ports.
 
+## Tracker
+
+A hand-written agent loop that searches, fetches and ranks the top K developments on a topic and writes a report to `reports/`, with a trace in `traces/`. It needs only Python, uv and two free API keys, no Docker or Postgres.
+
+```bash
+cd backend
+uv sync
+cp .env.example .env                  # then set GROQ_API_KEY and TAVILY_API_KEY
+uv run python -m tracker run          # exit 0 complete, 2 partial, 3 provider failure
+```
+
+Each tool also runs without the model:
+
+```bash
+uv run python -m tracker.tools search_web "open-source robotics foundation model"
+uv run python -m tracker.tools fetch_article https://example.com/
+uv run python -m tracker.tools finish report.json
+```
+
+The topic, model, tools, budgets and allowed hosts are all in [`config.yaml`](config.yaml). See [docs/tracker.md](docs/tracker.md) for the policy fields, budgets, failure handling, fetch guardrails, state and trace format.
+
 ## Documentation
 
 | Doc | Contents |
@@ -50,5 +72,6 @@ Ctrl-C stops both servers. The database keeps running; stop it with `./scripts/d
 | [docs/api.md](docs/api.md) | Endpoints, request/response conventions, error format, web UI routes |
 | [docs/architecture.md](docs/architecture.md) | Two-origin setup, CORS, token handling, CSP, and the security decisions |
 | [docs/deployment.md](docs/deployment.md) | Production on Vercel and Neon, production migrations, CI |
+| [docs/tracker.md](docs/tracker.md) | The agentic tracker: setup, policy, budgets, failure handling, guardrails, state and traces |
 
 This project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec) for spec-driven development: approved specs are in `openspec/specs/`, proposed changes in `openspec/changes/`.
