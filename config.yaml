@@ -1,11 +1,15 @@
-# Tracker policy. Everything the agent may do is set here and validated before the
-# first network call; nothing during a run can change it. API keys never go here:
-# they come from the environment or backend/.env (see backend/.env.example).
+# Tracker policy: the internship use case. Everything the agents may do is set here and
+# validated before the first network call; nothing during a run can change it. API keys
+# never go here: they come from the environment or backend/.env (see backend/.env.example).
 # Relative paths below resolve against this file's directory.
+#
+# Pipeline (fixed in code): Scout (agent) -> Collect (code) -> Curate (agent) ->
+# Liveness (code) -> Rank (code) -> Edit (agent) -> report. See docs/tracker.md.
+# The single-agent tracker on a news topic is in examples/single-agent.yaml.
 
-# A neutral example topic from the assignment text. The real use case replaces it.
-topic: "Open-source robotics foundation models"
-k: 5  # 3 to 10
+use_case: internships
+topic: "Summer 2027 software and ML internships at NYC startups"
+k: 5  # the top K, marked in the report (3 to 10)
 
 model:
   provider: groq
@@ -31,14 +35,15 @@ search:
   price_per_credit: 0.008  # pay-as-you-go price; keeps the cost budget meaningful
   quota_patterns: ["plan", "credit"]
 
+# Hard caps for the whole run. The agents' own limits below must fit inside them.
 limits:
-  max_steps: 15  # model calls per run
+  max_steps: 60
   max_searches: 6
-  max_fetches: 12
-  max_tokens: 60000  # prompt + completion, whole run
-  reserve_tokens: 9000  # held back for the final synthesis call of a partial report
+  max_fetches: 40
+  max_tokens: 150000
+  reserve_tokens: 5000
   max_cost_usd: 0.50
-  max_wall_seconds: 300
+  max_wall_seconds: 900
 
 retry:
   max_attempts: 4
@@ -47,7 +52,7 @@ retry:
 
 fetch:
   allowed_schemes: [https, http]
-  allowed_hosts: ["*"]  # any public host; address checks still apply
+  allowed_hosts: ["*"]  # any public host; address checks still apply to every request
   connect_timeout: 5
   read_timeout: 10
   deadline_seconds: 20
@@ -57,19 +62,61 @@ fetch:
 
 state_path: .tracker/state.sqlite
 
+# Used only by the single-agent path; each agent below has its own instructions.
 instructions: |
-  You are a research tracker for {topic}. Your job is to find the {k} most important
-  recent developments on this topic and report them with sources.
+  You track {topic}. Report the {k} most relevant opportunities with sources.
 
-  How to work:
-  - Search with focused queries, then fetch the most promising primary sources
-    (official announcements, papers, repositories, reputable news).
-  - Prefer recent, concrete developments (releases, results, funding, policy) over
-    opinion pieces and listicles. Merge reports of the same development into one item.
-  - Rank by importance: impact on the field, novelty and credibility of the source.
+agents:
+  scout:
+    # Reads the open web, so it may only propose sources; code validates each one.
+    tools: [search_web, fetch_article, propose_source]
+    limits: {max_steps: 12, max_tokens: 50000, max_searches: 6, max_fetches: 10}
+    options: {max_new_sources: 5}
+    instructions: |
+      You find NYC startups that hire software or ML interns for {topic}.
+      Search for recent internship postings and lists of NYC startups that are hiring.
+      When a company has a public Greenhouse, Lever or Ashby job board, propose it with
+      propose_source: kind is greenhouse, lever or ashby and board_or_url is the board
+      identifier from the board URL (boards.greenhouse.io/<id>, jobs.lever.co/<id>,
+      jobs.ashbyhq.com/<id>). Cite as evidence_url a page you found in this run.
+      Prefer startups based in New York. Do not propose large public companies.
+  curator:
+    # A smaller model on a separate Groq quota. Reads postings, never the open web.
+    model: {name: llama-3.1-8b-instant, reasoning_effort: null}
+    tools: [get_posting, fetch_posting_detail, save_record, mark_same, flag_unclear]
+    fetch_hosts: [boards.greenhouse.io, job-boards.greenhouse.io, jobs.lever.co, jobs.ashbyhq.com]
+    limits: {max_steps: 35, max_tokens: 70000, max_fetches: 20}
+    options: {batch_size: 5}
+    instructions: |
+      You turn job postings into structured records. Copy every quote word for word
+      from the posting. If the posting does not state a field, set it to unknown.
+      Record any sentence about work authorization or visa sponsorship as written;
+      never judge it. Use mark_same only for the same role at the same company.
+  editor:
+    tools: [get_opportunities, get_posting]
+    limits: {max_steps: 6, max_tokens: 25000}
+    instructions: |
+      You write short, factual summaries of internship opportunities for a student
+      searching for {topic}. Use only facts in the record. Never add pay, dates or
+      numbers that the record does not contain.
 
-  Output contract:
-  - Call finish with at most {k} items, most important first. Each item has a short
-    title, a 2-4 sentence factual summary and the source URLs you actually used.
-  - Cite only URLs returned by search_web or fetched with fetch_article in this run.
-  - If the evidence is thin, say so in the note instead of guessing.
+# Use-case settings, validated by the internship use case.
+options:
+  # Leave out `watchlist` to use the seed list shipped with the use case
+  # (backend/tracker/usecases/internships/watchlist.yaml).
+  filters:
+    title_keywords: [intern, internship, co-op]
+    locations: [New York, NYC, Brooklyn, Remote]
+  ranking:
+    weights: {role: 3, term: 3, location: 2, recency: 1}
+    recency_days: 30
+    role_types: [internship]
+    terms: [Summer 2027]
+    locations: [New York, NYC, Brooklyn, Remote]
+  lifecycle:
+    closed_patterns:
+      - no longer accepting applications
+      - no longer accepting
+      - position has been filled
+      - job is closed
+      - this job is no longer available

@@ -33,18 +33,18 @@ Tasks marked **[parallel]** depend only on the merged core and can be built now.
 
 ## 6. Wiring (internship-pipeline)
 
-- [ ] 6.1 [after orchestration] Merge the implemented orchestration into this branch and run the full `tests_tracker` suite. Verify it passes before the use case is wired in
-- [ ] 6.2 [after orchestration] Add `wiring.py`: register a ToolSpec and CLI command for every tool, build the stage list (Collect, Rank and Report required), add `internships` to the known-use-case map, and require the `scout`, `curator` and `editor` profiles. Verify with unit tests: a missing profile is named, the stage order matches the spec, each tool runs through `python -m tracker.tools`
-- [ ] 6.3 [after orchestration] Implement the Curate stage driver (batches, fresh conversation per batch, two failures → `flag_unclear` by code, leftovers stay pending). Verify with a scripted fake model: a batch fully processed, a malformed call recovered, budget exhaustion leaves postings pending
-- [ ] 6.4 [after orchestration] Write the task prompts for the Scout, Curate and Edit stages and wire them up. Verify with a scripted end-to-end test over fake providers and fixture boards: complete run exits 0; Groq daily-quota during Curate exits 2 with Liveness, Rank and Report done; network cut with empty state exits 3 and the report says no source could be read; Scout disabled starts at Collect
-- [ ] 6.5 [after orchestration] Add an injection test: a fixture posting and a fetched page contain instructions. The scripted Scout and Curator "obey" them (propose an internal URL, `mark_same` across companies, fetch an off-list host). Verify every action is refused, records are unchanged, and the trace shows `injection_suspected`
+- [x] 6.1 [after orchestration] Merge the implemented orchestration into this branch and run the full `tests_tracker` suite. Verify it passes before the use case is wired in
+- [x] 6.2 [after orchestration] Add `wiring.py`: register a ToolSpec and CLI command for every tool, build the stage list (Collect, Rank and Report required), add `internships` to the known-use-case map, and require the `scout`, `curator` and `editor` profiles. Verify with unit tests: a missing profile is named, the stage order matches the spec, each tool runs through `python -m tracker.tools`
+- [x] 6.3 [after orchestration] Implement the Curate stage driver (batches, fresh conversation per batch, two failures → `flag_unclear` by code, leftovers stay pending). Verify with a scripted fake model: a batch fully processed, a malformed call recovered, budget exhaustion leaves postings pending
+- [x] 6.4 [after orchestration] Write the task prompts for the Scout, Curate and Edit stages and wire them up. Verify with a scripted end-to-end test over fake providers and fixture boards: complete run exits 0; Groq daily-quota during Curate exits 2 with Liveness, Rank and Report done; network cut with empty state exits 3 and the report says no source could be read; Scout disabled starts at Collect
+- [x] 6.5 [after orchestration] Add an injection test: a fixture posting and a fetched page contain instructions. The scripted Scout and Curator "obey" them (propose an internal URL, `mark_same` across companies, fetch an off-list host). Verify every action is refused, records are unchanged, and the trace shows `injection_suspected`
 
 ## 7. Policy, docs and CI
 
 - [ ] 7.1 [parallel] Research and check a watchlist of about 15 NYC startups with public Greenhouse, Lever or Ashby boards, kept as data in `usecases/internships/watchlist.yaml`. Verify a test checks every entry's identifier format
   - Status: 10 boards researched and committed; the format test passes. Still open: checking each board against the live APIs, which this environment's network policy blocks.
-- [ ] 7.2 [after orchestration] Write the internship `config.yaml` (design D10) using that watchlist. Verify the committed config loads
-- [ ] 7.3 [after orchestration] Add an internship section to `docs/tracker.md` (stages, agents and their privileges, budget split, lifecycle, report layout, hosts to allowlist) and update the README run instructions. Verify the documented offline commands run as written
+- [x] 7.2 [after orchestration] Write the internship `config.yaml` (design D10) using that watchlist. Verify the committed config loads
+- [x] 7.3 [after orchestration] Add an internship section to `docs/tracker.md` (stages, agents and their privileges, budget split, lifecycle, report layout, hosts to allowlist) and update the README run instructions. Verify the documented offline commands run as written
 - [ ] 7.4 [parallel] Keep ruff and the full `tests_tracker` suite green in CI throughout. Verify the CI job passes on the branch
   - Status: green locally (ruff, format, 244 tests). CI runs only on pull requests and pushes to master, so this is verified when the PR is opened.
 

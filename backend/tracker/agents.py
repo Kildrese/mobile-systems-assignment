@@ -165,7 +165,7 @@ class AgentLoop:
                 continue
 
             for call in reply.tool_calls:
-                if call.name == "finish" and call.arguments:
+                if call.name == "finish" and call.arguments is not None:
                     content, finished = self.finish(call.arguments, step, toolbox, trace)
                     if finished is not None:
                         return Stop(finish=finished)
@@ -226,14 +226,15 @@ class AgentLoop:
             budget.count(steps=1)
             return refuse("error", "invalid_arguments", validation_message(err))
 
-        # A cached article costs no fetch.
+        # A use-case tool may draw on the search or fetch budget; a cached article is free.
+        kind = spec.budget or name
         cached = name == "fetch_article" and toolbox.is_cached(args.url)
-        if not cached and (reason := budget.check_tool(name)):
+        if not cached and (reason := budget.check_tool(kind)):
             return refuse("budget", "budget_exhausted", f"{reason} reached")
         outcome = spec.handler(toolbox, args, step)
-        if name == "search_web" and outcome.ok:
+        if kind == "search_web" and outcome.ok:
             budget.count(searches=1, credits=float(outcome.data.get("credits", 0)))
-        elif name == "fetch_article" and (
+        elif kind == "fetch_article" and (
             outcome.status == "ok"
             or (outcome.status == "error" and outcome.reason != "invalid_arguments")
         ):

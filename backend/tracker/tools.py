@@ -24,7 +24,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from tracker import report
-from tracker.config import Policy, TrackerSecrets, load_policy
+from tracker.config import USE_CASES, Policy, TrackerSecrets, load_policy, load_use_case
 from tracker.errors import PolicyError, StateLocked, TerminalError
 from tracker.fetch import FetchError, fetch_page
 from tracker.guard import Blocked, Resolver, check
@@ -382,6 +382,9 @@ class ToolSpec:
     handler: Callable[[Toolbox, Any, int], ToolOutcome] | None
     # Whether `python -m tracker.tools <name>` runs it (one positional per argument).
     cli: bool = False
+    # The tool budget a call draws on: "search_web" (max_searches) or "fetch_article"
+    # (max_fetches). Defaults to the tool's own name, so the core tools need not set it.
+    budget: str | None = None
 
 
 REGISTRY: dict[str, ToolSpec] = {}
@@ -440,6 +443,8 @@ def main(argv: list[str] | None = None) -> int:
     p_finish = sub.add_parser("finish", help="render a report from a JSON file")
     p_finish.add_argument("report_json")
     p_finish.add_argument("--out", help="report path (default: reports/<id>.md)")
+    for name in USE_CASES:  # importing a use case registers its tools
+        load_use_case(name)
     for spec in REGISTRY.values():
         if spec.cli and spec.name not in CORE_TOOLS:
             p_tool = sub.add_parser(spec.name, help=spec.schema["function"].get("description"))
@@ -550,4 +555,8 @@ def _finish_cli(policy: Policy, file: Path, out: str | None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Run the imported module's `main`, so tools that use cases register (into
+    # `tracker.tools.REGISTRY`) are the ones this command sees.
+    from tracker.tools import main as _main
+
+    sys.exit(_main())

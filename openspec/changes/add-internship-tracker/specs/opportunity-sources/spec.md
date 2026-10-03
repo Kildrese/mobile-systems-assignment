@@ -7,7 +7,7 @@ Defines where opportunities come from: a watchlist of companies and their public
 ## ADDED Requirements
 
 ### Requirement: Watchlist
-State SHALL hold a watchlist of sources. Each source has a company name, a kind (`greenhouse`, `lever`, `ashby` or `page`), a board identifier or page URL, who added it (`config` or `scout`), and the run that added it. Sources listed under `watchlist` in `config.yaml` SHALL be loaded into state at the start of every run.
+State SHALL hold a watchlist of sources. Each source has a company name, a kind (`greenhouse`, `lever`, `ashby` or `page`), a board identifier or page URL, who added it (`config` or `scout`), and the run that added it. Sources listed under `options.watchlist` in `config.yaml`, or in the watchlist shipped with the use case when that is not set, SHALL be loaded into state at the start of every run.
 
 #### Scenario: Seeded from config
 - **WHEN** `config.yaml` lists a Greenhouse board for a company

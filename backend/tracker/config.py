@@ -29,7 +29,7 @@ AGENT_NAME = re.compile(r"[a-z][a-z0-9_]*")
 # Use cases the tracker can run: name -> module. Fixed in code, never a free-form import
 # path. A use case module registers its tools on import and defines `stages(policy)` and,
 # optionally, `report_writer`.
-USE_CASES: dict[str, str] = {}
+USE_CASES: dict[str, str] = {"internships": "tracker.usecases.internships.wiring"}
 
 
 class _Strict(BaseModel):
@@ -210,6 +210,8 @@ class Policy(_Strict):
     reports_dir: str = "reports"
     traces_dir: str = "traces"
     use_case: str | None = None
+    # Settings for the use case, validated by the use case itself before the run starts.
+    options: dict[str, Any] = Field(default_factory=dict)
     agents: dict[str, AgentProfile] = Field(default_factory=dict)
     # The directory relative paths resolve against: the policy file's directory.
     base_dir: Path

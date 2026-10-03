@@ -65,7 +65,9 @@ class GuardedHttp:
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        allowed_hosts: tuple[str, ...] | None = None,
     ) -> None:
+        self.allowed_hosts = allowed_hosts  # narrower than fetch.allowed_hosts, if set
         self.fetch = fetch
         self.retry = retry
         self.resolver = resolver
@@ -92,6 +94,7 @@ class GuardedHttp:
                     transport=self.transport,
                     clock=self.clock,
                     headers=headers,
+                    allowed_hosts=self.allowed_hosts,
                 )
             except Blocked as err:
                 raise HttpFailure(err.reason, err.detail, attempts=attempt + 1) from None

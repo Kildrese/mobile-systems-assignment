@@ -26,13 +26,19 @@ The tracker core (merged to `master`) is a general runtime, and `add-agent-orche
 - `opportunity-report`: ranking in code, the Editor's summaries, and the cumulative New, Still open and Closed report.
 
 ### Modified Capabilities
-<!-- None. Builds on add-agentic-tracker-core and add-agent-orchestration without changing their requirements. Archive order: orchestration, then this change. -->
+- `tracker-config`: the policy file may also define `options`, use-case settings validated by the use case before any network call.
 
 ## Impact
 
 - **Code**:
   - New package: `usecases/internships/` (store, sources, curation, lifecycle, ranking, editing, report, wiring; see design D12).
   - Changed core module: `fetch.py` gains optional request headers (for `If-None-Match`/`If-Modified-Since`), `304` pages carrying their validators, and the HTTP status on `FetchError`. All of it is backward-compatible. The internship schema is versioned separately, so `state.py` does not change.
+- **Small runtime changes** (all backward-compatible):
+  - `config.py`: top-level `options` and `internships` in the known use cases.
+  - `tools.py`: `ToolSpec.budget`, so a use-case tool can draw on `max_fetches` or `max_searches`. `python -m tracker.tools` loads the known use cases, so their tools have commands.
+  - `agents.py`: `finish` with empty arguments now goes to the finish handler (it used to be refused as invalid), and tool budgets follow `ToolSpec.budget`.
+  - `fetch.py`: optional request headers, `304` pages with validators, and the HTTP status on `FetchError`.
+- **Repository layout**: the root `config.yaml` runs the internship use case; the single-agent policy moves to `examples/single-agent.yaml`.
 - **Dependencies**: needs `add-agent-orchestration` implemented first. This branch is stacked as master → orchestration → internship.
 - **Policy**: `config.yaml` switches to the internship use case: topic, K, agents, watchlist, filters, ranking weights, and fetch hosts narrowed to the job-board domains plus watchlist domains for every agent except the Scout.
 - **External services**: `boards-api.greenhouse.io`, `api.lever.co` and `api.ashbyhq.com` (public, no keys), plus a second Groq model. The cloud dev environment must allowlist these hosts for real runs.

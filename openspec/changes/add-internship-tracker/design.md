@@ -86,6 +86,8 @@ Normalization: NFKC, collapse whitespace, lowercase, and unify straight and curl
 The Editor's `finish(summaries=[{opportunity_id, text}])` is checked per summary: the id exists and is in the requested set, the text is at most 3 sentences, and every number, currency amount or date in the text appears in the record's fields or quotes (regex extraction plus normalization). A rejected summary is dropped and the rejection is traced. The report then falls back to the fields alone.
 
 ### D10. Policy shape (internship `config.yaml`)
+As built, use-case settings live under a top-level `options` section (the core rejects unknown keys), and agent settings under `agents.<name>.options`. The committed `config.yaml` is the source of truth; the sketch below shows the original plan.
+
 ```yaml
 use_case: internships
 topic: "Summer 2027 software/ML internships at NYC startups"

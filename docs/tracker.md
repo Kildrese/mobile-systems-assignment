@@ -78,6 +78,7 @@ Everything the agent may do is in one file at the repository root. It is validat
 | `fetch` | Guardrail settings, see below |
 | `instructions` | The system prompt; `{topic}` and `{k}` are filled in |
 | `state_path`, `reports_dir`, `traces_dir` | Defaults `.tracker/state.sqlite`, `reports`, `traces` |
+| `use_case`, `agents`, `options` | Multiple agents for a use case built into the tracker; see [Multiple agents](#multiple-agents) and [The internship use case](#the-internship-use-case) |
 
 Switching provider is a config change: add an entry under `providers` (Groq, OpenRouter and Gemini's OpenAI-compatible endpoint all work) and point `model.provider` at it.
 
@@ -173,6 +174,49 @@ agents:
 **Outcomes.** Each stage ends `complete`, `partial` (stopped by a budget or a provider failure), `skipped` (its agent has `enabled: false`, or a provider it needs failed for good earlier in the run) or `failed` (it raised). A stage the use case marks required cannot be disabled. The run is `failed` (exit `3`) when a required stage failed; `partial` (exit `2`) when any stage was partial, failed, or skipped after a provider failure; otherwise `complete` (exit `0`). After a terminal provider failure, later stages that need that provider are skipped and the rest, including code stages, still run. A report is written in every case.
 
 **Trace fields.** Every event written during a stage carries `stage`, and agent stages also `agent`. The summary event adds `stages`: per stage its `name`, `agent`, `outcome`, `reason` and `usage`.
+
+## The internship use case
+
+The repository's `config.yaml` runs `use_case: internships`: it tracks Summer 2027 software and ML internships at NYC startups and keeps a cumulative report. The single-agent tracker on a news topic is in `examples/single-agent.yaml` (`uv run python -m tracker run --config ../examples/single-agent.yaml`). The code is in `backend/tracker/usecases/internships/`.
+
+**Pipeline.** Fixed in code:
+
+| Stage | Kind | What it does | Required |
+| --- | --- | --- | --- |
+| `scout` | agent (`gpt-oss-120b`) | Searches the web and proposes new job boards with `propose_source` | no |
+| `collect` | code | Reads every watchlist board (Greenhouse, Lever, Ashby JSON APIs, no keys) and keeps postings whose title and location match `options.filters` | yes |
+| `curate` | agent (`llama-3.1-8b-instant`) | Turns pending postings into opportunity records, in batches of `batch_size`, each from a fresh conversation | no |
+| `liveness` | code | Decides open, closed or unknown for every opportunity | no |
+| `rank` | code | Scores open opportunities with `options.ranking` and marks the top K | yes |
+| `edit` | agent (`gpt-oss-120b`) | Writes short summaries for new and top-K opportunities | no |
+
+**Privileges.** Only the Scout reads the open web, and it can only *propose* sources. Code accepts a proposal only for a known board kind with a valid identifier (or a page that passes the fetch guardrails), citing an `evidence_url` the Scout actually saw in this run, up to `max_new_sources` per run. The Curator has no search and fetches only from job-board posting hosts (`fetch_hosts`). The Editor can read records and postings but cannot change ranks, statuses or sources. Agents never talk to each other: stages hand on records through the state file.
+
+**Verified records.** Every field the Curator fills in (title, role type, term, locations, remote, pay, deadline, work authorization) must carry a quote that code finds word for word in the posting text, after normalizing case, whitespace, curly quotes and dashes; otherwise `save_record` answers `quote_not_found`. Company and URL come from the source, never from the model. Work-authorization wording is stored as a quote only: it never filters or ranks an opportunity. A posting whose URL is already linked to an opportunity is linked by code; the Curator may link postings only within the same company (`mark_same`), otherwise `company_mismatch`. A posting left unresolved in two batches is parked as unclear.
+
+**Lifecycle.** An opportunity listed on a job board closes only when every board it is on was read in this run and none lists it; a board that cannot be read changes nothing (the report notes "not checked this run"). Page-only opportunities are re-checked with a conditional request: 404, 410 or wording from `options.lifecycle.closed_patterns` closes them, a timeout or other failure makes them `unknown`. An opportunity that appears again reopens and keeps its first-seen run.
+
+**Report.** Three sections, each opportunity in exactly one:
+
+1. **New since last run**: first seen in this run, by rank; the first K with all fields, the work-authorization quote and the summary.
+2. **Still open**: every earlier opportunity that is still open, accumulated across runs, in one table; the current top K are marked.
+3. **Closed since last run**: with the evidence (the board read, the HTTP status or the closing wording).
+
+Summaries are rejected when they run over 3 sentences or mention a number or month that is not in the record; the report then shows the fields alone.
+
+**Network.** Boards are read with `If-None-Match`/`If-Modified-Since`; a `304` re-parses the cached body, so an unchanged board costs no download and still counts as read. Board JSON may be up to `options.board_max_bytes` (default 8 MB); pages keep `fetch.max_bytes`. The Curator's detail-page fetches draw on its `max_fetches`.
+
+**Watchlist.** Without `options.watchlist`, the run starts from `backend/tracker/usecases/internships/watchlist.yaml` (ten NYC boards). Check those boards against the live APIs before relying on them.
+
+**Tools without the model.** Every internship tool runs from the command line against the state file, for example:
+
+```bash
+uv run python -m tracker.tools get_posting 1
+uv run python -m tracker.tools flag_unclear 7 "no term or location"
+uv run python -m tracker.tools save_record 1 '{"title": {"value": "SWE Intern", "quote": "SWE Intern"}}'
+```
+
+**Hosts to allow.** A real run needs `api.groq.com`, `api.tavily.com`, `boards-api.greenhouse.io`, `api.lever.co`, `api.ashbyhq.com` and the posting hosts (`boards.greenhouse.io`, `job-boards.greenhouse.io`, `jobs.lever.co`, `jobs.ashbyhq.com`), plus whatever pages the Scout reads.
 
 ## Tests
 
