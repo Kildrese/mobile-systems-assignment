@@ -16,9 +16,9 @@ Tasks marked **[parallel]** depend only on the merged core and can be built now.
 
 ## 3. Curation (opportunity-curation)
 
-- [ ] 3.1 [parallel] Implement quote normalization and verification (design D7). Verify with unit tests: curly quotes and whitespace still match, an invented quote fails with `quote_not_found` naming the field
-- [ ] 3.2 [parallel] Implement the Curator's domain functions (`get_posting`, `fetch_posting_detail` with a host list, `save_record`, `mark_same` with the company check, `flag_unclear`). Verify with unit tests per spec scenario, including `host_not_allowed` and `company_mismatch`
-- [ ] 3.3 [parallel] Implement code-side matching (same job id or canonical URL is linked by code) and candidate generation. Verify with unit tests: an exact match is linked without the model, a similar title from the same company becomes a candidate, another company's never does
+- [x] 3.1 [parallel] Implement quote normalization and verification (design D7). Verify with unit tests: curly quotes and whitespace still match, an invented quote fails with `quote_not_found` naming the field
+- [x] 3.2 [parallel] Implement the Curator's domain functions (`get_posting`, `fetch_posting_detail` with a host list, `save_record`, `mark_same` with the company check, `flag_unclear`). Verify with unit tests per spec scenario, including `host_not_allowed` and `company_mismatch`
+- [x] 3.3 [parallel] Implement code-side matching (same job id or canonical URL is linked by code) and candidate generation. Verify with unit tests: an exact match is linked without the model, a similar title from the same company becomes a candidate, another company's never does
 
 ## 4. Lifecycle (opportunity-lifecycle)
 

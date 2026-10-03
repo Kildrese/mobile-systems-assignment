@@ -16,7 +16,7 @@ An opportunity record SHALL have: company, title, role type (`internship`, `new_
 ### Requirement: Curator tools
 The Curator agent SHALL work through pending postings in batches and have exactly these tools:
 - `get_posting(id)` returns stored posting text as untrusted data.
-- `fetch_posting_detail(url)` fetches a posting page, limited to the Curator's `fetch_hosts`.
+- `fetch_posting_detail(posting_id, url)` fetches a posting's page, limited to the Curator's `fetch_hosts`, and keeps its text with that posting so quotes can come from it.
 - `save_record(posting_id, record)` stores an opportunity record.
 - `mark_same(posting_id, opportunity_id, reason)` links a posting to an existing opportunity.
 - `flag_unclear(posting_id, reason)` parks a posting it cannot resolve.
