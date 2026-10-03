@@ -2,7 +2,7 @@
 
 ## Why
 
-Assignment 1B asks for an agentic tracker: an agent that finds the top K developments on a topic, ranks and summarizes them with sources, and reports what is new on the next run. Our topic is new engineering roles at NYC startups (founding, backend, ML, Summer 2027 internships). Most of the grade depends on runtime behavior that has to be built before any tracking logic: a hand-written loop with enforced budgets, classified API failures, fetch guardrails, retrieved text treated as data, persisted state and a trace log. The assignment forbids agent frameworks (LangChain, CrewAI and similar) because those hide the parts being graded. This change builds that foundation. The Assignment 1 app is frozen on the `assignment-1a` branch, so `master` is free to grow.
+Assignment 1B asks for an agentic tracker: an agent that finds the top K developments on a topic, ranks and summarizes them with sources, and reports what is new on the next run. Most of the grade depends on runtime behavior that has to be built before any tracking logic: a hand-written loop with enforced budgets, classified API failures, fetch guardrails, retrieved text treated as data, persisted state and a trace log. The assignment forbids agent frameworks (LangChain, CrewAI and similar) because those hide the parts being graded. This change builds that foundation as a general agent runtime. Nothing in it is tied to a use case: the topic, instructions, enabled tools and allowed hosts are all policy, so the same runtime can track any topic by swapping `config.yaml`. The Assignment 1 app is frozen on the `assignment-1a` branch, so `master` is free to grow.
 
 ## What Changes
 
@@ -18,7 +18,7 @@ Assignment 1B asks for an agentic tracker: an agent that finds the top K develop
 - No secrets in the repo: `GROQ_API_KEY` and `TAVILY_API_KEY` come from the environment. `backend/.env.example` lists them with empty values.
 - A new CI job runs the tracker's lint and unit tests without Postgres or network access.
 
-Out of scope, each a follow-up change: the recrawl diff (New, Still in top K, Dropped) and same-development detection, quote-level provenance checks, connectors for public job-board APIs (Greenhouse, Lever, Ashby), the web UI and API endpoints for viewing reports, and `AGENT.md` plus the graded runs.
+Out of scope, each a follow-up change: the recrawl diff (New, Still in top K, Dropped) and same-development detection, quote-level provenance checks, the concrete use case (topic, instructions, host allowlist and any source-specific connectors), the web UI and API endpoints for viewing reports, and `AGENT.md` plus the graded runs.
 
 ## Capabilities
 

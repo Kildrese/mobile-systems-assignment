@@ -7,7 +7,7 @@ Holds the tracker's whole runtime policy in one reviewable `config.yaml`, and ke
 ## ADDED Requirements
 
 ### Requirement: Policy file
-The tracker SHALL read its policy from a YAML file: `config.yaml` at the repository root by default, or the path given with `--config`. The file SHALL define `topic`, `k`, `model` (provider, base URL, model name, per-call output token cap), `instructions`, `tools` (the enabled tool names), `limits` and `fetch` (allowed schemes, allowed hosts, timeout, size cap).
+The tracker SHALL read its policy from a YAML file: `config.yaml` at the repository root by default, or the path given with `--config`. The file SHALL define `topic`, `k`, `model` (provider, model name, per-call output token cap, optional sampling and reasoning-effort settings), `instructions`, `tools` (the enabled tool names), `limits` and `fetch` (allowed schemes, allowed hosts, timeout, size cap).
 
 #### Scenario: Default location
 - **WHEN** a user runs the tracker from `backend/` without `--config`

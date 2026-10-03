@@ -21,7 +21,7 @@ Stops `fetch_article` from becoming a server-side request forgery or resource-ex
 `fetch_article` SHALL reject URLs whose host does not match the policy's allowed host patterns. Patterns are exact hostnames or `*.domain` suffixes. A single `*` allows any public host.
 
 #### Scenario: Host outside policy
-- **WHEN** policy allows only `*.greenhouse.io` and the URL host is `example.org`
+- **WHEN** policy allows only `*.example.com` and the URL host is `example.org`
 - **THEN** it returns reason `host_not_allowed` without resolving the host
 
 ### Requirement: Non-public addresses are blocked

@@ -6,7 +6,7 @@ The repo is the Assignment 1 app: FastAPI and SQLAlchemy on Postgres in `backend
 
 Constraints from the assignment (see proposal.md, Why):
 - The loop must be written by us. Graders run the tracker from a clean clone, call `python -m tracker.tools fetch_article <url>` with hostile URLs, seed a prompt-injection page, and test with a bogus key and with the network cut.
-- The free tiers set the budget. Groq's free plan limits each model by RPM, RPD, TPM and TPD. Third-party figures put `llama-3.3-70b-versatile` at 30 RPM, 1K RPD, 12K TPM and 100K TPD; we confirm them on Groq's own page before the graded runs. Tavily gives 1,000 credits a month, and one basic search costs one credit. Tokens per minute is the tightest limit, which shapes how much page text reaches the model.
+- The free tiers set the budget. Groq's free plan limits each model by RPM, RPD, TPM and TPD. Third-party figures put `openai/gpt-oss-120b` at 30 RPM, 1K RPD, 8K TPM and 200K TPD (`llama-3.3-70b-versatile`: 30 RPM, 1K RPD, 12K TPM, 100K TPD); we confirm them on Groq's own page before the graded runs. Tavily gives 1,000 credits a month, and one basic search costs one credit. Tokens per minute is the tightest limit, which shapes how much page text reaches the model.
 
 ## Goals / Non-Goals
 
@@ -16,7 +16,7 @@ Constraints from the assignment (see proposal.md, Why):
 - Every behavior in the specs can be tested offline: the network is faked in unit tests.
 
 **Non-Goals:**
-- Recrawl sections (New, Still, Dropped), deduplication by development, quote-level provenance, job-board connectors and the web UI. Each is a follow-up change. This design only keeps their data available: items, articles and content hashes are stored.
+- Recrawl sections (New, Still, Dropped), deduplication by development, quote-level provenance, use-case connectors and the web UI. Each is a follow-up change. This design only keeps their data available: items, articles and content hashes are stored.
 - Client-side rate pacing to avoid 429s. Reacting to 429s correctly comes first.
 - Concurrency inside a run. Tool calls run one after another, which keeps budgets and the trace simple.
 
@@ -33,6 +33,7 @@ The tracker shares `backend/`'s uv project, lockfile, ruff config and Python ver
 ### D3. LLM over raw HTTP (httpx) against the OpenAI-compatible chat-completions API
 One `ChatClient` posts to `{base_url}/chat/completions` with `tools` and `tool_choice: auto`. Groq, OpenRouter and Gemini's OpenAI-compatible endpoint all speak this format, so switching providers is a config change. Each provider entry in config names its base URL, key variable and a `quota_patterns` list (regexes over the 429 body that mean a daily or monthly quota).
 - *Alternative:* the `openai` or `groq` SDK. Their built-in retries (`max_retries=2` by default) would have to be disabled, and they wrap the response headers we need for classification. Raw httpx keeps every retry visible in our code and our trace, which is what's graded.
+- *Default model:* `openai/gpt-oss-120b`. OpenAI built it for agentic workflows (tool use, instruction following, adjustable reasoning effort), and Groq's tool-use docs advise using its newest models. Its free-tier daily token budget (200K TPD) is twice Llama 3.3's. Trade-offs: 8K TPM, reasoning tokens count against that, and it does not do parallel tool calls (our loop runs calls one at a time anyway). We set `reasoning_effort: low` to save tokens. `llama-3.3-70b-versatile` (older, Dec 2024, more prone to malformed tool calls) stays as a fallback that is one config line away.
 - *Alternative:* the Anthropic Messages API as the default. It's paid and uses a different format. It can be added later as a second client class behind the same interface.
 
 ### D4. Failure classification is a pure function
@@ -86,11 +87,11 @@ An append-only JSONL writer that flushes after every line. Event schema as in th
 ### D10. Policy model
 Pydantic models (already a dependency) validate `config.yaml` with `extra="forbid"`, so a typo in a key fails loudly. One `Policy` object is built once and frozen (`frozen=True`), and every component receives it. Keys are read with the same `.env` loading as the app (`backend/.env`), through a separate `TrackerSecrets` settings class, so the tracker never requires `DATABASE_URL`.
 
-Initial `config.yaml` (to be refined when the job-board connectors land):
+Initial `config.yaml`. The topic is a neutral example taken from the assignment text; the real use case replaces it in its own change:
 ```yaml
-topic: "New software engineering roles (founding, backend, ML, Summer 2027 internships) at NYC startups"
+topic: "Open-source robotics foundation models"
 k: 5
-model: { provider: groq, name: llama-3.3-70b-versatile, max_output_tokens: 1024, temperature: 0.2 }
+model: { provider: groq, name: openai/gpt-oss-120b, max_output_tokens: 1024, temperature: 0.2, reasoning_effort: low }
 providers:
   groq:   { base_url: https://api.groq.com/openai/v1, key_env: GROQ_API_KEY, price_per_mtok_in: 0, price_per_mtok_out: 0,
             quota_patterns: ["per day", "\\(RPD\\)", "\\(TPD\\)"] }
@@ -102,7 +103,7 @@ fetch: { allowed_schemes: [https, http], allowed_hosts: ["*"], connect_timeout: 
          max_bytes: 2000000, max_redirects: 5, max_chars_for_model: 6000 }
 state_path: .tracker/state.sqlite
 instructions: |
-  You track … (role, ranking criteria, output contract, data-handling rules)
+  You are a research tracker for {topic} … (ranking criteria, output contract, data-handling rules; {topic} and {k} are filled from policy)
 ```
 
 ### D11. CI
@@ -110,9 +111,9 @@ A new `tracker` job runs `uv sync --locked`, `ruff check`, `ruff format --check`
 
 ## Risks / Trade-offs
 
-- [Groq TPM (8K–12K) is smaller than one fat prompt] → Cut page text per article (D5), keep the history compact by replacing old tool results with a short stub after they are summarized, and treat per-minute 429s as normal transient retries.
+- [Groq TPM (8K for gpt-oss-120b, reasoning tokens included) is smaller than one fat prompt] → Cut page text per article (D5), keep the history compact by replacing old tool results with a short stub after they are summarized, and treat per-minute 429s as normal transient retries.
 - [Free-tier figures come from third-party pages] → Confirm limits on Groq's and Tavily's own pages before the graded runs. Quota detection uses body patterns from config, so a wording change is a config fix.
-- [`allowed_hosts: ["*"]` is broad] → The address checks are the real SSRF defense. The host allowlist narrows scope and is expected to shrink to ATS and company domains when connectors arrive.
+- [`allowed_hosts: ["*"]` is broad] → The address checks are the real SSRF defense. The host allowlist narrows scope and is expected to shrink to the use case's source domains when one is configured.
 - [Pinning to an IP with SNI could break hosts behind some CDNs] → Use the first vetted address of each family. A pinning failure counts as a fetch error result the model can route around. It is not terminal.
 - [A regex injection detector misses paraphrased attacks] → It only produces a trace signal. Containment comes from fixed tools, budgets and validated `finish` output, and `AGENT.md` will report this honestly.
 - [The model may never call `finish`] → `max_steps` and the reserved synthesis call guarantee a partial report.
@@ -125,4 +126,3 @@ This is new code on `master`, and the existing app is unaffected. Rollback means
 ## Open Questions
 
 - Commit state alongside reports so graders can see the recrawl? The assignment requires reports and traces, not state. This can be decided in the recrawl change.
-- Default model: `llama-3.3-70b-versatile` (12K TPM, 100K TPD) or `openai/gpt-oss-120b` (8K TPM, 200K TPD). It's a config value, chosen after a trial run.

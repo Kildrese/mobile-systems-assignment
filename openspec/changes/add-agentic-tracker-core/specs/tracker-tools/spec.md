@@ -10,7 +10,7 @@ Defines the tracker's tools (`search_web`, `fetch_article`, `finish`): their inp
 `search_web(query)` SHALL query the configured search provider and return a list of results. Each result SHALL have title, URL and snippet. The number of results SHALL be capped by policy. Each call SHALL count one search against `max_searches`, and the trace SHALL record the provider's credits used. An empty or overlong query (over 400 characters) SHALL be rejected without a network call.
 
 #### Scenario: Normal search
-- **WHEN** `search_web("founding engineer NYC startup")` is called with a valid key
+- **WHEN** `search_web("open-source robotics foundation model release")` is called with a valid key
 - **THEN** it returns up to the configured number of results, each with title, URL and snippet
 
 #### Scenario: Empty query

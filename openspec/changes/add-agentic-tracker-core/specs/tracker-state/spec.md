@@ -28,7 +28,7 @@ Each run SHALL be recorded with its id, start and end time, topic, K, status (`c
 Each fetched article SHALL be stored once under its canonical URL, together with original URL, title, extracted text, content hash, first-seen run and last-fetched time. Canonicalization SHALL lowercase scheme and host, drop the fragment, drop default ports, and remove common tracking parameters (`utm_*`, `gclid`, `fbclid`, `ref`).
 
 #### Scenario: Tracking parameters
-- **WHEN** `https://Example.com/jobs/1?utm_source=x#apply` is fetched and later `https://example.com/jobs/1` is requested
+- **WHEN** `https://Example.com/news/1?utm_source=x#top` is fetched and later `https://example.com/news/1` is requested
 - **THEN** the second request is served from state as the same article
 
 ### Requirement: Reported items are stored
