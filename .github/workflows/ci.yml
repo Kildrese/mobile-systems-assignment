@@ -1,5 +1,6 @@
 # Checks every pull request and every push to master. No secrets needed: the
-# backend job runs against its own Postgres service container.
+# backend job runs against its own Postgres service container, and the tracker
+# job fakes every provider, so no CI job calls a real API.
 name: CI
 
 on:
@@ -47,6 +48,24 @@ jobs:
       # Integration tests: a separate app_test database on the same server,
       # created and migrated from scratch by the tests.
       - run: uv run pytest
+
+  tracker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - run: uv sync --locked
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      # No services and no secrets: the tracker needs neither Postgres nor network.
+      - run: uv run pytest tests_tracker
 
   frontend:
     runs-on: ubuntu-latest
