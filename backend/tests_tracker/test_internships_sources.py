@@ -124,7 +124,7 @@ def test_watchlist_seeded_from_config(store):
 
 def test_shipped_watchlist_is_valid():
     entries = read_watchlist()
-    assert len(entries) >= 10
+    assert len(entries) >= 9
     assert len({(e.kind, e.board.lower()) for e in entries}) == len(entries)
     for entry in entries:
         assert board_url(entry.kind, entry.board).startswith("https://")

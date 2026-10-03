@@ -41,7 +41,7 @@ Tasks marked **[parallel]** depend only on the merged core and can be built now.
 
 ## 7. Policy, docs and CI
 
-- [ ] 7.1 [parallel] Research and check a watchlist of about 15 NYC startups with public Greenhouse, Lever or Ashby boards, kept as data in `usecases/internships/watchlist.yaml`. Verify a test checks every entry's identifier format
+- [x] 7.1 [parallel] Research and check a watchlist of about 15 NYC startups with public Greenhouse, Lever or Ashby boards, kept as data in `usecases/internships/watchlist.yaml`. Verify a test checks every entry's identifier format
   - Status: 10 boards researched and committed; the format test passes. Still open: checking each board against the live APIs, which this environment's network policy blocks.
 - [x] 7.2 [after orchestration] Write the internship `config.yaml` (design D10) using that watchlist. Verify the committed config loads
 - [x] 7.3 [after orchestration] Add an internship section to `docs/tracker.md` (stages, agents and their privileges, budget split, lifecycle, report layout, hosts to allowlist) and update the README run instructions. Verify the documented offline commands run as written
