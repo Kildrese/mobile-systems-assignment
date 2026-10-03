@@ -31,8 +31,8 @@ The tracker core (merged to `master`) is a general runtime, and `add-agent-orche
 ## Impact
 
 - **Code**:
-  - New modules: `usecases/internships/` (stages, tools), `sources/` (greenhouse, lever, ashby), `opportunities.py`, `lifecycle.py` and `ranking.py`.
-  - Changed modules: `state.py` (migration 2), `report.py` (a cumulative renderer next to the existing one). The runtime itself is not changed here.
+  - New package: `usecases/internships/` (store, sources, curation, lifecycle, ranking, editing, report, wiring; see design D12).
+  - Changed module: `state.py` (migration 2 appended to `MIGRATIONS`). No other runtime module changes here.
 - **Dependencies**: needs `add-agent-orchestration` implemented first. This branch is stacked as master → orchestration → internship.
 - **Policy**: `config.yaml` switches to the internship use case: topic, K, agents, watchlist, filters, ranking weights, and fetch hosts narrowed to the job-board domains plus watchlist domains for every agent except the Scout.
 - **External services**: `boards-api.greenhouse.io`, `api.lever.co` and `api.ashbyhq.com` (public, no keys), plus a second Groq model. The cloud dev environment must allowlist these hosts for real runs.

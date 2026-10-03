@@ -26,7 +26,7 @@ The motivation is in proposal.md (Why). The free-tier context: Groq limits each 
 ## Decisions
 
 ### D1. Use case as a plugin
-`usecases/internships/__init__.py` registers its tools in the orchestration tool registry and returns its stage list, in order, to the conductor. `use_case: internships` in policy selects it. Agent stages are generic `AgentLoop`s with a task prompt per stage. Code stages are plain functions over `StageContext`. Nothing in `loop.py`, `budget.py` or `conductor.py` changes here.
+`usecases/internships/wiring.py` registers its tools in the orchestration tool registry and returns its stage list, in order, to the conductor. `use_case: internships` in policy selects it. Agent stages are generic `AgentLoop`s with a task prompt per stage. Code stages are plain functions over `StageContext`. Nothing in `loop.py`, `budget.py` or `conductor.py` changes here.
 
 ### D2. Tools added by this use case
 - `propose_source` (Scout)
@@ -54,12 +54,12 @@ Collect, Rank and Report are `required`. Skipping and outcome rules come from th
 Curate gives the agent one batch (default 5 postings) per user turn: "Process postings A–E; each must end saved, linked or flagged." When a batch is done, the conductor clears the conversation and sends the next batch. That keeps the 8B model's context small and fits the 6K TPM limit. The same-role candidates for each posting (D7) are included in the batch prompt.
 
 ### D5. Collectors
-`sources/greenhouse.py`, `lever.py`, `ashby.py`, each with `collect(source, http) -> list[RawPosting]`:
+In `usecases/internships/sources.py`, one collector per board type, each `collect(source, http) -> list[RawPosting]`:
 - Greenhouse: `GET https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true` (`content` is HTML-escaped, so unescape it and convert to text)
 - Lever: `GET https://api.lever.co/v0/postings/{company}?mode=json`
 - Ashby: `GET https://api.ashbyhq.com/posting-api/job-board/{name}?includeCompensation=true`
 
-All of them use the core `fetch` path, so guardrails and address pinning apply, with a JSON content type and a larger `max_bytes` for boards (config `collect.max_bytes`). Board identifiers are checked with `^[a-z0-9][a-z0-9-_.]{0,80}$` before any URL is built. ETag and Last-Modified values are stored in `http_cache(url, etag, last_modified, body_hash, at)`. A `304` reuses the `raw_postings` from the last successful read.
+All of them go through the `BoardHttp` seam (D12) over the core `fetch` path, so guardrails and address pinning apply, with a JSON content type and a larger `max_bytes` for boards (config `collect.max_bytes`). Board identifiers are checked with `^[a-z0-9][a-z0-9-_.]{0,80}$` before any URL is built. ETag and Last-Modified values are stored in `http_cache(url, etag, last_modified, body_hash, at)`. A `304` reuses the `raw_postings` from the last successful read.
 
 ### D6. State migration 2
 ```
@@ -115,6 +115,34 @@ Expected round trips on a first run:
 - Edit: ≤6 Groq calls.
 
 On later runs most board requests return `304`, and only new postings are curated. Each host gets one reused `httpx.Client`, so keep-alive and TLS session reuse apply. Requests go out one at a time, which is polite toward the job boards.
+
+### D12. Working in parallel with orchestration: the seam
+This change is implemented while `add-agent-orchestration` is still being built, so the use-case code has to compile and be tested without it. The rule: **domain code depends only on the merged core; only the wiring layer depends on orchestration.**
+
+```
+backend/tracker/usecases/internships/
+  store.py        OpportunityStore: migration 2 tables, over the core StateStore connection   [parallel]
+  sources.py      watchlist, identifier checks, Greenhouse/Lever/Ashby collectors, prefilter   [parallel]
+  curation.py     quote checks, matching, candidates, the Curator's tool functions             [parallel]
+  lifecycle.py    board and page liveness                                                        [parallel]
+  ranking.py      scoring, ranks                                                                 [parallel]
+  editing.py      summary checks, the Editor's tool functions                                    [parallel]
+  report.py       cumulative renderer                                                            [parallel]
+  wiring.py       ToolSpecs, Stage objects, prompts, use-case registration                      [after orchestration]
+```
+
+Domain functions take their dependencies explicitly and return the core's `ToolOutcome` (from `tracker.tools`) for anything a model will call, for example:
+
+```python
+def save_record(store: OpportunityStore, posting_id: int, record: dict) -> ToolOutcome
+def mark_same(store: OpportunityStore, posting_id: int, opportunity_id: int, reason: str) -> ToolOutcome
+def propose_source(store: OpportunityStore, seen_urls: set[str], run_id: str, cap: int, **args) -> ToolOutcome
+def collect_source(source: Source, http: BoardHttp, trace: Trace) -> CollectResult
+```
+
+They never import `tracker.conductor`, `tracker.agents`, or registry symbols. HTTP for boards and pages goes through a small `BoardHttp` protocol, implemented over the core `fetch.fetch_page` path (guardrails and pinning included), so tests can inject respx transports.
+
+`wiring.py` is the only file that touches orchestration. It assumes the interfaces in `add-agent-orchestration` design D4/D6: `ToolSpec(name, args_model, schema, handler, cli)` plus `register(spec)`; `Stage` with `name`, `kind`, `agent`, `required`, `providers` and `run(ctx) -> StageOutcome`; and `StageContext(policy, profile, state, trace, budget, clients)`. If the orchestration implementation lands with different names, only `wiring.py` changes.
 
 ## Risks / Trade-offs
 
