@@ -1,5 +1,7 @@
 # Tracker
 
+For a step-by-step walkthrough of the loop itself, see [agent-loop.md](agent-loop.md).
+
 The tracker is an agent that finds the top K developments on a topic, ranks and summarizes them with sources, and writes a Markdown report. Its loop is written by hand in `backend/tracker/` (no agent framework). Code enforces the budgets, classifies API failures, guards every fetch and records each call in a trace.
 
 It shares `backend/`'s uv project but imports nothing from the FastAPI app and needs neither Postgres nor Docker.
@@ -135,7 +137,7 @@ Search results and page text reach the model only inside `<untrusted_data>` bloc
 
 | Path | Contents | In git |
 | --- | --- | --- |
-| `.tracker/state.sqlite` | Runs (status, stop reason, usage), fetched articles by canonical URL with text and content hash, searches, reported items | No |
+| `.tracker/state.sqlite` | Runs (status, stop reason, usage), fetched articles by canonical URL with their text, searches, reported items | No |
 | `reports/<run_id>.md` | The report: topic, run id, time, status, budget used, ranked items with sources | No |
 | `traces/<run_id>.jsonl` | One JSON event per model call attempt and tool call, then a summary event | No |
 
