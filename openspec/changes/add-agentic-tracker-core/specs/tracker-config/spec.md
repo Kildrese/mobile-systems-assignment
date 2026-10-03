@@ -7,7 +7,7 @@ Holds the tracker's whole runtime policy in one reviewable `config.yaml`, and ke
 ## ADDED Requirements
 
 ### Requirement: Policy file
-The tracker SHALL read its policy from a YAML file: `config.yaml` at the repository root by default, or the path given with `--config`. The file SHALL define `topic`, `k`, `model` (provider, model name, per-call output token cap, optional sampling and reasoning-effort settings), `instructions`, `tools` (the enabled tool names), `limits` and `fetch` (allowed schemes, allowed hosts, timeout, size cap).
+The tracker SHALL read its policy from a YAML file: `config.yaml` at the repository root by default, or the path given with `--config`. The file SHALL define `topic`, `k`, `model` (provider, model name, per-call output token cap, optional sampling and reasoning-effort settings), `instructions`, `limits` and `fetch` (allowed schemes, allowed hosts, timeout, size cap).
 
 #### Scenario: Default location
 - **WHEN** a user runs the tracker from `backend/` without `--config`
@@ -31,9 +31,9 @@ The tracker SHALL validate the whole policy before its first network request. It
 - **WHEN** `config.yaml` sets `k: 12`
 - **THEN** the tracker exits with a non-zero status and a message saying `k` must be between 3 and 10, and makes no network request
 
-#### Scenario: Unknown tool
-- **WHEN** `tools` lists `send_email`
-- **THEN** validation fails with a message naming `send_email` as an unknown tool
+#### Scenario: Policy cannot add tools
+- **WHEN** `config.yaml` has a `tools` key
+- **THEN** validation fails: the three tools are fixed in code, not set by policy
 
 #### Scenario: Unsafe scheme in policy
 - **WHEN** `fetch.allowed_schemes` contains `file`

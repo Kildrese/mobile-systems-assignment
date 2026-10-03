@@ -18,6 +18,7 @@ from tests_tracker.conftest import (
 from tests_tracker.test_fetch import HTML, PAGE
 from tracker.loop import Runner
 from tracker.state import StateStore
+from tracker.tools import TOOL_SCHEMAS
 
 INJECTION_PAGE = (Path(__file__).parent / "fixtures" / "injection.html").read_bytes()
 URLS = [f"https://news.example.com/{i}" for i in range(1, 6)]
@@ -84,8 +85,11 @@ def test_complete_run(policy, keys, public_resolver):
     assert all("<untrusted_data" in m["content"] for m in tool_messages)
     assert model.requests[0]["tools"][0]["function"]["name"] == "search_web"
     with StateStore(policy.state_file) as state:
-        assert state.get_run("test-run")["status"] == "complete"
-        assert len(state.items_for_run("test-run")) == 2
+        assert (
+            state.db.execute("SELECT * FROM runs WHERE id = ?", ("test-run",)).fetchone()["status"]
+            == "complete"
+        )
+        assert state.db.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 2
 
 
 @respx.mock
@@ -137,7 +141,7 @@ def test_step_budget_gives_partial_with_synthesis(make_policy, keys, public_reso
     assert "partial (stopped because the step budget" in text
     assert "### 1. Synth" in text
     with StateStore(policy.state_file) as state:
-        run = state.get_run("test-run")
+        run = state.db.execute("SELECT * FROM runs WHERE id = ?", ("test-run",)).fetchone()
     assert (run["status"], run["stop_reason"]) == ("partial", "max_steps")
 
 
@@ -268,7 +272,7 @@ def test_injection_page_cannot_change_tools_or_budgets(policy, keys, public_reso
     assert ("fetch_article", "blocked", "blocked_address") in rejected
     # Every later request offers the same tools and the same system prompt.
     for request in model.requests:
-        assert [t["function"]["name"] for t in request["tools"]] == list(policy.tools)
+        assert [t["function"]["name"] for t in request["tools"]] == list(TOOL_SCHEMAS)
         assert request["messages"][0]["content"].startswith(policy.system_prompt())
     page_message = [m for m in model.requests[2]["messages"] if m["role"] == "tool"][-1]
     assert page_message["content"].count("</untrusted_data>") == 1

@@ -73,7 +73,6 @@ Everything the agent may do is in one file at the repository root. It is validat
 | `model` | `provider` (a key of `providers`), `name`, `max_output_tokens`, optional `temperature`, `reasoning_effort` and `timeout_seconds` |
 | `providers.<name>` | An OpenAI-compatible chat-completions API: `base_url`, `key_env` (the variable holding its key), prices per million tokens, `quota_patterns` |
 | `search` | Tavily: `key_env`, `max_results`, `depth` (`basic` costs 1 credit, `advanced` 2), `price_per_credit`, `quota_patterns` |
-| `tools` | Enabled tools. `search_web`, `fetch_article` and `finish` are all required |
 | `limits` | Budgets, see below. Every one is required and positive |
 | `retry` | `max_attempts`, `base_seconds`, `max_wait_seconds` |
 | `fetch` | Guardrail settings, see below |
@@ -91,7 +90,7 @@ Code checks the budgets before every model call and every tool call. An action t
 | `max_steps` | Model calls. An unknown tool or invalid arguments also costs a step |
 | `max_searches`, `max_fetches` | Tool calls that reach the network. A fetch served from state is free |
 | `max_tokens` | Prompt plus completion tokens for the whole run |
-| `reserve_tokens` | Held back from `max_tokens` (default 15%) for the final synthesis call |
+| `reserve_tokens` | Held back from `max_tokens` for the final synthesis call |
 | `max_cost_usd` | Tokens times the provider's price, plus search credits times `price_per_credit` |
 | `max_wall_seconds` | Wall-clock time, including retry waits |
 

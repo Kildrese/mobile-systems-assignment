@@ -48,9 +48,6 @@ class Trace:
             self._file.flush()
         return record
 
-    def summary(self, **fields: Any) -> dict[str, Any]:
-        return self.event("summary", **fields)
-
     def close(self) -> None:
         if self._file is not None:
             self._file.close()

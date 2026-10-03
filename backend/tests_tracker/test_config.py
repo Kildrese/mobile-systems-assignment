@@ -19,7 +19,7 @@ def invalid(tmp_path: Path, **overrides) -> str:
 
 def test_valid_policy_loads(policy):
     assert policy.k == 3
-    assert policy.limits.reserve == 3000
+    assert policy.limits.reserve_tokens == 3000
     assert policy.system_prompt() == (
         "You track Open-source robotics foundation models. Report the top 3 developments."
     )
@@ -49,13 +49,8 @@ def test_limits_must_be_positive(tmp_path):
     assert "limits.max_cost_usd" in invalid(tmp_path, limits={"max_cost_usd": -1})
 
 
-def test_unknown_tool(tmp_path):
-    message = invalid(tmp_path, tools=["search_web", "fetch_article", "finish", "send_email"])
-    assert "unknown tool send_email" in message
-
-
-def test_required_tool_disabled(tmp_path):
-    assert "finish must be enabled" in invalid(tmp_path, tools=["search_web", "fetch_article"])
+def test_policy_cannot_add_tools(tmp_path):
+    assert "tools: Extra inputs are not permitted" in invalid(tmp_path, tools=["send_email"])
 
 
 def test_unsafe_scheme(tmp_path):
@@ -70,9 +65,9 @@ def test_wrong_type_and_typo_rejected(tmp_path):
 
 
 def test_every_invalid_field_is_named(tmp_path):
-    message = invalid(tmp_path, k=40, tools=["search_web", "fetch_article", "finish", "rm"])
+    message = invalid(tmp_path, k=40, limits={"max_steps": 0})
     assert "k:" in message
-    assert "tools:" in message
+    assert "limits.max_steps:" in message
 
 
 def test_model_provider_must_exist(tmp_path):
@@ -109,7 +104,6 @@ def test_committed_config_is_valid():
     policy = load_policy()
     assert policy.model.provider == "groq"
     assert policy.model.name == "openai/gpt-oss-120b"
-    assert set(policy.tools) == {"search_web", "fetch_article", "finish"}
     assert policy.state_file == REPO_ROOT / ".tracker" / "state.sqlite"
 
 

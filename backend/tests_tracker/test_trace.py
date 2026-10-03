@@ -24,7 +24,7 @@ def test_events_are_written_and_flushed(tmp_path):
     assert event["run_id"] == "run-1"
     for key in ("ts", "step", "tool", "args", "status", "latency_ms", "total_tokens"):
         assert key in event
-    trace.summary(outcome="complete", steps=1)
+    trace.event("summary", outcome="complete", steps=1)
     assert read_trace(path)[-1]["kind"] == "summary"
     trace.close()
 

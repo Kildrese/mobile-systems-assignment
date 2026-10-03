@@ -27,7 +27,7 @@ def test_steps(policy):
 def test_tokens_stop_at_reserve(policy):
     budget = Budget(policy, Clock())
     limits = policy.limits
-    budget.charge_tokens(limits.max_tokens - limits.reserve - 1, 0)
+    budget.charge_tokens(limits.max_tokens - limits.reserve_tokens - 1, 0)
     assert budget.check_model_call() is None
     budget.charge_tokens(1, 0)
     assert budget.check_model_call() == "max_tokens"

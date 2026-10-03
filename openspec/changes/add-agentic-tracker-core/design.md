@@ -61,7 +61,7 @@ while True:
 write_partial(stop)
 ```
 - A step is one model call. `max_steps` bounds model calls. Tool budgets are checked per call in `dispatch`.
-- `limits.reserve_tokens` (default 15% of `max_tokens`) is held back. The loop stops at `max_tokens - reserve`, so the final no-tools synthesis call for a partial report still has budget. If even that fails, `report.render_fallback(articles)` lists the sources by code alone.
+- `limits.reserve_tokens` is held back. The loop stops at `max_tokens - reserve`, so the final no-tools synthesis call for a partial report still has budget. If even that fails, `report.render_fallback(articles)` lists the sources by code alone.
 - Cost is `tokens × price` from the provider's config entry (0 for Groq's free tier), plus search credits × credit price. The cost budget is real even when the price is zero.
 - To keep prompts within Groq's TPM, each fetched text is cut to `fetch.max_chars_for_model` (default 6,000) before it goes into `messages`. The full text is stored in state.
 
@@ -79,7 +79,7 @@ The system prompt says that anything inside these blocks is data to be summarize
 - *Alternative:* trust httpx's normal resolution after a pre-check. Rejected because of the DNS-rebinding gap between check and connect.
 
 ### D8. SQLite schema (stdlib `sqlite3`)
-Tables: `runs(id, started_at, ended_at, topic, k, status, stop_reason, usage_json)`, `articles(canonical_url PK, url, title, text, content_hash, first_seen_run, fetched_at)`, `items(run_id, rank, title, summary, sources_json)`, and `searches(run_id, query, results_json, at)`. Opened with `PRAGMA journal_mode=WAL`. A lock file (`state.sqlite.lock`, held with `fcntl.flock`) refuses concurrent runs. The schema version lives in `PRAGMA user_version`, and later changes add tables with a small migration step. Alembic is not used: this state is not the app database.
+Tables: `runs(id, started_at, ended_at, topic, k, status, stop_reason, usage_json)`, `articles(canonical_url PK, url, title, text, first_seen_run, fetched_at)`, `items(run_id, rank, title, summary, sources_json)`, and `searches(run_id, query, results_json, at)`. Opened with `PRAGMA journal_mode=WAL`. A lock file (`state.sqlite.lock`, held with `fcntl.flock`) refuses concurrent runs. The schema version lives in `PRAGMA user_version`, and later changes add tables with a small migration step. Alembic is not used: this state is not the app database.
 
 ### D9. Trace writer
 An append-only JSONL writer that flushes after every line. Event schema as in the trace-log spec. Arguments and results longer than 2,000 characters are truncated, with `*_len` recorded. A redaction pass removes `Authorization` headers and any value equal to a loaded key before writing.
@@ -96,7 +96,6 @@ providers:
   groq:   { base_url: https://api.groq.com/openai/v1, key_env: GROQ_API_KEY, price_per_mtok_in: 0, price_per_mtok_out: 0,
             quota_patterns: ["per day", "\\(RPD\\)", "\\(TPD\\)"] }
 search: { provider: tavily, key_env: TAVILY_API_KEY, max_results: 5, depth: basic, quota_patterns: ["plan", "credit"] }
-tools: [search_web, fetch_article, finish]
 limits: { max_steps: 15, max_searches: 6, max_fetches: 12, max_tokens: 60000, reserve_tokens: 9000, max_cost_usd: 0.50, max_wall_seconds: 300 }
 retry: { max_attempts: 4, base_seconds: 1.0, max_wait_seconds: 60 }
 fetch: { allowed_schemes: [https, http], allowed_hosts: ["*"], connect_timeout: 5, read_timeout: 10, deadline_seconds: 20,

@@ -1,5 +1,6 @@
 """tracker-state: SQLite store, canonical URLs and the run lock."""
 
+import json
 import sqlite3
 
 import pytest
@@ -40,7 +41,6 @@ def test_tracking_parameter_url_is_same_article(tmp_path):
     assert article is not None
     assert article["title"] == "T"
     assert article["first_seen_run"] == "r1"
-    assert len(article["content_hash"]) == 64
 
 
 def test_refetch_keeps_first_seen_run(tmp_path):
@@ -56,7 +56,7 @@ def test_partial_run_recorded(tmp_path):
     with StateStore(tmp_path / "s.sqlite") as store:
         store.start_run("r1", "topic", 5)
         store.end_run("r1", "partial", "max_steps", {"steps": 15})
-        run = store.get_run("r1")
+        run = store.db.execute("SELECT * FROM runs").fetchone()
     assert run["status"] == "partial"
     assert run["stop_reason"] == "max_steps"
     assert run["ended_at"]
@@ -70,10 +70,10 @@ def test_items_stored_in_rank_order(tmp_path):
     with StateStore(tmp_path / "s.sqlite") as store:
         store.start_run("r1", "topic", 5)
         store.put_items("r1", items)
-        stored = store.items_for_run("r1")
-    assert [i["rank"] for i in stored] == [1, 2, 3, 4, 5]
-    assert [i["title"] for i in stored] == [f"Item {i}" for i in range(1, 6)]
-    assert stored[0]["sources"] == ["https://e.com/1"]
+        stored = store.db.execute("SELECT rank, title, sources_json FROM items").fetchall()
+    assert [r["rank"] for r in stored] == [1, 2, 3, 4, 5]
+    assert [r["title"] for r in stored] == [f"Item {i}" for i in range(1, 6)]
+    assert json.loads(stored[0]["sources_json"]) == ["https://e.com/1"]
 
 
 def test_searches_recorded(tmp_path):
@@ -91,5 +91,5 @@ def test_second_open_while_locked_fails(tmp_path):
         StateStore(path)
     first.close()
     # Released on close.
-    StateStore(path).close()
-    assert StateStore(path).get_run("r1")["status"] == "running"
+    with StateStore(path) as store:
+        assert store.db.execute("SELECT status FROM runs").fetchone()[0] == "running"

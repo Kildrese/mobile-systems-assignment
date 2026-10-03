@@ -30,10 +30,10 @@ from tracker.search import SearchClient
 from tracker.state import StateStore
 from tracker.tools import (
     ARG_MODELS,
+    TOOL_SCHEMAS,
     FinishResult,
     Toolbox,
     ToolOutcome,
-    tool_schemas,
     validate_finish,
     validation_message,
 )
@@ -167,7 +167,7 @@ class Runner:
             result = self._finish_run(stop, chat, toolbox, budget, trace, state)
         except KeyboardInterrupt:
             state.end_run(self.run_id, "failed", "interrupted", budget.usage())
-            trace.summary(outcome="failed", stop_reason="interrupted", **budget.usage())
+            trace.event("summary", outcome="failed", stop_reason="interrupted", **budget.usage())
             raise
         finally:
             state.close()
@@ -183,7 +183,7 @@ class Runner:
             {"role": "user", "content": task_prompt(policy)},
         ]
         tool_messages: list[_ToolMessage] = []
-        schemas = tool_schemas(policy)
+        schemas = list(TOOL_SCHEMAS.values())
         while True:
             if reason := budget.check_model_call():
                 return _Stop(reason=reason)
@@ -212,7 +212,7 @@ class Runner:
                 continue
 
             for call in reply.tool_calls:
-                if call.name == "finish" and "finish" in policy.tools and call.arguments:
+                if call.name == "finish" and call.arguments:
                     content, finished = self._finish_call(call.arguments, step, toolbox, trace)
                     if finished is not None:
                         return _Stop(finish=finished)
@@ -248,7 +248,6 @@ class Runner:
         trace: Trace,
     ) -> ToolOutcome:
         """Validate a tool call, check its budget and run it."""
-        policy = self.policy
 
         def refuse(status: str, reason: str, detail: str) -> ToolOutcome:
             outcome = ToolOutcome.failure(status, reason, detail)
@@ -263,14 +262,14 @@ class Runner:
             )
             return outcome
 
-        if name not in policy.tools or name == "finish":
+        if name not in ARG_MODELS or name == "finish":
             budget.steps += 1  # an invalid call costs a step
             if name == "finish":
                 return refuse("error", "invalid_arguments", parse_error or "items are required")
             return refuse(
                 "error",
                 "unknown_tool",
-                f"'{name}' is not a tool. Allowed tools: {', '.join(policy.tools)}",
+                f"'{name}' is not a tool. Allowed tools: {', '.join(ARG_MODELS)}",
             )
         if arguments is None:
             budget.steps += 1
@@ -380,7 +379,8 @@ class Runner:
         if body.items:
             state.put_items(self.run_id, body.items)
         state.end_run(self.run_id, status, reason, budget.usage())
-        trace.summary(
+        trace.event(
+            "summary",
             outcome=status,
             stop_reason=reason,
             report=str(self.report_path),
@@ -465,12 +465,9 @@ def _fallback_body(toolbox: Toolbox) -> report.ReportBody:
     if toolbox.articles:
         sources = [report.Source(a.title, a.url) for a in toolbox.articles]
     else:
-        seen: set[str] = set()
-        sources = []
-        for r in toolbox.search_results:
-            if r.url not in seen:
-                seen.add(r.url)
-                sources.append(report.Source(r.title, r.url))
+        sources = list(
+            {r.url: report.Source(r.title, r.url) for r in toolbox.search_results}.values()
+        )
     return report.ReportBody(sources=sources)
 
 

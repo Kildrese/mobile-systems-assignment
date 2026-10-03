@@ -12,9 +12,12 @@ import re
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import httpx
+
+if TYPE_CHECKING:
+    from tracker.config import RetryPolicy
 
 TerminalKind = Literal["auth", "payment", "quota", "request", "unreachable"]
 
@@ -51,13 +54,6 @@ class Provider:
 
 
 @dataclass(frozen=True)
-class RetrySettings:
-    max_attempts: int
-    base_seconds: float
-    max_wait_seconds: float
-
-
-@dataclass(frozen=True)
 class Transient:
     wait: float
     reason: str
@@ -69,7 +65,7 @@ class Terminal:
     message: str
 
 
-def backoff(attempt: int, retry: RetrySettings, rng: Callable[[], float] = random.random) -> float:
+def backoff(attempt: int, retry: "RetryPolicy", rng: Callable[[], float] = random.random) -> float:
     """Exponential backoff for the given 0-based attempt, capped, with 50-100% jitter."""
     return min(retry.max_wait_seconds, retry.base_seconds * 2**attempt) * (0.5 + rng() / 2)
 
@@ -102,7 +98,7 @@ def _reset_hint(headers: Mapping[str, str], body: str) -> str:
 
 def classify(
     provider: Provider,
-    retry: RetrySettings,
+    retry: "RetryPolicy",
     attempt: int,
     *,
     status: int | None = None,
@@ -164,7 +160,7 @@ def send_with_retries(
     send: Callable[[], httpx.Response],
     *,
     provider: Provider,
-    retry: RetrySettings,
+    retry: "RetryPolicy",
     on_attempt: AttemptHook,
     sleep: Callable[[float], None] = time.sleep,
     deadline: float | None = None,

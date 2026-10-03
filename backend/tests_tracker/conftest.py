@@ -43,7 +43,6 @@ BASE_POLICY: dict[str, Any] = {
         "depth": "basic",
         "quota_patterns": ["plan", "credit"],
     },
-    "tools": ["search_web", "fetch_article", "finish"],
     "limits": {
         "max_steps": 8,
         "max_searches": 3,

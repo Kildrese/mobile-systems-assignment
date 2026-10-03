@@ -31,8 +31,6 @@ search:
   price_per_credit: 0.008  # pay-as-you-go price; keeps the cost budget meaningful
   quota_patterns: ["plan", "credit"]
 
-tools: [search_web, fetch_article, finish]
-
 limits:
   max_steps: 15  # model calls per run
   max_searches: 6

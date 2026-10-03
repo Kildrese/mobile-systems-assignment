@@ -49,7 +49,7 @@ class Budget:
         limits = self.policy.limits
         if self.steps >= limits.max_steps:
             return "max_steps"
-        if self.total_tokens >= limits.max_tokens - limits.reserve:
+        if self.total_tokens >= limits.max_tokens - limits.reserve_tokens:
             return "max_tokens"
         if self.cost_usd >= limits.max_cost_usd:
             return "max_cost_usd"

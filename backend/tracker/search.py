@@ -70,7 +70,7 @@ class SearchClient:
         response, attempt, latency_ms = send_with_retries(
             lambda: self._client.post(self.url, json=payload, headers=self._headers),
             provider=self.provider,
-            retry=self.policy.retry.settings(),
+            retry=self.policy.retry,
             on_attempt=on_attempt,
             sleep=self._sleep,
             deadline=self.deadline,

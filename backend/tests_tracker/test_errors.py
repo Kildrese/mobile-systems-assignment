@@ -3,9 +3,9 @@
 import httpx
 import pytest
 
+from tracker.config import RetryPolicy
 from tracker.errors import (
     Provider,
-    RetrySettings,
     TerminalError,
     Transient,
     WallClockExceeded,
@@ -16,7 +16,7 @@ from tracker.errors import (
 
 GROQ = Provider("groq", "GROQ_API_KEY", ("per day", r"\(RPD\)", r"\(TPD\)"))
 TAVILY = Provider("tavily", "TAVILY_API_KEY", ("plan", "credit"))
-RETRY = RetrySettings(max_attempts=4, base_seconds=1.0, max_wait_seconds=60)
+RETRY = RetryPolicy(max_attempts=4, base_seconds=1.0, max_wait_seconds=60)
 TPM_BODY = (
     '{"error":{"message":"Rate limit reached for model `openai/gpt-oss-120b` on tokens per '
     'minute (TPM): Limit 8000, Used 7000, Requested 1500. Please try again in 7.5s."}}'

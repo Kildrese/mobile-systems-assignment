@@ -139,10 +139,6 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
 }
 
 
-def tool_schemas(policy: Policy) -> list[dict[str, Any]]:
-    return [TOOL_SCHEMAS[name] for name in policy.tools]
-
-
 def validation_message(err: ValidationError) -> str:
     return "; ".join(
         f"{'.'.join(str(p) for p in e['loc']) or 'arguments'}: {e['msg']}" for e in err.errors()
@@ -293,7 +289,7 @@ class Toolbox:
         except ValueError:
             return False
 
-    def fetch_article(self, url: str, step: int = 0, *, network: bool = True) -> ToolOutcome:
+    def fetch_article(self, url: str, step: int = 0) -> ToolOutcome:
         started = time.monotonic()
         traced = {"url": url}
         try:
@@ -310,10 +306,6 @@ class Toolbox:
                     cached["text"],
                     cached=True,
                 )
-            if not network:
-                outcome = ToolOutcome.failure("budget", "budget_exhausted", "fetch budget used up")
-                self._trace(step, "fetch_article", traced, outcome, started)
-                return outcome
             page = fetch_page(
                 args.url, self.policy.fetch, resolver=self.resolver, transport=self.transport
             )

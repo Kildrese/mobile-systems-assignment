@@ -5,7 +5,7 @@ second opener fails with `StateLocked`. The schema version lives in `PRAGMA
 user_version`; later changes add a step to `MIGRATIONS`.
 """
 
-import hashlib
+import fcntl
 import json
 import sqlite3
 from collections.abc import Sequence
@@ -15,15 +15,9 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from tracker.errors import StateLocked
-
-try:
-    import fcntl
-except ImportError:  # Windows
-    fcntl = None  # type: ignore[assignment]
-    import msvcrt
+from tracker.guard import DEFAULT_PORTS
 
 TRACKING_PARAMS = {"gclid", "fbclid", "ref", "mc_cid", "mc_eid"}
-DEFAULT_PORTS = {"http": 80, "https": 443}
 
 MIGRATIONS: list[str] = [
     """
@@ -42,7 +36,6 @@ MIGRATIONS: list[str] = [
         url TEXT NOT NULL,
         title TEXT NOT NULL,
         text TEXT NOT NULL,
-        content_hash TEXT NOT NULL,
         first_seen_run TEXT NOT NULL,
         fetched_at TEXT NOT NULL
     );
@@ -86,10 +79,6 @@ def canonicalize(url: str) -> str:
     return urlunsplit((scheme, netloc, parts.path or "/", query, ""))
 
 
-def content_hash(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 class StateStore:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -108,10 +97,7 @@ class StateStore:
     def _acquire(lock_path: Path):
         handle = lock_path.open("a+")
         try:
-            if fcntl is not None:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            else:
-                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             handle.close()
             raise StateLocked(
@@ -161,10 +147,6 @@ class StateStore:
                 (_now(), status, stop_reason, json.dumps(usage), run_id),
             )
 
-    def get_run(self, run_id: str) -> dict[str, Any] | None:
-        row = self.db.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
-        return dict(row) if row else None
-
     # Articles
 
     def get_article(self, url: str) -> dict[str, Any] | None:
@@ -177,12 +159,11 @@ class StateStore:
         canonical = canonicalize(url)
         with self.db:
             self.db.execute(
-                "INSERT INTO articles (canonical_url, url, title, text, content_hash, "
-                "first_seen_run, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "INSERT INTO articles (canonical_url, url, title, text, first_seen_run, "
+                "fetched_at) VALUES (?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (canonical_url) DO UPDATE SET url = excluded.url, "
-                "title = excluded.title, text = excluded.text, "
-                "content_hash = excluded.content_hash, fetched_at = excluded.fetched_at",
-                (canonical, url, title, text, content_hash(text), run_id, _now()),
+                "title = excluded.title, text = excluded.text, fetched_at = excluded.fetched_at",
+                (canonical, url, title, text, run_id, _now()),
             )
         return canonical
 
@@ -203,18 +184,3 @@ class StateStore:
                     "VALUES (?, ?, ?, ?, ?)",
                     (run_id, rank, item["title"], item["summary"], json.dumps(item["sources"])),
                 )
-
-    def items_for_run(self, run_id: str) -> list[dict[str, Any]]:
-        rows = self.db.execute(
-            "SELECT rank, title, summary, sources_json FROM items WHERE run_id = ? ORDER BY rank",
-            (run_id,),
-        ).fetchall()
-        return [
-            {
-                "rank": r["rank"],
-                "title": r["title"],
-                "summary": r["summary"],
-                "sources": json.loads(r["sources_json"]),
-            }
-            for r in rows
-        ]

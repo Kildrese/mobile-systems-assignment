@@ -15,15 +15,13 @@ import yaml
 from dotenv import dotenv_values
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from tracker.errors import PolicyError, Provider, RetrySettings
+from tracker.errors import PolicyError, Provider
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = PACKAGE_DIR.parent
 ENV_FILE = BACKEND_DIR / ".env"
 CONFIG_NAME = "config.yaml"
 
-KNOWN_TOOLS = ("search_web", "fetch_article", "finish")
-REQUIRED_TOOLS = KNOWN_TOOLS
 SAFE_SCHEMES = {"http", "https"}
 
 
@@ -65,31 +63,21 @@ class Limits(_Strict):
     max_fetches: int = Field(gt=0)
     max_tokens: int = Field(gt=0)
     # Held back from `max_tokens` for the final synthesis call of a partial report.
-    # Defaults to 15% of `max_tokens`.
-    reserve_tokens: int | None = Field(default=None, ge=0)
+    reserve_tokens: int = Field(ge=0)
     max_cost_usd: float = Field(gt=0)
     max_wall_seconds: float = Field(gt=0)
 
     @model_validator(mode="after")
     def reserve_below_budget(self) -> "Limits":
-        if self.reserve_tokens is not None and self.reserve_tokens >= self.max_tokens:
+        if self.reserve_tokens >= self.max_tokens:
             raise ValueError("reserve_tokens must be smaller than max_tokens")
         return self
-
-    @property
-    def reserve(self) -> int:
-        return (
-            self.reserve_tokens if self.reserve_tokens is not None else self.max_tokens * 15 // 100
-        )
 
 
 class RetryPolicy(_Strict):
     max_attempts: int = Field(gt=0, le=10)
     base_seconds: float = Field(gt=0)
     max_wait_seconds: float = Field(gt=0)
-
-    def settings(self) -> RetrySettings:
-        return RetrySettings(self.max_attempts, self.base_seconds, self.max_wait_seconds)
 
 
 class FetchSettings(_Strict):
@@ -130,7 +118,6 @@ class Policy(_Strict):
     model: ModelSettings
     providers: dict[str, ProviderSettings]
     search: SearchSettings
-    tools: tuple[str, ...]
     limits: Limits
     retry: RetryPolicy
     fetch: FetchSettings
@@ -146,17 +133,6 @@ class Policy(_Strict):
     def k_range(cls, value: int) -> int:
         if not 3 <= value <= 10:
             raise ValueError(f"k must be between 3 and 10, got {value}")
-        return value
-
-    @field_validator("tools")
-    @classmethod
-    def known_tools(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        if unknown := [t for t in value if t not in KNOWN_TOOLS]:
-            raise ValueError(
-                f"unknown tool {', '.join(unknown)} (known tools: {', '.join(KNOWN_TOOLS)})"
-            )
-        if missing := [t for t in REQUIRED_TOOLS if t not in value]:
-            raise ValueError(f"{', '.join(missing)} must be enabled")
         return value
 
     @model_validator(mode="after")
