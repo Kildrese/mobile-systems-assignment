@@ -25,4 +25,4 @@
 ## 5. Docs and CI
 
 - [x] 5.1 Add a "Multiple agents" section to `docs/tracker.md` (profiles, budget split, privileges, stages, outcomes, trace fields) with a toy two-agent example config. Verify the example config validates in a test
-- [ ] 5.2 Run ruff and the full `tests_tracker` suite. Verify both pass locally and in CI
+- [x] 5.2 Run ruff and the full `tests_tracker` suite. Verify both pass locally and in CI
