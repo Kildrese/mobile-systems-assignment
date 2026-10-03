@@ -142,6 +142,38 @@ Canonical URLs lowercase the scheme and host and drop the fragment, default port
 
 Trace events carry the step, kind (`model`, `tool`, `synthesis`, `summary`), tool or model name, arguments, status (`ok`, `cached`, `error`, `retry`, `blocked`, `budget`), latency, and where they apply tokens, credits, HTTP status, failure class and attempt. Fields over 2,000 characters are cut with the original length recorded, and API keys are redacted.
 
+## Multiple agents
+
+A use case can split the work across several narrow agents, each with only the model, tools, hosts and budget its job needs. Without an `agents` section the tracker runs the single agent described above, unchanged.
+
+**Profiles.** `agents` maps lowercase names to profiles. A profile selects tools registered in code (the core `search_web` and `fetch_article`, plus any the use case registers); `finish` is always offered, and policy can never add a tool. `model` fields left out are inherited from the top-level `model`. Two agents of the same use case:
+
+<!-- agents-example -->
+```yaml
+use_case: <name>          # a use case built into the tracker; required with agents
+agents:
+  scout:
+    tools: [search_web]
+    limits: {max_steps: 4, max_tokens: 8000, max_searches: 3}
+    instructions: Find candidate pages about {topic}.
+  reader:
+    model: {name: llama-3.1-8b-instant}   # provider, temperature, ... from `model`
+    tools: [fetch_article]
+    fetch_hosts: ["*.example.com"]
+    limits: {max_steps: 4, max_tokens: 8000, max_fetches: 4}
+    instructions: Read the pages the scout found and extract the facts.
+```
+
+**Budget split.** For `max_steps`, `max_tokens`, `max_searches` and `max_fetches`, the enabled agents' limits must add up to no more than the run's `limits`, or validation fails naming the limit and the total. `max_searches` is required when an agent has `search_web`, and `max_fetches` when it has `fetch_article`. Before every model and tool call, code checks the agent's limits first, then the run's, and charges both. Wall time, cost and `reserve_tokens` are run-level only. A stop reason names the level: `scout.max_steps` for the agent, `max_tokens` for the run.
+
+**Privileges.** An agent is offered only its profile's tools; calling another one returns `unknown_tool` and costs a step. `fetch_hosts` narrows the hosts that agent may fetch (and follow redirects to). Every pattern must be covered by `fetch.allowed_hosts`; it is checked first, then all the core guardrails above still apply. Keys are needed for every provider an enabled agent uses.
+
+**Stages.** The use case defines an ordered list of stages in code: an agent stage runs one agent loop for a profile, a code stage runs plain code. Model output never changes the order. Each stage gets the policy, its own profile, the state store, its trace and its budget, never another agent's conversation: stages hand data on only through records in the state store.
+
+**Outcomes.** Each stage ends `complete`, `partial` (stopped by a budget or a provider failure), `skipped` (its agent has `enabled: false`, or a provider it needs failed for good earlier in the run) or `failed` (it raised). A stage the use case marks required cannot be disabled. The run is `failed` (exit `3`) when a required stage failed; `partial` (exit `2`) when any stage was partial, failed, or skipped after a provider failure; otherwise `complete` (exit `0`). After a terminal provider failure, later stages that need that provider are skipped and the rest, including code stages, still run. A report is written in every case.
+
+**Trace fields.** Every event written during a stage carries `stage`, and agent stages also `agent`. The summary event adds `stages`: per stage its `name`, `agent`, `outcome`, `reason` and `usage`.
+
 ## Tests
 
 ```bash

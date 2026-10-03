@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from tracker.config import Policy
+from tracker.config import ModelSettings, Policy
 from tracker.errors import send_with_retries
 from tracker.trace import Trace
 
@@ -115,13 +115,15 @@ class ChatClient:
         sleep: Callable[[float], None] = time.sleep,
         deadline: float | None = None,
         rng: Callable[[], float] = random.random,
+        model: ModelSettings | None = None,
     ) -> None:
         self.policy = policy
         self.trace = trace
-        self.provider = policy.model_provider()
-        self.url = policy.provider.base_url.rstrip("/") + "/chat/completions"
+        self.model = model or policy.model
+        self.provider = policy.model_provider(self.model.provider)
+        self.url = policy.providers[self.model.provider].base_url.rstrip("/") + "/chat/completions"
         self._headers = {"Authorization": f"Bearer {api_key}"}
-        self._client = client or httpx.Client(timeout=policy.model.timeout_seconds)
+        self._client = client or httpx.Client(timeout=self.model.timeout_seconds)
         self._sleep = sleep
         self.deadline = deadline
         self._rng = rng
@@ -133,7 +135,7 @@ class ChatClient:
         step: int,
         purpose: str = "step",
     ) -> Reply:
-        model = self.policy.model
+        model = self.model
         payload: dict[str, Any] = {
             "model": model.name,
             "messages": messages,

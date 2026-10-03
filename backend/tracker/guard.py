@@ -127,8 +127,12 @@ def check(
     *,
     resolver: Resolver = socket.getaddrinfo,
     resolve: bool = True,
+    allowed_hosts: tuple[str, ...] | None = None,
 ) -> Vetted:
-    """Check a URL against the guardrails. Raises `Blocked` with the reason."""
+    """Check a URL against the guardrails. Raises `Blocked` with the reason.
+
+    `allowed_hosts` narrows `cfg.allowed_hosts` for one agent: both must match.
+    """
     parts = _split(url)
     scheme = parts.scheme.lower()
     if scheme not in cfg.allowed_schemes:
@@ -148,6 +152,8 @@ def check(
         raise Blocked("invalid_url", f"host '{host}' is not a valid domain name")
     if ip is not None:
         host = str(ip)
+    if allowed_hosts is not None and not host_allowed(host, allowed_hosts):
+        raise Blocked("host_not_allowed", f"host '{host}' is not in this agent's fetch_hosts")
     if not host_allowed(host, cfg.allowed_hosts):
         raise Blocked("host_not_allowed", f"host '{host}' is not in fetch.allowed_hosts")
 

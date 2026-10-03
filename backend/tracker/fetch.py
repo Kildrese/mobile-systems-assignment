@@ -80,13 +80,14 @@ def fetch_page(
     resolver: Resolver = socket.getaddrinfo,
     transport: httpx.BaseTransport | None = None,
     clock=time.monotonic,
+    allowed_hosts: tuple[str, ...] | None = None,
 ) -> Page:
     """Fetch a page. Raises `Blocked` for a guardrail and `FetchError` for anything else."""
     deadline = clock() + cfg.deadline_seconds
     current = url
     with httpx.Client(transport=transport, follow_redirects=False, trust_env=False) as client:
         for hop in range(cfg.max_redirects + 1):
-            vetted = check(current, cfg, resolver=resolver)
+            vetted = check(current, cfg, resolver=resolver, allowed_hosts=allowed_hosts)
             remaining = deadline - clock()
             if remaining <= 0:
                 raise FetchError("timeout", f"deadline of {cfg.deadline_seconds}s passed")
