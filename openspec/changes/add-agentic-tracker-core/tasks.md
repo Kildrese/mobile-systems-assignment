@@ -53,4 +53,4 @@
 
 ## 10. Integration check
 
-- [ ] 10.1 With real keys on a machine that can reach Groq and Tavily, run `uv run python -m tracker run` once. Verify a report is written to `reports/`, a trace to `traces/`, and a run row with status `complete` or `partial` exists in state. This is a smoke run, not a graded run
+- [x] 10.1 With real keys on a machine that can reach Groq and Tavily, run `uv run python -m tracker run` once. Verify a report is written to `reports/`, a trace to `traces/`, and a run row with status `complete` or `partial` exists in state. This is a smoke run, not a graded run
