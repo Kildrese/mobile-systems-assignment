@@ -27,9 +27,9 @@ Tasks marked **[parallel]** depend only on the merged core and can be built now.
 
 ## 5. Ranking, Editor checks and report (opportunity-report)
 
-- [ ] 5.1 [parallel] Implement scoring and ranking with stored ranks (design D8). Verify with unit tests: the same input gives the same order, work-authorization text does not change the score
-- [ ] 5.2 [parallel] Implement the Editor's domain functions (`get_opportunities`, summary validation per design D9, storing summaries). Verify with unit tests: an added salary is rejected, an unknown id is rejected, a valid summary is stored
-- [ ] 5.3 [parallel] Implement the cumulative report renderer (core header plus per-stage outcomes, then New, Still open with top K marked and unverified notes, then Closed). Verify with a unit test over a two-run fixture matching the spec's second-day scenario, with no opportunity listed twice
+- [x] 5.1 [parallel] Implement scoring and ranking with stored ranks (design D8). Verify with unit tests: the same input gives the same order, work-authorization text does not change the score
+- [x] 5.2 [parallel] Implement the Editor's domain functions (`get_opportunities`, summary validation per design D9, storing summaries). Verify with unit tests: an added salary is rejected, an unknown id is rejected, a valid summary is stored
+- [x] 5.3 [parallel] Implement the cumulative report renderer (core header plus per-stage outcomes, then New, Still open with top K marked and unverified notes, then Closed). Verify with a unit test over a two-run fixture matching the spec's second-day scenario, with no opportunity listed twice
 
 ## 6. Wiring (internship-pipeline)
 
