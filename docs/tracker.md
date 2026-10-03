@@ -135,8 +135,8 @@ Search results and page text reach the model only inside `<untrusted_data>` bloc
 | Path | Contents | In git |
 | --- | --- | --- |
 | `.tracker/state.sqlite` | Runs (status, stop reason, usage), fetched articles by canonical URL with text and content hash, searches, reported items | No |
-| `reports/<run_id>.md` | The report: topic, run id, time, status, budget used, ranked items with sources | Yes |
-| `traces/<run_id>.jsonl` | One JSON event per model call attempt and tool call, then a summary event | Yes |
+| `reports/<run_id>.md` | The report: topic, run id, time, status, budget used, ranked items with sources | No |
+| `traces/<run_id>.jsonl` | One JSON event per model call attempt and tool call, then a summary event | No |
 
 Canonical URLs lowercase the scheme and host and drop the fragment, default ports and tracking parameters (`utm_*`, `gclid`, `fbclid`, `ref`), so a known article is served from state without a request. Only one run may use the state file at a time; a second one exits with a message.
 
