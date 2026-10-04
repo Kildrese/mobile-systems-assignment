@@ -2,7 +2,7 @@
 
 from app.db import get_sessionmaker
 from app.publish_report import offers, publish
-from tests_tracker.internships_helpers import RUN1, RUN2, open_store, record
+from tests_tracker.internships_helpers import RUN1, RUN2, add_board, open_store, posting, record
 
 
 def _state(tmp_path):
@@ -11,25 +11,14 @@ def _state(tmp_path):
     for run_id in (RUN1, RUN2):
         state.start_run(run_id, "internships", 5)
         state.end_run(run_id, "complete", None, {})
-    with state.db:
-        for pid in (1, 2):
-            state.db.execute(
-                "INSERT INTO sources (id, key, company, kind, added_by, added_run) "
-                "VALUES (?, ?, 'x', 'greenhouse', 'config', ?)",
-                (pid, f"greenhouse:{pid}", RUN1),
-            )
-            state.db.execute(
-                "INSERT INTO raw_postings (id, source_id, external_id, url, canonical_url, "
-                "title, text, content_hash, first_seen_run, seen_run) "
-                "VALUES (?, ?, '1', 'u', 'u', 't', 't', 'h', ?, ?)",
-                (pid, pid, RUN1, RUN2),
-            )
+    (acme_posting,) = store.upsert_postings(add_board(store), [posting("1")], RUN1)
+    (beta_posting,) = store.upsert_postings(add_board(store, "beta", "Beta"), [posting("2")], RUN2)
     acme = store.create_opportunity(
         company="Acme",
         url="https://a.example/1",
         record=record(),
         run_id=RUN1,
-        posting_id=1,
+        posting_id=acme_posting,
         linked_by="record",
     )
     beta = store.create_opportunity(
@@ -37,7 +26,7 @@ def _state(tmp_path):
         url="https://b.example/1",
         record=record(),
         run_id=RUN2,
-        posting_id=2,
+        posting_id=beta_posting,
         linked_by="record",
     )
     store.put_summary(RUN1, acme, "Acme summary.")
