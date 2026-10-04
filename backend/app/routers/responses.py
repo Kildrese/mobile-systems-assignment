@@ -27,3 +27,7 @@ def conflict(description: str) -> dict[int, dict[str, Any]]:
 
 def unauthenticated(description: str) -> dict[int, dict[str, Any]]:
     return {401: _error(description)}
+
+
+def not_found(description: str) -> dict[int, dict[str, Any]]:
+    return {404: _error(description)}

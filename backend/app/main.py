@@ -8,11 +8,11 @@ from fastapi.openapi.utils import get_openapi
 
 from app.config import get_settings
 from app.errors import install_error_handlers
-from app.routers import auth, health, users
+from app.routers import auth, health, internships, users
 
 DESCRIPTION = (
-    "JSON API for accounts and users. Log in with `POST /api/auth/login`, then send the "
-    "token as `Authorization: Bearer <token>`."
+    "JSON API for accounts, users and the daily internship report. Log in with "
+    "`POST /api/auth/login`, then send the token as `Authorization: Bearer <token>`."
 )
 
 
@@ -49,12 +49,18 @@ def create_app() -> FastAPI:
         openapi_url="/api/openapi.json",
         docs_url="/docs",
         redoc_url=None,
-        openapi_tags=[{"name": "Health"}, {"name": "Auth"}, {"name": "Users"}],
+        openapi_tags=[
+            {"name": "Health"},
+            {"name": "Auth"},
+            {"name": "Users"},
+            {"name": "Internships"},
+        ],
         separate_input_output_schemas=False,
     )
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(users.router)
+    app.include_router(internships.router)
     app.openapi = lambda: _openapi(app)
 
     # Middleware added later wraps middleware added earlier, so the order is
