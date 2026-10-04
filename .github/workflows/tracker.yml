@@ -1,0 +1,81 @@
+# The daily internship tracker. Runs the tracker, then copies its latest run into the
+# production database, where the API serves it read-only. This schedule is the only way
+# a run starts: the API has no route for it. `workflow_dispatch` is for a manual run
+# from the Actions tab (repository writers only).
+#
+# Secrets: GROQ_API_KEY, TAVILY_API_KEY, DATABASE_URL (Neon, pooled).
+name: Internship tracker
+
+on:
+  schedule:
+    # GitHub cron is UTC: 09:00 UTC is 5:00 in New York in summer, 4:00 in winter.
+    # Scheduled runs often start a few minutes late.
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+# Never two runs at once: they share the state file.
+concurrency:
+  group: tracker
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - run: uv sync --locked
+
+      # The state file carries the watchlist, known offers and HTTP validators from day
+      # to day. Each run saves a new cache entry and restores the newest one.
+      # ponytail: an evicted cache (7 days unused) starts the tracker from scratch, so
+      # every open offer shows as new once; move state to durable storage if that matters.
+      - uses: actions/cache/restore@v4
+        with:
+          path: .tracker
+          key: tracker-state-${{ github.run_id }}
+          restore-keys: tracker-state-
+
+      # Exit 1 means nothing ran (bad policy or key): fail without publishing.
+      # 0 complete, 2 partial and 3 provider failure all wrote a report worth publishing.
+      - name: Run the tracker
+        id: tracker
+        run: |
+          set +e
+          uv run python -m tracker run
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          [ "$code" -ne 1 ]
+
+      - uses: actions/cache/save@v4
+        if: always() && steps.tracker.outputs.code != '1'
+        with:
+          path: .tracker
+          key: tracker-state-${{ github.run_id }}
+
+      - name: Publish the report
+        run: uv run python -m app.publish_report
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tracker-${{ github.run_id }}
+          path: |
+            reports/
+            traces/
+          retention-days: 14

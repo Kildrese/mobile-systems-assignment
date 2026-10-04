@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetUserData, GetUserErrors, GetUserResponses, HealthCheckData, HealthCheckErrors, HealthCheckResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, RegisterData, RegisterErrors, RegisterResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses } from './types.gen';
+import type { ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetLatestInternshipReportData, GetLatestInternshipReportErrors, GetLatestInternshipReportResponses, GetUserData, GetUserErrors, GetUserResponses, HealthCheckData, HealthCheckErrors, HealthCheckResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, RegisterData, RegisterErrors, RegisterResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -107,4 +107,13 @@ export const updateUser = <ThrowOnError extends boolean = false>(options: Option
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+/**
+ * The latest internship tracker report
+ */
+export const getLatestInternshipReport = <ThrowOnError extends boolean = false>(options?: Options<GetLatestInternshipReportData, ThrowOnError>): RequestResult<GetLatestInternshipReportResponses, GetLatestInternshipReportErrors, ThrowOnError> => (options?.client ?? client).get<GetLatestInternshipReportResponses, GetLatestInternshipReportErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/internships/latest',
+    ...options
 });

@@ -51,6 +51,57 @@ export type Health = {
 };
 
 /**
+ * InternshipOffer
+ *
+ * One opportunity as the run reported it. Fields the posting doesn't state are
+ * `unknown` (or null for pay, deadline and the work-authorization quote).
+ */
+export type InternshipOffer = {
+    /**
+     * Stable across runs.
+     */
+    opportunityId: number;
+    /**
+     * `new` since the last run, still `open`, or `closed` since the last run.
+     */
+    section: 'new' | 'open' | 'closed';
+    rank: number | null;
+    topK: boolean;
+    company: string;
+    title: string;
+    roleType: string;
+    term: string;
+    locations: Array<string>;
+    remote: string;
+    url: string;
+    compensation: string | null;
+    deadline: string | null;
+    /**
+     * The posting's own words, quoted. Never a judgment.
+     */
+    workAuthorizationQuote: string | null;
+    summary: string | null;
+    status: 'open' | 'unknown' | 'closed';
+    statusEvidence: string | null;
+    /**
+     * Checked open in this run.
+     */
+    verified: boolean;
+    firstSeenAt: string;
+};
+
+/**
+ * InternshipReport
+ */
+export type InternshipReport = {
+    /**
+     * Null until the first run is published.
+     */
+    run: TrackerRun | null;
+    offers: Array<InternshipOffer>;
+};
+
+/**
  * LoginBody
  */
 export type LoginBody = {
@@ -83,6 +134,24 @@ export type RegisterBody = {
     password: string;
     firstName?: string;
     lastName?: string;
+};
+
+/**
+ * TrackerRun
+ *
+ * One daily internship tracker run.
+ */
+export type TrackerRun = {
+    id: string;
+    topic: string;
+    status: 'complete' | 'partial' | 'failed';
+    stopReason: string | null;
+    startedAt: string;
+    endedAt: string | null;
+    /**
+     * The run's full Markdown report.
+     */
+    reportMarkdown: string;
 };
 
 /**
@@ -433,3 +502,32 @@ export type UpdateUserResponses = {
 };
 
 export type UpdateUserResponse = UpdateUserResponses[keyof UpdateUserResponses];
+
+export type GetLatestInternshipReportData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/internships/latest';
+};
+
+export type GetLatestInternshipReportErrors = {
+    /**
+     * Missing, malformed, unknown or expired token.
+     */
+    401: Error;
+    /**
+     * Unexpected server error.
+     */
+    500: Error;
+};
+
+export type GetLatestInternshipReportError = GetLatestInternshipReportErrors[keyof GetLatestInternshipReportErrors];
+
+export type GetLatestInternshipReportResponses = {
+    /**
+     * The latest published run and its offers, best rank first.
+     */
+    200: InternshipReport;
+};
+
+export type GetLatestInternshipReportResponse = GetLatestInternshipReportResponses[keyof GetLatestInternshipReportResponses];

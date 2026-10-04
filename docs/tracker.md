@@ -215,6 +215,8 @@ Summaries are rejected when they run over 3 sentences or mention a number or mon
 
 **Watchlist.** Without `options.watchlist`, the run starts from `backend/tracker/usecases/internships/watchlist.yaml` (ten NYC boards). Check those boards against the live APIs before relying on them.
 
+**Publishing.** In production the run is scheduled, and its report lands in Postgres for the web app; see [deployment.md](deployment.md#daily-internship-tracker). Locally, `uv run python -m app.publish_report` publishes the latest finished run to `DATABASE_URL`.
+
 **Tools without the model.** Every internship tool runs from the command line against the state file, for example:
 
 ```bash

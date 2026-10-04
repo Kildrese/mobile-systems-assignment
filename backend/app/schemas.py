@@ -120,6 +120,52 @@ class ChangePasswordResponse(ResponseModel):
     token: str = Field(description="The new bearer token. Every previous token is revoked.")
 
 
+class TrackerRun(ResponseModel):
+    """One daily internship tracker run."""
+
+    id: str
+    topic: str
+    status: Literal["complete", "partial", "failed"]
+    stop_reason: str | None
+    started_at: datetime
+    ended_at: datetime | None
+    report_markdown: str = Field(description="The run's full Markdown report.")
+
+
+class InternshipOffer(ResponseModel):
+    """One opportunity as the run reported it. Fields the posting doesn't state are
+    `unknown` (or null for pay, deadline and the work-authorization quote)."""
+
+    opportunity_id: int = Field(description="Stable across runs.")
+    section: Literal["new", "open", "closed"] = Field(
+        description="`new` since the last run, still `open`, or `closed` since the last run."
+    )
+    rank: int | None
+    top_k: bool
+    company: str
+    title: str
+    role_type: str
+    term: str
+    locations: list[str]
+    remote: str
+    url: str
+    compensation: str | None
+    deadline: str | None
+    work_authorization_quote: str | None = Field(
+        description="The posting's own words, quoted. Never a judgment."
+    )
+    summary: str | None
+    status: Literal["open", "unknown", "closed"]
+    status_evidence: str | None
+    verified: bool = Field(description="Checked open in this run.")
+    first_seen_at: datetime
+
+
+class InternshipReport(ResponseModel):
+    run: TrackerRun | None = Field(description="Null until the first run is published.")
+    offers: list[InternshipOffer]
+
+
 # ---------------------------------------------------------------------------
 # Requests
 #

@@ -18,6 +18,7 @@ Protected endpoints take `Authorization: Bearer <token>`, where the token comes 
 | POST | `/api/auth/logout` | yes | Revoke the current token (`204`) |
 | POST | `/api/auth/change-password` | yes | Needs the current password. Revokes every session and returns a new `token` |
 | GET / PATCH / DELETE | `/api/users/:id` | yes | Read, update (username, first and last name) or delete your own account |
+| GET | `/api/internships/latest` | yes | The latest published tracker run and its offers (`run` is `null` before the first). Read-only: nothing in the API starts the tracker |
 
 ## Conventions
 
@@ -51,5 +52,6 @@ Open <http://localhost:5173>. Signed-out visitors are sent to the login page and
 | `/register` | Create an account (you're signed in straight away) |
 | `/` | Home (signed in), with a link to the API reference |
 | `/account` | Change your username, name or password, or delete your account (signed in) |
+| `/internships` | The latest daily internship report: new, still open and closed offers (signed in) |
 
 **Known limitations:** there's no password reset and no login rate limiting.

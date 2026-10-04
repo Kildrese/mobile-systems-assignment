@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Mobile Systems API",
-    "description": "JSON API for accounts and users. Log in with `POST /api/auth/login`, then send the token as `Authorization: Bearer <token>`.",
+    "description": "JSON API for accounts, users and the daily internship report. Log in with `POST /api/auth/login`, then send the token as `Authorization: Bearer <token>`.",
     "version": "0.1.0"
   },
   "paths": {
@@ -548,6 +548,52 @@
           }
         }
       }
+    },
+    "/api/internships/latest": {
+      "get": {
+        "tags": [
+          "Internships"
+        ],
+        "summary": "The latest internship tracker report",
+        "operationId": "getLatestInternshipReport",
+        "responses": {
+          "200": {
+            "description": "The latest published run and its offers, best rank first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternshipReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, unknown or expired token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -650,6 +696,180 @@
         ],
         "title": "Health"
       },
+      "InternshipOffer": {
+        "properties": {
+          "opportunityId": {
+            "type": "integer",
+            "description": "Stable across runs."
+          },
+          "section": {
+            "type": "string",
+            "enum": [
+              "new",
+              "open",
+              "closed"
+            ],
+            "description": "`new` since the last run, still `open`, or `closed` since the last run."
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "topK": {
+            "type": "boolean"
+          },
+          "company": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "roleType": {
+            "type": "string"
+          },
+          "term": {
+            "type": "string"
+          },
+          "locations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "remote": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "compensation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workAuthorizationQuote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The posting's own words, quoted. Never a judgment."
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "unknown",
+              "closed"
+            ]
+          },
+          "statusEvidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verified": {
+            "type": "boolean",
+            "description": "Checked open in this run."
+          },
+          "firstSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "opportunityId",
+          "section",
+          "rank",
+          "topK",
+          "company",
+          "title",
+          "roleType",
+          "term",
+          "locations",
+          "remote",
+          "url",
+          "compensation",
+          "deadline",
+          "workAuthorizationQuote",
+          "summary",
+          "status",
+          "statusEvidence",
+          "verified",
+          "firstSeenAt"
+        ],
+        "title": "InternshipOffer",
+        "description": "One opportunity as the run reported it. Fields the posting doesn't state are\n`unknown` (or null for pay, deadline and the work-authorization quote)."
+      },
+      "InternshipReport": {
+        "properties": {
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrackerRun"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null until the first run is published."
+          },
+          "offers": {
+            "items": {
+              "$ref": "#/components/schemas/InternshipOffer"
+            },
+            "type": "array"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "run",
+          "offers"
+        ],
+        "title": "InternshipReport"
+      },
       "LoginBody": {
         "properties": {
           "username": {
@@ -719,6 +939,66 @@
           "password"
         ],
         "title": "RegisterBody"
+      },
+      "TrackerRun": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "topic": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "failed"
+            ]
+          },
+          "stopReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reportMarkdown": {
+            "type": "string",
+            "description": "The run's full Markdown report."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "topic",
+          "status",
+          "stopReason",
+          "startedAt",
+          "endedAt",
+          "reportMarkdown"
+        ],
+        "title": "TrackerRun",
+        "description": "One daily internship tracker run."
       },
       "UpdateUserBody": {
         "properties": {
@@ -828,6 +1108,9 @@
     },
     {
       "name": "Users"
+    },
+    {
+      "name": "Internships"
     }
   ]
 }

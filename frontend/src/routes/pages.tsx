@@ -5,6 +5,7 @@ import { PasswordForm } from "@/components/account/password-form";
 import { ProfileForm } from "@/components/account/profile-form";
 import { LoginForm } from "@/components/auth/login-form";
 import { SignupForm } from "@/components/auth/signup-form";
+import { InternshipReport } from "@/components/internships/report";
 import { Button } from "@/components/ui/button";
 import { API_URL, APP_NAME } from "@/lib/app";
 import { useUser } from "@/lib/use-auth";
@@ -43,6 +44,9 @@ export function HomePage() {
       </p>
       <div className="flex flex-wrap gap-2">
         <Button asChild>
+          <Link to="/internships">Internship report</Link>
+        </Button>
+        <Button asChild variant="outline">
           <Link to="/account">Manage your account</Link>
         </Button>
         <Button asChild variant="outline">
@@ -61,6 +65,16 @@ export function AccountPage() {
       <ProfileForm />
       <PasswordForm />
       <DeleteAccount />
+    </div>
+  );
+}
+
+export function InternshipsPage() {
+  useTitle("Internships");
+  return (
+    <div className="flex flex-col gap-4">
+      <h1 className="text-2xl font-semibold">Internships</h1>
+      <InternshipReport />
     </div>
   );
 }

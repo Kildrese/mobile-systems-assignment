@@ -88,7 +88,7 @@ def _database() -> Iterator[None]:
 def _clean_tables(_database: None) -> Iterator[None]:
     yield
     with get_engine().begin() as conn:
-        conn.execute(text("truncate users, user_passwords, sessions cascade"))
+        conn.execute(text("truncate users, user_passwords, sessions, tracker_runs cascade"))
 
 
 class Sql:
