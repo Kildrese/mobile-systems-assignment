@@ -120,6 +120,7 @@ function ExportButton({ runId }: { runId: string }) {
     <Button
       variant="outline"
       size="sm"
+      className="cursor-pointer"
       disabled={busy}
       onClick={() => {
         setBusy(true);
