@@ -319,8 +319,11 @@ def test_agent_limit_partial_and_later_stages_run(make_policy, mkeys):
 
 
 @respx.mock
-def test_terminal_failure_skips_that_provider(mpolicy, mkeys):
-    fake = FakeModel(httpx.Response(429, text="Rate limit reached on requests per day (RPD)"))
+def test_daily_quota_skips_only_that_model(mpolicy, mkeys):
+    # Groq counts daily quotas per model: the reader's model still has its own.
+    fake = FakeModel(
+        httpx.Response(429, text="Rate limit reached on requests per day (RPD)"), finish()
+    )
     respx.post(LLM_URL).mock(side_effect=fake)
     respx.post(LLM2_URL).mock(side_effect=FakeModel(finish()))
     ran = []
@@ -329,21 +332,45 @@ def test_terminal_failure_skips_that_provider(mpolicy, mkeys):
         CodeStage("store", lambda ctx: ran.append("store")),
         AgentStage("read", "reader"),
         AgentStage("write", "writer"),
+        AgentStage("rescan", "scout"),
     ]
 
     result = run(mpolicy, mkeys, stages)
 
     assert (result.status, result.exit_code) == ("partial", 2)
     assert ran == ["store"]
-    assert len(fake.requests) == 1
+    assert len(fake.requests) == 2  # the quota, then the reader's finish
     stages = read_trace(result.trace_path)[-1]["stages"]
     assert [(s["outcome"], s["reason"]) for s in stages] == [
         ("partial", "terminal:quota"),
         ("complete", None),
-        ("skipped", "terminal:quota"),
         ("complete", None),
+        ("complete", None),
+        ("skipped", "terminal:quota"),
     ]
     assert result.report_path.is_file()
+
+
+@respx.mock
+def test_auth_failure_skips_that_provider(mpolicy, mkeys):
+    fake = FakeModel(httpx.Response(401, json={"error": {"message": "Invalid API Key"}}))
+    respx.post(LLM_URL).mock(side_effect=fake)
+    respx.post(LLM2_URL).mock(side_effect=FakeModel(finish()))
+    stages = [
+        AgentStage("scan", "scout"),
+        AgentStage("read", "reader"),
+        AgentStage("write", "writer"),
+    ]
+
+    result = run(mpolicy, mkeys, stages)
+
+    assert len(fake.requests) == 1
+    stages = read_trace(result.trace_path)[-1]["stages"]
+    assert [(s["outcome"], s["reason"]) for s in stages] == [
+        ("partial", "terminal:auth"),
+        ("skipped", "terminal:auth"),
+        ("complete", None),
+    ]
 
 
 @respx.mock

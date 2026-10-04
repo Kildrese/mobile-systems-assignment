@@ -154,7 +154,7 @@ How one agent stops:
 
 A terminal failure is a failed run (exit `3`), still with a report: from synthesis if another provider failed, from code alone if the model provider failed.
 
-**Use-case stages.** Each stage ends `complete`, `partial` (its agent stopped on a budget or a terminal failure, or Collect could read no source), `skipped` or `failed`. After a terminal failure, later stages that need the same provider are skipped. The run is `failed` (exit `3`) when a required stage failed, `partial` (exit `2`) when any stage was partial, failed or skipped after a failure, and `complete` (exit `0`) otherwise. The use case's `report_writer` always writes a report; if it raises, the conductor writes a plain table of stage outcomes instead.
+**Use-case stages.** Each stage ends `complete`, `partial` (its agent stopped on a budget or a terminal failure, or Collect could read no source), `skipped` or `failed`. After a terminal failure, later stages that need what failed are skipped: for a daily quota, the stages on that model (Groq counts quotas per model); otherwise, every stage on that provider. The run is `failed` (exit `3`) when a required stage failed, `partial` (exit `2`) when any stage was partial, failed or skipped after a failure, and `complete` (exit `0`) otherwise. The use case's `report_writer` always writes a report; if it raises, the conductor writes a plain table of stage outcomes instead.
 
 Ctrl-C ends any run without a report; the run row is marked failed.
 

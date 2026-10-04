@@ -32,6 +32,7 @@ class FakeProviders(ThreadingHTTPServer):
         super().__init__(("127.0.0.1", 0), Handler)
         self.chat_replies: list[tuple[int, dict]] = []
         self.chat_calls = 0
+        self.models: list[str] | None = None  # None: /v1/models is not served
 
     @property
     def url(self) -> str:
@@ -44,6 +45,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args) -> None:
         pass
 
+    def do_GET(self) -> None:
+        if self.path == "/v1/models" and self.server.models is not None:
+            status, body = 200, {"data": [{"id": m} for m in self.server.models]}
+        else:
+            status, body = 404, {}
+        self._reply(status, body)
+
     def do_POST(self) -> None:
         self.rfile.read(int(self.headers.get("content-length", 0)))
         if self.path == "/v1/chat/completions":
@@ -54,6 +62,9 @@ class Handler(BaseHTTPRequestHandler):
             status, body = 200, search_body(SOURCE)
         else:
             status, body = 404, {}
+        self._reply(status, body)
+
+    def _reply(self, status: int, body: dict) -> None:
         payload = json.dumps(body).encode()
         self.send_response(status)
         self.send_header("content-type", "application/json")
@@ -107,6 +118,7 @@ def report_and_trace(result: subprocess.CompletedProcess) -> tuple[str, list[dic
 
 def test_complete_run_exits_0(providers, write_config):
     items = [{"title": "Open model", "summary": "Released.", "sources": [SOURCE]}]
+    providers.models = ["fake-model", "another-model"]
     providers.chat_replies = [
         (200, chat_body(tool_call("search_web", {"query": "robots"}))),
         (200, chat_body(tool_call("finish", {"items": items}, "c2"))),
@@ -117,6 +129,15 @@ def test_complete_run_exits_0(providers, write_config):
     report, trace = report_and_trace(result)
     assert "### 1. Open model" in report
     assert trace[-1]["outcome"] == "complete"
+
+
+def test_unknown_model_exits_1_before_any_call(providers, write_config):
+    providers.models = ["some-other-model"]
+    result = run_tracker(config_for(write_config, providers.url))
+    assert result.returncode == 1
+    assert "does not offer these models: fake: " in result.stderr
+    assert "Traceback" not in result.stderr
+    assert providers.chat_calls == 0
 
 
 def test_bogus_key_exits_3_with_one_line(providers, write_config):

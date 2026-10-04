@@ -4,8 +4,8 @@ With `agents` and `use_case` in the policy, the use case's stages run under the
 conductor; otherwise the single-agent tracker runs.
 
 Exit status: 0 complete, 2 partial (a budget ran out), 3 terminal provider failure
-(single agent) or failed required stage, 1 invalid policy, missing key or a locked state
-file.
+(single agent) or failed required stage, 1 invalid policy, missing key, a model the
+provider does not offer, or a locked state file.
 """
 
 import argparse
@@ -14,6 +14,7 @@ import sys
 from tracker import conductor
 from tracker.config import TrackerSecrets, load_policy, load_use_case
 from tracker.errors import PolicyError, StateLocked
+from tracker.llm import missing_models
 from tracker.loop import Runner
 
 
@@ -30,6 +31,13 @@ def main(argv: list[str] | None = None) -> int:
         if bool(policy.agents) != bool(policy.use_case):
             raise PolicyError("Invalid policy: agents and use_case must be set together.")
         keys = TrackerSecrets.load(policy)
+        # A retired or misspelled model would otherwise fail only when its stage starts.
+        if missing := missing_models(policy, keys):
+            raise PolicyError(
+                "The provider does not offer these models: "
+                + ", ".join(missing)
+                + ". Fix the model names in the policy file."
+            )
     except PolicyError as err:
         print(err, file=sys.stderr)
         return 1

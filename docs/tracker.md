@@ -39,7 +39,9 @@ The command prints the outcome and the report and trace paths.
 | `0` | Complete: the model called `finish` within all budgets |
 | `2` | Partial: a budget ran out; the report uses the evidence gathered so far |
 | `3` | Terminal provider failure (bad key, quota, payment, unreachable); a partial report is still written |
-| `1` | Invalid policy, missing key, or another run holds the state file. Nothing was called |
+| `1` | Invalid policy, missing key, a model the provider does not offer, or another run holds the state file. No model or search call was made |
+
+Before the run starts, the command asks each model provider for its model list (one request per provider) and stops with exit `1` if the policy names a model that is not on it, such as a retired one. If the list cannot be fetched (network down, rejected key), the check is skipped and the run's own failure handling takes over.
 
 ## Running the tools without the model
 
@@ -173,7 +175,7 @@ agents:
 
 **Stages.** The use case defines an ordered list of stages in code: an agent stage runs one agent loop for a profile, a code stage runs plain code. Model output never changes the order. Each stage gets the policy, its own profile, the state store, its trace and its budget, never another agent's conversation: stages hand data on only through records in the state store.
 
-**Outcomes.** Each stage ends `complete`, `partial` (stopped by a budget or a provider failure), `skipped` (its agent has `enabled: false`, or a provider it needs failed for good earlier in the run) or `failed` (it raised). A stage the use case marks required cannot be disabled. The run is `failed` (exit `3`) when a required stage failed; `partial` (exit `2`) when any stage was partial, failed, or skipped after a provider failure; otherwise `complete` (exit `0`). After a terminal provider failure, later stages that need that provider are skipped and the rest, including code stages, still run. A report is written in every case.
+**Outcomes.** Each stage ends `complete`, `partial` (stopped by a budget or a provider failure), `skipped` (its agent has `enabled: false`, or a provider it needs failed for good earlier in the run) or `failed` (it raised). A stage the use case marks required cannot be disabled. The run is `failed` (exit `3`) when a required stage failed; `partial` (exit `2`) when any stage was partial, failed, or skipped after a provider failure; otherwise `complete` (exit `0`). After a terminal failure, later agent stages that need what failed are skipped and the rest, including code stages, still run. A daily quota skips only the stages on that model, because Groq counts daily quotas per model; any other terminal failure (bad key, payment, a rejected request, unreachable) skips every stage on that provider. The run's stop reason names the first provider failure, if any, ahead of an earlier budget stop. A report is written in every case.
 
 **Trace fields.** Every event written during a stage carries `stage`, and agent stages also `agent`. The summary event adds `stages`: per stage its `name`, `agent`, `outcome`, `reason` and `usage`.
 

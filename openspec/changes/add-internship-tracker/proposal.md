@@ -26,7 +26,8 @@ The tracker core (merged to `master`) is a general runtime, and `add-agent-orche
 - `opportunity-report`: ranking in code, the Editor's summaries, and the cumulative New, Still open and Closed report.
 
 ### Modified Capabilities
-- `tracker-config`: the policy file may also define `options`, use-case settings validated by the use case before any network call.
+- `tracker-config`: the policy file may also define `options`, use-case settings validated by the use case before any network call; and `python -m tracker run` checks at startup that the providers still offer the models the policy names.
+- `agent-orchestration`: a daily quota skips only the later stages on that model, since Groq counts daily quotas per model; other terminal failures still skip the whole provider. The run's stop reason names a provider failure ahead of an earlier budget stop.
 
 ## Impact
 

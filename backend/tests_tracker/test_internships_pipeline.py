@@ -342,7 +342,9 @@ def test_daily_quota_during_curate(ipolicy, keys):
     stages = {s["name"]: s for s in read_trace(result.trace_path)[-1]["stages"]}
     assert stages["curate"]["outcome"] == "partial"
     assert stages["curate"]["reason"] == "terminal:quota"
-    assert stages["edit"]["outcome"] == "skipped"
+    # The quota is the Curator's model's own: the Editor's model is not skipped.
+    assert stages["edit"]["outcome"] == "complete"
+    assert stages["edit"]["reason"] == "nothing to summarize"
     assert all(stages[name]["outcome"] == "complete" for name in ("liveness", "rank"))
     report = result.report_path.read_text()
     assert "quota" in report

@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from tracker.config import ModelSettings, Policy
+from tracker.config import ModelSettings, Policy, TrackerSecrets
 from tracker.errors import send_with_retries
 from tracker.trace import Trace
 
@@ -199,3 +199,32 @@ class ChatClient:
             },
         )
         return reply
+
+
+def missing_models(
+    policy: Policy, keys: TrackerSecrets, transport: httpx.BaseTransport | None = None
+) -> list[str]:
+    """Models the policy names that their provider does not offer, checked once per provider.
+
+    A provider that cannot be asked (network, bad key, an unexpected answer) is skipped:
+    the run's own retry and failure handling deals with it. Only a model list that lacks
+    a model counts, because then the policy names a model that does not exist.
+    """
+    wanted: dict[str, set[str]] = {}
+    profiles = [p for p in policy.agents.values() if p.enabled] if policy.agents else []
+    for model in [p.model for p in profiles] or [policy.model]:
+        wanted.setdefault(model.provider, set()).add(model.name)
+    missing = []
+    for provider, names in sorted(wanted.items()):
+        url = policy.providers[provider].base_url.rstrip("/") + "/models"
+        try:
+            with httpx.Client(transport=transport, timeout=5) as client:
+                response = client.get(
+                    url, headers={"Authorization": f"Bearer {keys.key_for(provider)}"}
+                )
+            offered = {m["id"] for m in response.json()["data"]} if response.is_success else None
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            offered = None
+        if offered is not None:
+            missing += [f"{provider}: {name}" for name in sorted(names - offered)]
+    return missing

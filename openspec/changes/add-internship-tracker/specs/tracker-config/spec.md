@@ -16,3 +16,16 @@ The tracker SHALL read its policy from a YAML file: `config.yaml` at the reposit
 #### Scenario: Invalid use-case options
 - **WHEN** `config.yaml` sets `use_case: internships` and `options.filters` has an unknown key
 - **THEN** the run stops before any network call with a message naming `options`
+
+## ADDED Requirements
+
+### Requirement: Model names are checked at startup
+Before the first stage, `python -m tracker run` SHALL ask each model provider the policy uses for its model list, once per provider, and exit `1` naming every model the policy uses that is not in the list. When the list cannot be fetched (network failure, rejected key, an unexpected answer), the check SHALL be skipped, so the run's own failure handling deals with the provider.
+
+#### Scenario: Retired model
+- **WHEN** an agent profile names a model the provider no longer offers
+- **THEN** the command exits `1` with a message naming the provider and model, before any model call
+
+#### Scenario: Provider unreachable at startup
+- **WHEN** the model list cannot be fetched because the network is down
+- **THEN** the run starts, and its model calls fail and are retried as for any transient failure

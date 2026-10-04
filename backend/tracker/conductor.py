@@ -267,20 +267,27 @@ def run(
     )
     run_ctx = StageContext(policy, None, state, trace, budget, clients, run_id)
     outcomes: list[StageOutcome] = []
-    dead: dict[str, str] = {}  # provider -> terminal kind
+    # Who failed for good -> terminal kind: a provider, or one model for a daily quota.
+    dead: dict[str, str] = {}
     try:
         state.start_run(run_id, policy.topic, policy.k)
         for stage in stages:
             profile = policy.agents[stage.agent] if stage.agent else None
-            needs = set(stage.providers) | ({profile.model.provider} if profile else set())
+            needs = set(stage.providers)
+            if profile is not None:
+                needs |= {profile.model.provider, _model_key(profile)}
             if profile is not None and not profile.enabled:
                 outcome = StageOutcome("skipped", "disabled")
             elif hit := sorted(needs & dead.keys()):
                 outcome = StageOutcome("skipped", f"terminal:{dead[hit[0]]}")
             else:
                 outcome = _run_stage(stage, profile, run_ctx)
-            if outcome.terminal is not None:
-                dead[outcome.terminal.provider] = outcome.terminal.kind
+            if (t := outcome.terminal) is not None:
+                # Groq counts daily quotas per model: another model may still have some.
+                own_quota = profile is not None and (
+                    t.kind == "quota" and t.provider == profile.model.provider
+                )
+                dead[_model_key(profile) if own_quota else t.provider] = t.kind
             outcome.stage, outcome.agent = stage.name, stage.agent
             outcomes.append(outcome)
 
@@ -325,6 +332,10 @@ def run(
         why = decider.detail or report.describe_stop(decider.reason)
         message = f"Run {run_id} {status}: stage {decider.stage} {decider.outcome}, {why}."
     return RunResult(run_id, status, reason, report_path, trace_path, message)
+
+
+def _model_key(profile: AgentProfile) -> str:
+    return f"{profile.model.provider} model {profile.model.name}"
 
 
 def _run_stage(stage: Stage, profile: AgentProfile | None, run_ctx: StageContext) -> StageOutcome:
