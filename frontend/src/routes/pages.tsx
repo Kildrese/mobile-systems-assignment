@@ -92,8 +92,9 @@ export function HomePage() {
           const className =
             "rounded-[min(var(--radius-4xl),24px)] outline-none focus-visible:ring-3 focus-visible:ring-ring/30";
           return external ? (
-            <a key={to} href={to} className={className}>
+            <a key={to} href={to} target="_blank" rel="noreferrer" className={className}>
               {card}
+              <span className="sr-only"> (opens in a new tab)</span>
             </a>
           ) : (
             <Link key={to} to={to} className={className}>
