@@ -178,6 +178,8 @@ Ctrl-C ends any run without a report; the run row is marked failed.
 {"kind": "tool", "stage": "curate", "agent": "curator", "step": 3, "tool": "save_record", "status": "ok", "args": {"posting_id": 12, "record": {"...": "..."}}}
 ```
 
+A failure that ends the agent is one event with `status: error`, `failure_class: terminal`, the `reason` (`auth`, `payment`, `quota`, `request` or `unreachable`) and the provider's own words in `detail`, such as which daily quota ran out and when it resets.
+
 The last line of every trace is a `summary` event with the outcome, the stop reason and totals for steps, searches, fetches, tokens, credits and wall time; under the conductor it also lists each stage's outcome and usage. (Fields are abbreviated here; see [tracker.md](tracker.md#state-reports-and-traces) for the full list.)
 
 ## Where to look in the code
