@@ -8,6 +8,7 @@ fixed pipeline: Scout (agent), Collect (code, required), Curate (agent), Livenes
 """
 
 import json
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -228,8 +229,24 @@ def _fetch_posting_detail(store: OpportunityStore, toolbox: Toolbox, args: Detai
     )
 
 
+# Quote misses per (run, posting). ponytail: process-wide, fine for one run per process.
+_quote_misses: Counter[tuple[str, int]] = Counter()
+
+
 def _save_record(store: OpportunityStore, toolbox: Toolbox, args: SaveRecordArgs):
-    return curation.save_record(store, args.posting_id, args.record, toolbox.run_id)
+    # A model that repeats a wrong quote does not get to retry forever: on its second try,
+    # fields whose quote is not in the posting are saved as unknown.
+    key = (toolbox.run_id, args.posting_id)
+    outcome = curation.save_record(
+        store,
+        args.posting_id,
+        args.record,
+        toolbox.run_id,
+        drop_unverified=_quote_misses[key] > 0,
+    )
+    if outcome.reason == "quote_not_found":
+        _quote_misses[key] += 1
+    return outcome
 
 
 def _mark_same(store: OpportunityStore, toolbox: Toolbox, args: MarkSameArgs):

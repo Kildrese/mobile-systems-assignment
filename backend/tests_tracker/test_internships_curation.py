@@ -276,3 +276,30 @@ def test_choice_field_rejects_other_values(store):
     outcome = save_record(store, pid, rec, RUN1)
     assert outcome.reason == "invalid_arguments"
     assert "internship, new_grad, other, unknown" in outcome.data["detail"]
+
+
+def test_second_wrong_quote_saves_those_fields_as_unknown(store):
+    # gpt-oss-20b repeated term "Summer 2027" for a posting that says "Summer Intern 2027".
+    pid = _one_posting(store, title="Summer Intern 2027 - Software Developer")
+    wrong = record(
+        term={"value": "Summer 2027", "quote": "Summer 2027 internship"},
+        locations={"value": ["New York"], "quote": "Office: New York"},
+        compensation={"value": 180000, "quote": "Pay: $45/hour"},  # a number: kept as text
+    )
+    first = save_record(store, pid, wrong, RUN1)
+    assert first.reason == "quote_not_found"
+    assert "saved as unknown" in first.data["detail"]
+
+    second = save_record(store, pid, wrong, RUN1, drop_unverified=True)
+    assert second.ok
+    assert second.data["saved_as_unknown"] == ["term", "locations"]
+    opp = store.opportunity(second.data["opportunity_id"])
+    assert (opp["term"], opp["locations"]) == ("unknown", [])
+    assert opp["fields"]["compensation"] == {"value": "180000", "quote": "Pay: $45/hour"}
+
+
+def test_title_must_still_be_found(store):
+    pid = _one_posting(store)
+    bad_title = record(title={"value": "Staff Engineer", "quote": "Staff Engineer"})
+    outcome = save_record(store, pid, bad_title, RUN1, drop_unverified=True)
+    assert outcome.reason == "quote_not_found"

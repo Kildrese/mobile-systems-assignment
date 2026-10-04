@@ -417,6 +417,25 @@ def test_detail_fetches_need_a_fetch_limit(tmp_path):
 
 
 @respx.mock
+def test_repeated_wrong_quote_is_saved_as_unknown(tmp_path, keys):
+    policy = policy_from_dict(policy_data(agents={"scout": {"enabled": False}}), tmp_path)
+    wrong = {**acme_record(), "term": {"value": "Summer 2027", "quote": "Summer of 2027"}}
+    save = {"posting_id": 1, "record": wrong}
+    model = FakeModel(
+        chat_body(tool_call("save_record", save, "c1")),  # quote_not_found
+        chat_body(tool_call("save_record", save, "c2")),  # saved, term unknown
+    )
+    respx.post(LLM_URL).mock(side_effect=model)
+    mock_boards()
+
+    run(policy, keys)
+
+    [opp] = opportunities(policy)
+    assert opp["term"] == "unknown"
+    assert opp["fields"]["compensation"]["value"] == "$45/hour"  # verified fields kept
+
+
+@respx.mock
 def test_scout_disabled_starts_at_collect(tmp_path, keys):
     policy = policy_from_dict(policy_data(agents={"scout": {"enabled": False}}), tmp_path)
     model = FakeModel(

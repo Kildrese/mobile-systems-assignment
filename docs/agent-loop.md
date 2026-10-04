@@ -92,14 +92,14 @@ The last-step rule means an agent that keeps calling tools still gets one chance
 
 ### Step 4: the model call
 
-`ChatClient.chat()` posts the whole message list and the tool schemas to the provider's OpenAI-compatible `/chat/completions` endpoint (Groq by default), with `tool_choice: auto`. Each profile can name its own model: in the internship use case the Curator runs `openai/gpt-oss-20b`, which draws on a separate per-model quota. The request goes through `errors.send_with_retries()`:
+`ChatClient.chat()` posts the whole message list and the tool schemas to the provider's OpenAI-compatible `/chat/completions` endpoint (Groq by default), with `tool_choice: required`: every agent turn must be a tool call, since a text-only reply would waste a step (models did write `finish` arguments as plain text before this). Each profile can name its own model: in the internship use case the Curator runs `openai/gpt-oss-20b`, which draws on a separate per-model quota. The request goes through `errors.send_with_retries()`:
 
 - a **transient** failure (timeout, connection error, 408, 5xx, a per-minute 429) is retried with exponential backoff and jitter, honoring `retry-after`, up to `retry.max_attempts`, and never past the wall-clock budget;
 - a **terminal** failure (bad key, payment required, daily quota, attempts used up) raises `TerminalError`, and the loop stops at once.
 
 Each attempt, failed or not, is one trace event of kind `model` with status, latency, HTTP status and token usage.
 
-One special case: when the model writes a malformed tool call, Groq answers `400 tool_use_failed`. That is the model's mistake, not the provider's, so the loop tells the model what went wrong and goes round again (the step still counts).
+One special case: when the model writes a malformed tool call or output Groq cannot parse, Groq answers `400 tool_use_failed` or `400 output_parse_failed`. That is the model's mistake, not the provider's, so the loop tells the model what went wrong and goes round again (the step still counts).
 
 ### Step 7: dispatching a tool call
 

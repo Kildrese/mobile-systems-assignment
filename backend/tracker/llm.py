@@ -99,9 +99,13 @@ def parse_reply(data: dict[str, Any]) -> Reply:
     )
 
 
+# Groq's 400 codes for output the model got wrong: a malformed tool call, or output it
+# could not parse at all. The model can try again; the provider is fine.
+MODEL_OUTPUT_ERRORS = ("tool_use_failed", "output_parse_failed")
+
+
 def _is_model_output_error(response: httpx.Response) -> bool:
-    # Groq answers 400 `tool_use_failed` when the model emitted a malformed tool call.
-    return response.status_code == 400 and "tool_use_failed" in response.text
+    return response.status_code == 400 and any(c in response.text for c in MODEL_OUTPUT_ERRORS)
 
 
 class ChatClient:
@@ -147,7 +151,8 @@ class ChatClient:
             payload["reasoning_effort"] = model.reasoning_effort
         if tools:
             payload["tools"] = tools
-            payload["tool_choice"] = "auto"
+            # Every agent turn is a tool call: a text-only reply would waste a step.
+            payload["tool_choice"] = "required"
         traced_args = {
             "purpose": purpose,
             "messages": len(messages),

@@ -100,6 +100,15 @@ class FieldValue(BaseModel):
     value: str | list[str]
     quote: str | None = Field(default=None, max_length=600)
 
+    @field_validator("value", mode="before")
+    @classmethod
+    def numbers_as_text(cls, value: Any) -> Any:
+        # Models send pay as 180000; the quote ("$180,000") is what gets checked.
+        def text(v: Any) -> Any:
+            return str(v) if isinstance(v, int | float) and not isinstance(v, bool) else v
+
+        return [text(v) for v in value] if isinstance(value, list) else text(value)
+
     @property
     def unknown(self) -> bool:
         return self.value == UNKNOWN or self.value == [] or self.value == ""
@@ -318,8 +327,16 @@ def fetch_posting_detail(
 
 
 def save_record(
-    store: OpportunityStore, posting_id: int, record: dict[str, Any], run_id: str
+    store: OpportunityStore,
+    posting_id: int,
+    record: dict[str, Any],
+    run_id: str,
+    *,
+    drop_unverified: bool = False,
 ) -> ToolOutcome:
+    """Save a record whose quotes are all in the posting. With `drop_unverified` (the
+    Curator's second try), fields whose quote is not found are saved as unknown instead;
+    the title must still be found."""
     posting, check = _pending(store, posting_id)
     if posting is None:
         return check
@@ -327,13 +344,16 @@ def save_record(
         parsed = OpportunityRecord.model_validate(record)
     except ValidationError as err:
         return ToolOutcome.failure("error", "invalid_arguments", validation_message(err))
-    if missing := unverified_fields(parsed, posting_text(posting)):
+    missing = unverified_fields(parsed, posting_text(posting))
+    if missing and (not drop_unverified or "title" in missing):
         return ToolOutcome.failure(
             "error",
             "quote_not_found",
             f"quote not found in the posting for: {', '.join(missing)}. Quote the posting "
-            "word for word, or set the field to unknown.",
+            "word for word, or set the field to unknown. If you send quotes that are not "
+            "in the posting again, those fields are saved as unknown.",
         )
+    parsed = parsed.model_copy(update={name: _unknown() for name in missing})
     opportunity_id = store.create_opportunity(
         company=posting["company"],
         url=posting["url"],
@@ -342,7 +362,10 @@ def save_record(
         posting_id=posting_id,
         linked_by="record",
     )
-    return ToolOutcome("ok", {"posting_id": posting_id, "opportunity_id": opportunity_id})
+    data = {"posting_id": posting_id, "opportunity_id": opportunity_id}
+    if missing:
+        data["saved_as_unknown"] = missing
+    return ToolOutcome("ok", data)
 
 
 def mark_same(

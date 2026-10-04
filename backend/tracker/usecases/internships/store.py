@@ -358,7 +358,10 @@ class OpportunityStore:
                     value("title"),
                     value("role_type"),
                     value("term"),
-                    json.dumps(value("locations", [])),
+                    # An unknown location is no places, not the string "unknown".
+                    json.dumps(
+                        locations if isinstance(locations := value("locations"), list) else []
+                    ),
                     value("remote"),
                     url,
                     json.dumps(record),

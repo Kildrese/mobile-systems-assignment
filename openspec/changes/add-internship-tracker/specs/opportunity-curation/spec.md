@@ -44,11 +44,15 @@ The Curator SHALL NOT have `search_web` or source-proposal tools. Each pending p
 - **THEN** those postings stay `pending` for the next run, they are the least relevant of the run's postings, and the stage outcome is partial
 
 ### Requirement: Quotes are verified by code
-`save_record` SHALL accept a record only when every non-`unknown` field's quote appears in that posting's stored text (board text or fetched detail page), compared after whitespace and case normalization. If a quote is not found, the record is rejected with reason `quote_not_found`, naming the field. The Curator may then retry, or mark the field `unknown`.
+`save_record` SHALL accept a record only when every non-`unknown` field's quote appears in that posting's stored text (board text or fetched detail page), compared after whitespace and case normalization. If a quote is not found, the record is rejected with reason `quote_not_found`, naming the field. The Curator may then retry, or mark the field `unknown`. On its next `save_record` for that posting in the same run, fields whose quote is still not found SHALL be saved as `unknown` instead, so a model that repeats a wrong quote does not retry forever; the title must still be found, and no unverified value is ever stored. A number given as a field's value (such as pay) SHALL be stored as text; its quote is checked as usual.
 
 #### Scenario: Invented deadline
 - **WHEN** the Curator saves a record with deadline "Nov 1" quoting text that is not in the posting
 - **THEN** `save_record` returns `quote_not_found` for `deadline`, and nothing is stored
+
+#### Scenario: The same wrong quote twice
+- **WHEN** the Curator quotes term "Summer 2027" for a posting that says "Summer Intern 2027", is told the quote is not found, and sends the same record again
+- **THEN** the record is saved with term `unknown` and every other field as verified
 
 ### Requirement: Work authorization is quoted, never judged
 Work-authorization or sponsorship wording SHALL be stored only as the verbatim quote. No stage SHALL derive eligibility from it, filter on it or rank by it.
