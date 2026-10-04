@@ -19,7 +19,7 @@ Implemented in PR #16 before this proposal existed. The tasks record what was bu
 ## 4. Markdown export (internship-report-view)
 
 - [x] 4.1 Add `GET /api/internships/runs/{id}/report.md` serving `report_markdown` (`text/markdown`, attachment file name; design D9), regenerate `openapi/openapi.json`. Verify with tests: 200 with the body and headers, 404 for an unknown run and an empty report, 401 without a token, and the documented-routes test updated
-- [x] 4.2 Regenerate the client and add the "Export .md" button on `/internships` (Blob download with the bearer header). Verify with typecheck, lint and build, and the route over HTTP against a local server (200 with headers; 404 with no report). The click in a browser is still to try
+- [x] 4.2 Regenerate the client and add the "Export" button on `/internships` (Blob download with the bearer header). Verify with typecheck, lint and build, and the route over HTTP against a local server (200 with headers; 404 with no report). The click in a browser is still to try
 - [x] 4.3 Document the route in `docs/api.md`
 
 ## 5. Rollout

@@ -53,6 +53,6 @@ Open <http://localhost:5173>. Signed-out visitors are sent to the login page and
 | `/register` | Create an account (you're signed in straight away) |
 | `/` | Home (signed in), with a link to the API reference |
 | `/account` | Change your username, name or password, or delete your account (signed in) |
-| `/internships` | The latest daily internship report: new, still open and closed offers, with an "Export .md" button (signed in) |
+| `/internships` | The latest daily internship report: new, still open and closed offers, with an "Export" button and an "Apply" link on every open offer (signed in) |
 
 **Known limitations:** there's no password reset and no login rate limiting.

@@ -44,10 +44,10 @@ The API SHALL expose no route that starts, re-runs or changes a tracker run or i
 - **THEN** its only internship paths are `/api/internships/latest` and `/api/internships/runs/{id}/report.md`, each with `GET` only
 
 ### Requirement: Internship page
-The web app SHALL show the latest report at `/internships` to signed-in users, in three sections (New since last run, Still open, Closed since last run) with counts, top-K offers marked, each offer linking to its posting, and an "Export .md" button that downloads the run's Markdown export. Work-authorization wording SHALL appear only as a quote. An offer not checked in the run SHALL say so.
+The web app SHALL show the latest report at `/internships` to signed-in users, in three sections (New since last run, Still open, Closed since last run) with counts, top-K offers marked, each open offer with an "Apply" button (external-link icon) that opens its posting in a new tab and each closed offer marked "Closed", and an "Export" button (download icon) that downloads the run's Markdown export. Work-authorization wording SHALL appear only as a quote. An offer not checked in the run SHALL say so.
 
 #### Scenario: Export button
-- **WHEN** a signed-in user clicks "Export .md" on `/internships`
+- **WHEN** a signed-in user clicks "Export" on `/internships`
 - **THEN** the browser saves the run's Markdown export as `internships-<run id>.md`
 
 #### Scenario: No report yet

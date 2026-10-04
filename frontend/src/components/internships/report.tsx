@@ -1,6 +1,8 @@
 // The latest daily internship report. Read-only: the tracker runs on a schedule
 // (.github/workflows/tracker.yml), never from the app.
 import { useQuery } from "@tanstack/react-query";
+import { Download, ExternalLink, Loader2 } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { getLatestInternshipReportOptions } from "@/api/@tanstack/react-query.gen";
 import { exportInternshipReport } from "@/api/sdk.gen";
@@ -9,6 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -40,9 +43,7 @@ function Offer({ offer }: { offer: InternshipOffer }) {
       <CardHeader>
         <CardTitle>
           {offer.rank && <span className="text-muted-foreground">#{offer.rank} </span>}
-          <a href={offer.url} target="_blank" rel="noreferrer" className="hover:underline">
-            {offer.title}
-          </a>
+          {offer.title}
           {offer.topK && (
             <span className="ml-2 rounded-md bg-primary px-1.5 py-0.5 text-xs text-primary-foreground">
               Top pick
@@ -52,6 +53,25 @@ function Offer({ offer }: { offer: InternshipOffer }) {
         <CardDescription>
           {offer.company} · {facts.join(" · ")}
         </CardDescription>
+        <CardAction>
+          {offer.section === "closed" ? (
+            <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+              Closed
+            </span>
+          ) : (
+            <Button asChild size="sm">
+              <a
+                href={offer.url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Apply to ${offer.title} at ${offer.company} (opens in a new tab)`}
+              >
+                Apply
+                <ExternalLink data-icon="inline-end" />
+              </a>
+            </Button>
+          )}
+        </CardAction>
       </CardHeader>
       {(offer.summary ||
         offer.workAuthorizationQuote ||
@@ -94,6 +114,28 @@ async function downloadReport(runId: string) {
   URL.revokeObjectURL(url);
 }
 
+function ExportButton({ runId }: { runId: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={busy}
+      onClick={() => {
+        setBusy(true);
+        void downloadReport(runId).finally(() => setBusy(false));
+      }}
+    >
+      {busy ? (
+        <Loader2 data-icon="inline-start" className="animate-spin" />
+      ) : (
+        <Download data-icon="inline-start" />
+      )}
+      Export
+    </Button>
+  );
+}
+
 export function InternshipReport() {
   const query = useQuery(getLatestInternshipReportOptions());
 
@@ -125,9 +167,7 @@ export function InternshipReport() {
           {run.topic} · updated {new Date(run.startedAt).toLocaleString()}
           {run.status !== "complete" && ` · ${run.status} run`}
         </p>
-        <Button variant="outline" size="sm" onClick={() => void downloadReport(run.id)}>
-          Export .md
-        </Button>
+        <ExportButton runId={run.id} />
       </div>
       {SECTIONS.map(({ key, title, empty }) => {
         const list = offers.filter((o) => o.section === key);
