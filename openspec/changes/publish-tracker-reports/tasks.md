@@ -16,8 +16,15 @@ Implemented in PR #16 before this proposal existed. The tasks record what was bu
 - [x] 3.1 Add `GET /api/internships/latest` with its schemas, regenerate `openapi/openapi.json`. Verify with tests for auth, empty state, ordering, and 405 on writes
 - [x] 3.2 Regenerate the client and add the `/internships` page with a link from home. Verify with typecheck, lint, Vitest and build
 
-## 4. Rollout
+## 4. Markdown export (internship-report-view)
 
-- [ ] 4.1 Add the repository secrets `GROQ_API_KEY`, `TAVILY_API_KEY` and `DATABASE_URL`
-- [ ] 4.2 Apply the migration to Neon (`./scripts/db-migrate-neon.sh`) before merging
-- [ ] 4.3 Trigger the workflow manually once and check the page in production
+- [ ] 4.1 Render a run's rows as Markdown in the tracker report's layout (design D9). Verify with a unit test: three sections with counts, a new offer in full, a still-open table row, a `|` in a title escaped, empty sections said in one line
+- [ ] 4.2 Add `GET /api/internships/runs/{id}/report.md` (`text/markdown`, attachment file name), regenerate `openapi/openapi.json`. Verify with tests: 200 with the headers, 404 for an unknown run, 401 without a token, and the documented-routes test updated
+- [ ] 4.3 Regenerate the client and add the "Export .md" button on `/internships` (Blob download with the bearer header). Verify with typecheck, lint, build and a manual download
+- [ ] 4.4 Document the route in `docs/api.md`
+
+## 5. Rollout
+
+- [ ] 5.1 Add the repository secrets `GROQ_API_KEY`, `TAVILY_API_KEY` and `DATABASE_URL`
+- [ ] 5.2 Apply the migration to Neon (`./scripts/db-migrate-neon.sh`) before merging
+- [ ] 5.3 Trigger the workflow manually once and check the page in production
