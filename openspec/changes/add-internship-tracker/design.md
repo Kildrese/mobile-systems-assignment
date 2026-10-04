@@ -9,7 +9,7 @@ This change is the first use case on the tracker core (merged to `master`) and `
 - `state.py`: `StateStore` with a `MIGRATIONS` list and `PRAGMA user_version`. `tools.py`: a `Toolbox` with `search_web`/`fetch_article`, plus a CLI.
 - `report.py`: renders one "Top developments" list.
 
-The motivation is in proposal.md (Why). The free-tier context: Groq limits each model separately, so `openai/gpt-oss-120b` (8K TPM / 200K TPD) and `llama-3.1-8b-instant` (third-party figures: 6K TPM / 14.4K RPD / 500K TPD) are separate pools. We confirm the figures on Groq's page before the graded runs.
+The motivation is in proposal.md (Why). The free-tier context: Groq limits each model separately, so `openai/gpt-oss-120b` (8K TPM / 200K TPD) and `openai/gpt-oss-20b` are separate pools. We confirm the figures on Groq's page before the graded runs. (The first choice, `llama-3.1-8b-instant`, was retired by Groq: it answered `404 model_not_found` in the first real run.)
 
 ## Goals / Non-Goals
 
@@ -97,7 +97,7 @@ limits: { max_steps: 60, max_searches: 6, max_fetches: 40, max_tokens: 150000, r
 agents:
   scout:   { model: {name: openai/gpt-oss-120b}, tools: [search_web, fetch_article, propose_source],
              limits: { max_steps: 12, max_tokens: 50000, max_searches: 6, max_fetches: 10 }, options: { max_new_sources: 5 } }
-  curator: { model: {name: llama-3.1-8b-instant, max_output_tokens: 1024},
+  curator: { model: {name: openai/gpt-oss-20b, max_output_tokens: 1024},
              tools: [get_posting, fetch_posting_detail, save_record, mark_same, flag_unclear],
              limits: { max_steps: 35, max_tokens: 70000, max_fetches: 20 }, options: { batch_size: 5 },
              fetch_hosts: [boards.greenhouse.io, job-boards.greenhouse.io, jobs.lever.co, jobs.ashbyhq.com, "<watchlist domains>"] }

@@ -230,7 +230,11 @@ class AgentLoop:
         kind = spec.budget or name
         cached = name == "fetch_article" and toolbox.is_cached(args.url)
         if not cached and (reason := budget.check_tool(kind)):
-            return refuse("budget", "budget_exhausted", f"{reason} reached")
+            return refuse(
+                "budget",
+                "budget_exhausted",
+                f"{reason} reached. Use your other tools, or call finish if you are done.",
+            )
         outcome = spec.handler(toolbox, args, step)
         if kind == "search_web" and outcome.ok:
             budget.count(searches=1, credits=float(outcome.data.get("credits", 0)))

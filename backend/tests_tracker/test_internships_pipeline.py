@@ -571,7 +571,7 @@ def test_committed_configs_load():
     policy = load_policy(root / "config.yaml")
     assert policy.use_case == "internships"
     assert wiring.stages(policy)[0].name == "scout"
-    assert policy.agents["curator"].model.name == "llama-3.1-8b-instant"
+    assert policy.agents["curator"].model.name == "openai/gpt-oss-20b"
     assert "search_web" not in policy.agents["curator"].tools
     assert "search_web" not in policy.agents["editor"].tools
     single = load_policy(root / "examples" / "single-agent.yaml")

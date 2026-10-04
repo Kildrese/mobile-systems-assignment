@@ -82,7 +82,7 @@ flowchart TD
 
 ### Step 4: the model call
 
-`ChatClient.chat()` posts the whole message list and the tool schemas to the provider's OpenAI-compatible `/chat/completions` endpoint (Groq by default), with `tool_choice: auto`. Each profile can name its own model: in the internship use case the Curator runs `llama-3.1-8b-instant`, which draws on a separate per-model quota. The request goes through `errors.send_with_retries()`:
+`ChatClient.chat()` posts the whole message list and the tool schemas to the provider's OpenAI-compatible `/chat/completions` endpoint (Groq by default), with `tool_choice: auto`. Each profile can name its own model: in the internship use case the Curator runs `openai/gpt-oss-20b`, which draws on a separate per-model quota. The request goes through `errors.send_with_retries()`:
 
 - a **transient** failure (timeout, connection error, 408, 5xx, a per-minute 429) is retried with exponential backoff and jitter, honoring `retry-after`, up to `retry.max_attempts`, and never past the wall-clock budget;
 - a **terminal** failure (bad key, payment required, daily quota, attempts used up) raises `TerminalError`, and the loop stops at once.
@@ -163,8 +163,8 @@ Ctrl-C ends any run without a report; the run row is marked failed.
 `traces/<run_id>.jsonl` has one line per event. Events from a stage carry its `stage`, and from an agent its `agent`. A typical step:
 
 ```json
-{"kind": "model", "stage": "curate", "agent": "curator", "step": 3, "tool": "llama-3.1-8b-instant", "status": "retry", "http_status": 429, "failure_class": "transient", "reason": "rate_limit", "wait_seconds": 7.0, "attempt": 1, "latency_ms": 212.4}
-{"kind": "model", "stage": "curate", "agent": "curator", "step": 3, "tool": "llama-3.1-8b-instant", "status": "ok", "attempt": 2, "latency_ms": 948.1, "prompt_tokens": 2310, "completion_tokens": 96, "total_tokens": 2406}
+{"kind": "model", "stage": "curate", "agent": "curator", "step": 3, "tool": "openai/gpt-oss-20b", "status": "retry", "http_status": 429, "failure_class": "transient", "reason": "rate_limit", "wait_seconds": 7.0, "attempt": 1, "latency_ms": 212.4}
+{"kind": "model", "stage": "curate", "agent": "curator", "step": 3, "tool": "openai/gpt-oss-20b", "status": "ok", "attempt": 2, "latency_ms": 948.1, "prompt_tokens": 2310, "completion_tokens": 96, "total_tokens": 2406}
 {"kind": "tool", "stage": "curate", "agent": "curator", "step": 3, "tool": "get_posting", "status": "ok", "args": {"posting_id": 12}, "injection_suspected": false}
 ```
 

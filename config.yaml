@@ -80,9 +80,10 @@ agents:
       identifier from the board URL (boards.greenhouse.io/<id>, jobs.lever.co/<id>,
       jobs.ashbyhq.com/<id>). Cite as evidence_url a page you found in this run.
       Prefer startups based in New York. Do not propose large public companies.
+      When your searches are used up, propose the boards you found and call finish.
   curator:
     # A smaller model on a separate Groq quota. Reads postings, never the open web.
-    model: {name: llama-3.1-8b-instant, reasoning_effort: null}
+    model: {name: openai/gpt-oss-20b}
     tools: [get_posting, fetch_posting_detail, save_record, mark_same, flag_unclear]
     fetch_hosts: [boards.greenhouse.io, job-boards.greenhouse.io, jobs.lever.co, jobs.ashbyhq.com]
     limits: {max_steps: 35, max_tokens: 70000, max_fetches: 20}

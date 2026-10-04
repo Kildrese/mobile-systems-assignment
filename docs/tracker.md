@@ -160,7 +160,7 @@ agents:
     limits: {max_steps: 4, max_tokens: 8000, max_searches: 3}
     instructions: Find candidate pages about {topic}.
   reader:
-    model: {name: llama-3.1-8b-instant}   # provider, temperature, ... from `model`
+    model: {name: openai/gpt-oss-20b}     # provider, temperature, ... from `model`
     tools: [fetch_article]
     fetch_hosts: ["*.example.com"]
     limits: {max_steps: 4, max_tokens: 8000, max_fetches: 4}
@@ -187,7 +187,7 @@ The repository's `config.yaml` runs `use_case: internships`: it tracks Summer 20
 | --- | --- | --- | --- |
 | `scout` | agent (`gpt-oss-120b`) | Searches the web and proposes new job boards with `propose_source` | no |
 | `collect` | code | Reads every watchlist board (Greenhouse, Lever, Ashby JSON APIs, no keys) and keeps postings whose title and location match `options.filters` | yes |
-| `curate` | agent (`llama-3.1-8b-instant`) | Turns pending postings into opportunity records, in batches of `batch_size`, each from a fresh conversation | no |
+| `curate` | agent (`openai/gpt-oss-20b`) | Turns pending postings into opportunity records, in batches of `batch_size`, each from a fresh conversation | no |
 | `liveness` | code | Decides open, closed or unknown for every opportunity | no |
 | `rank` | code | Scores open opportunities with `options.ranking` and marks the top K | yes |
 | `edit` | agent (`gpt-oss-120b`) | Writes short summaries for new and top-K opportunities | no |

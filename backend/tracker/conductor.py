@@ -215,11 +215,15 @@ def run_status(
     for o in outcomes:
         if o.outcome == "failed" and o.stage in required:
             return "failed", o
-    for o in outcomes:
-        skipped_after_failure = o.outcome == "skipped" and o.reason != "disabled"
-        if o.outcome in ("partial", "failed") or skipped_after_failure:
-            return "partial", o
-    return "complete", None
+    problems = [
+        o
+        for o in outcomes
+        if o.outcome in ("partial", "failed") or (o.outcome == "skipped" and o.reason != "disabled")
+    ]
+    if not problems:
+        return "complete", None
+    # A provider failure says more than a budget stop in an earlier stage.
+    return "partial", next((o for o in problems if o.terminal is not None), problems[0])
 
 
 def run(

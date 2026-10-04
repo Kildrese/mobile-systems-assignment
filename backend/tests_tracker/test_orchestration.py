@@ -466,3 +466,13 @@ def test_docs_example_validates(tmp_path):
 
 
 assert toy_use_case  # imported for its `echo` registration
+
+
+def test_provider_failure_decides_the_status_over_an_earlier_budget_stop():
+    stages = [CodeStage("a"), CodeStage("b")]
+    budget_stop = conductor.StageOutcome("partial", "scout.max_steps", stage="a")
+    failure = TerminalError("groq", "quota", "daily quota")
+    terminal = conductor.StageOutcome("partial", "terminal:quota", terminal=failure, stage="b")
+    status, decider = conductor.run_status(stages, [budget_stop, terminal])
+    assert (status, decider) == ("partial", terminal)
+    assert conductor.run_status(stages, [budget_stop])[1] is budget_stop

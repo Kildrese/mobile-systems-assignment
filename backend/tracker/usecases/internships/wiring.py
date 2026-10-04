@@ -421,11 +421,18 @@ class ScoutStage:
         sources.load_watchlist(store, watchlist(options(ctx.policy)), ctx.run_id)
         known = ", ".join(sorted({s["company"] for s in store.sources()})) or "none yet"
         cap = _agent_option(ctx.policy, "scout", "max_new_sources", DEFAULT_MAX_NEW_SOURCES)
+        limits = ctx.profile.limits if ctx.profile else None
+        budget = (
+            f"You have {limits.max_steps} steps and {limits.max_searches} searches in all; "
+            "every tool call takes a step, so keep one for finish. "
+            if limits
+            else ""
+        )
         task = (
             f"Find companies hiring for: {ctx.policy.topic}. Search the web, read promising "
             "pages, and for each company with a public Greenhouse, Lever or Ashby job board "
             f"call propose_source. Add at most {cap} new sources. "
-            f"Already on the watchlist: {known}. Call finish when done."
+            f"Already on the watchlist: {known}. {budget}Call finish when done."
         )
         stop, _ = ctx.run_agent(task, finish=_note_finish, finish_schema=NOTE_SCHEMA)
         return StageOutcome.from_stop(stop)
