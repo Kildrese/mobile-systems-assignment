@@ -85,7 +85,32 @@ def test_requires_login(client):
 
 def test_cannot_start_the_tracker(client, ada):
     paths = [p for p in client.get("/api/openapi.json").json()["paths"] if "internship" in p]
-    assert paths == ["/api/internships/latest"]
-    for method in ("post", "put", "patch", "delete"):
-        response = getattr(client, method)("/api/internships/latest", headers=ada.headers)
-        assert response.status_code == 405
+    document = client.get("/api/openapi.json").json()["paths"]
+    assert paths == ["/api/internships/latest", "/api/internships/runs/{id}/report.md"]
+    assert all(list(document[p]) == ["get"] for p in paths)
+    for path in ("/api/internships/latest", f"/api/internships/runs/{RUN2}/report.md"):
+        for method in ("post", "put", "patch", "delete"):
+            assert getattr(client, method)(path, headers=ada.headers).status_code == 405
+
+
+def test_export_serves_the_stored_report(tmp_path, client, ada):
+    state, store = _state(tmp_path)
+    run = dict(state.db.execute("SELECT * FROM runs WHERE id = ?", (RUN2,)).fetchone())
+    rows = offers(store, RUN2)
+    state.close()
+    with get_sessionmaker()() as db:
+        publish(db, run, rows, "# Internship report\n")
+
+    url = f"/api/internships/runs/{RUN2}/report.md"
+    response = client.get(url, headers=ada.headers)
+    assert response.status_code == 200
+    assert response.text == "# Internship report\n"
+    assert response.headers["content-type"] == "text/markdown; charset=utf-8"
+    assert f'filename="internships-{RUN2}.md"' in response.headers["content-disposition"]
+    assert client.get(url).status_code == 401
+    unknown = client.get("/api/internships/runs/nope/report.md", headers=ada.headers)
+    assert unknown.status_code == 404
+
+    with get_sessionmaker()() as db:
+        publish(db, run, rows, "")  # published without a report
+    assert client.get(url, headers=ada.headers).status_code == 404

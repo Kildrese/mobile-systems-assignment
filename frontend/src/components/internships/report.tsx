@@ -1,7 +1,9 @@
 // The latest daily internship report. Read-only: the tracker runs on a schedule
 // (.github/workflows/tracker.yml), never from the app.
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { getLatestInternshipReportOptions } from "@/api/@tanstack/react-query.gen";
+import { exportInternshipReport } from "@/api/sdk.gen";
 import type { InternshipOffer } from "@/api/types.gen";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -74,6 +76,24 @@ function Offer({ offer }: { offer: InternshipOffer }) {
   );
 }
 
+// Fetched through the client (it needs the bearer header), then saved as a file.
+async function downloadReport(runId: string) {
+  const { data, error } = await exportInternshipReport({
+    path: { id: runId },
+    parseAs: "text",
+  });
+  if (error || typeof data !== "string") {
+    toast.error("The report couldn't be exported.");
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([data], { type: "text/markdown" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `internships-${runId}.md`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export function InternshipReport() {
   const query = useQuery(getLatestInternshipReportOptions());
 
@@ -100,10 +120,15 @@ export function InternshipReport() {
 
   return (
     <div className="flex flex-col gap-8">
-      <p className="text-sm text-muted-foreground">
-        {run.topic} · updated {new Date(run.startedAt).toLocaleString()}
-        {run.status !== "complete" && ` · ${run.status} run`}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          {run.topic} · updated {new Date(run.startedAt).toLocaleString()}
+          {run.status !== "complete" && ` · ${run.status} run`}
+        </p>
+        <Button variant="outline" size="sm" onClick={() => void downloadReport(run.id)}>
+          Export .md
+        </Button>
+      </div>
       {SECTIONS.map(({ key, title, empty }) => {
         const list = offers.filter((o) => o.section === key);
         return (

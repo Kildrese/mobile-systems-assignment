@@ -11,7 +11,7 @@ The internship tracker (`add-internship-tracker`) writes its report to `reports/
 - **Daily schedule.** A GitHub Actions workflow runs the tracker every day at 09:00 UTC (5:00 in New York in summer, 4:00 in winter), plus manual runs from the Actions tab. Production runs on Vercel serverless, which has no persistent disk and cannot run a job for 15 minutes, so the run cannot live in the API.
 - **Publishing.** After the run, `python -m app.publish_report` copies the latest *finished* run from the tracker's SQLite state into Postgres: one `tracker_runs` row and one `internship_offers` row per opportunity in the report. Plain code does this, not an agent. The records are already verified and structured by the Curator and ranked by code, so a model would only add cost and a chance to change the facts.
 - **Read-only API.** `GET /api/internships/latest`, for signed-in users, returns the latest run and its offers. No route starts, re-runs or changes a run.
-- **Markdown export.** `GET /api/internships/runs/{id}/report.md` builds a Markdown file from a run's offer rows in the tracker report's layout. The page's "Export .md" button downloads it.
+- **Markdown export.** `GET /api/internships/runs/{id}/report.md` returns the tracker's own Markdown report for a run, as stored at publish time. The page's "Export .md" button downloads it.
 - **Web page.** `/internships` shows the three report sections (new, still open, closed) with the top K marked.
 
 ## Capabilities

@@ -18,29 +18,19 @@
 - **THEN** the response is `200` with `run: null` and an empty `offers` list
 
 ### Requirement: Export a run as Markdown
-`GET /api/internships/runs/{id}/report.md` SHALL return, to a signed-in user, a Markdown file built from that run's `tracker_runs` row and its `internship_offers` rows, as `text/markdown; charset=utf-8` with `Content-Disposition: attachment; filename="internships-<run id>.md"`. The file SHALL follow the tracker report's layout:
-- a header with the topic, run id, start time and status, with the stop reason when the run is not complete;
-- **New since last run (n):** each offer by rank, with title, company, top-K mark, summary, location, term, pay and deadline when known, the work-authorization quote, a note when it was not checked in the run, and its link;
-- **Still open (n):** one table with rank (top K marked), title (with "not checked this run" when unverified), company, location, term, first seen and link;
-- **Closed since last run (n):** one line per offer with its closing evidence and link.
-
-An empty section SHALL say so in one line. Text from the rows SHALL be kept to one line where the layout needs it, and `|` SHALL be escaped inside table cells.
+`GET /api/internships/runs/{id}/report.md` SHALL return, to a signed-in user, the tracker's own Markdown report for that run as published (`tracker_runs.report_markdown`), as `text/markdown; charset=utf-8` with `Content-Disposition: attachment; filename="internships-<run id>.md"`.
 
 #### Scenario: Export
-- **WHEN** a signed-in user requests the export of a published run with one new and one still-open offer
-- **THEN** the file has the three sections with counts 1, 1 and 0, the new offer in full, and the still-open offer as a table row
+- **WHEN** a signed-in user requests the export of a published run
+- **THEN** the response body is that run's report exactly as the tracker wrote it
 
-#### Scenario: Unknown run
-- **WHEN** the id is not a published run
+#### Scenario: Unknown run or no report
+- **WHEN** the id is not a published run, or the run was published without a report
 - **THEN** the response is `404`
 
 #### Scenario: Not signed in
 - **WHEN** the request has no valid bearer token
 - **THEN** the response is `401`
-
-#### Scenario: Cell text with a pipe
-- **WHEN** an offer's title contains `|`
-- **THEN** the table row escapes it, so the table keeps its columns
 
 ### Requirement: The API cannot start the tracker
 The API SHALL expose no route that starts, re-runs or changes a tracker run or its published data.

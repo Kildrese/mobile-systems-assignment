@@ -531,3 +531,41 @@ export type GetLatestInternshipReportResponses = {
 };
 
 export type GetLatestInternshipReportResponse = GetLatestInternshipReportResponses[keyof GetLatestInternshipReportResponses];
+
+export type ExportInternshipReportData = {
+    body?: never;
+    path: {
+        /**
+         * Id
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/internships/runs/{id}/report.md';
+};
+
+export type ExportInternshipReportErrors = {
+    /**
+     * Missing, malformed, unknown or expired token.
+     */
+    401: Error;
+    /**
+     * No published run with this id, or it has no report.
+     */
+    404: Error;
+    /**
+     * Unexpected server error.
+     */
+    500: Error;
+};
+
+export type ExportInternshipReportError = ExportInternshipReportErrors[keyof ExportInternshipReportErrors];
+
+export type ExportInternshipReportResponses = {
+    /**
+     * The tracker's own report for the run, as published.
+     */
+    200: string;
+};
+
+export type ExportInternshipReportResponse = ExportInternshipReportResponses[keyof ExportInternshipReportResponses];

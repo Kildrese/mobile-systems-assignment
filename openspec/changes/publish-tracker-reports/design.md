@@ -43,10 +43,10 @@ Exit `1` means nothing ran (invalid policy, missing key, locked state): the job 
 ### D8. Read-only route
 `GET /api/internships/latest` needs a session (`CurrentSession`) and returns `{run, offers}`, with `run: null` before the first publish rather than a 404, so the page needs no error path for "no report yet". Offers are ordered by rank (unranked last), then company. The router defines no other method. A test checks that the OpenAPI document lists no other internship path and that writes get 405.
 
-### D9. Markdown export from the rows
-`GET /api/internships/runs/{id}/report.md` renders the run's offer rows into the tracker report's three-section layout in `app/` code. It does not return `tracker_runs.report_markdown` (the tracker's own file), because the export should be exactly what the database holds and what the page shows. The differences from the tracker's file: the header has no budget or stage table (not published), and every new offer is shown in full, since the run's K is not published (the tracker shows the first K in full and lists the rest). `report_markdown` stays as the raw record of the run.
+### D9. Markdown export serves the stored report
+`GET /api/internships/runs/{id}/report.md` returns `tracker_runs.report_markdown`, the tracker's own report saved at publish time, unchanged. Re-rendering it from the offer rows was considered and dropped: it would add a renderer to keep in step with the tracker's, and lose the budget and stage table that only the tracker's file has. A run published without a report (empty column) answers 404 rather than an empty file.
 
-The route takes a run id, not "latest", so an export link always names one run. The page gets that id from `/latest`. The download goes through the generated client because it needs the bearer header, so a plain `<a href>` cannot fetch it. The page turns the text into a Blob and saves it with the file name from the response.
+The route takes a run id, not "latest", so an export link always names one run. The page gets that id from `/latest`. The download goes through the generated client because it needs the bearer header, so a plain `<a href>` cannot fetch it. The page turns the text into a Blob and saves it.
 
 ## Risks / Trade-offs
 

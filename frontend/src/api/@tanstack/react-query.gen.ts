@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { changePassword, deleteUser, getCurrentUser, getLatestInternshipReport, getUser, healthCheck, login, logout, type Options, register, updateUser } from '../sdk.gen';
-import type { ChangePasswordData, ChangePasswordError, ChangePasswordResponse2, DeleteUserData, DeleteUserError, DeleteUserResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetLatestInternshipReportData, GetLatestInternshipReportError, GetLatestInternshipReportResponse, GetUserData, GetUserError, GetUserResponse, HealthCheckData, HealthCheckError, HealthCheckResponse, LoginData, LoginError, LoginResponse2, LogoutData, LogoutError, LogoutResponse, RegisterData, RegisterError, RegisterResponse, UpdateUserData, UpdateUserError, UpdateUserResponse } from '../types.gen';
+import { changePassword, deleteUser, exportInternshipReport, getCurrentUser, getLatestInternshipReport, getUser, healthCheck, login, logout, type Options, register, updateUser } from '../sdk.gen';
+import type { ChangePasswordData, ChangePasswordError, ChangePasswordResponse2, DeleteUserData, DeleteUserError, DeleteUserResponse, ExportInternshipReportData, ExportInternshipReportError, ExportInternshipReportResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetLatestInternshipReportData, GetLatestInternshipReportError, GetLatestInternshipReportResponse, GetUserData, GetUserError, GetUserResponse, HealthCheckData, HealthCheckError, HealthCheckResponse, LoginData, LoginError, LoginResponse2, LogoutData, LogoutError, LogoutResponse, RegisterData, RegisterError, RegisterResponse, UpdateUserData, UpdateUserError, UpdateUserResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -211,4 +211,22 @@ export const getLatestInternshipReportOptions = (options?: Options<GetLatestInte
         return data;
     },
     queryKey: getLatestInternshipReportQueryKey(options)
+});
+
+export const exportInternshipReportQueryKey = (options: Options<ExportInternshipReportData>) => createQueryKey('exportInternshipReport', options);
+
+/**
+ * Download a run's Markdown report
+ */
+export const exportInternshipReportOptions = (options: Options<ExportInternshipReportData>) => queryOptions<ExportInternshipReportResponse, ExportInternshipReportError, ExportInternshipReportResponse, ReturnType<typeof exportInternshipReportQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await exportInternshipReport({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: exportInternshipReportQueryKey(options)
 });
