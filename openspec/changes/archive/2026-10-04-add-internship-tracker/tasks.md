@@ -50,4 +50,4 @@ Tasks marked **[parallel]** depend only on the merged core and can be built now.
 
 ## 8. Integration check
 
-- [ ] 8.1 [after orchestration] With real keys on a machine that can reach Groq, Tavily and the board APIs, run twice at least a day apart. Verify run 2's report has New, Still open and Closed sections, no opportunity is listed twice, most boards returned `304`, and per-agent usage is in the trace summary
+- [x] 8.1 [after orchestration] With real keys on a machine that can reach Groq, Tavily and the board APIs, run twice at least a day apart. Verify run 2's report has New, Still open and Closed sections, no opportunity is listed twice, most boards returned `304`, and per-agent usage is in the trace summary
