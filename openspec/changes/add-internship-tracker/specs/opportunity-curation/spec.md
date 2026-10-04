@@ -18,7 +18,7 @@ An opportunity record SHALL have: company, title, role type (`internship`, `new_
 - **THEN** the record's term is `unknown`, with no quote
 
 ### Requirement: Curator tools
-The Curator agent SHALL work through pending postings listed in this run in batches of `agents.curator.options.batch_size` (1 by default), the most relevant first: postings whose title matches `ranking.focus_keywords` before the others, then by id. Each batch SHALL start a fresh conversation whose task carries each posting's text and same-company candidates, wrapped as untrusted data exactly as `get_posting` returns them, and SHALL end as soon as every posting in it is handled, without waiting for `finish`. The Curator SHALL have exactly these tools:
+The Curator agent SHALL work through pending postings listed in this run one at a time, the most relevant first: postings whose title matches `ranking.focus_keywords` before the others, then by id. Each posting SHALL get a fresh conversation whose task carries its text and same-company candidates, wrapped as untrusted data exactly as `get_posting` returns them, and that ends as soon as the posting is handled, without waiting for `finish`. The Curator SHALL have exactly these tools:
 - `get_posting(id)` returns stored posting text as untrusted data.
 - `fetch_posting_detail(posting_id, url)` fetches a posting's own page, limited to the Curator's `fetch_hosts`, and keeps its text with that posting so quotes can come from it. A `url` that is not the posting's own URL is rejected with reason `url_mismatch`.
 - `save_record(posting_id, record)` stores an opportunity record.
@@ -36,8 +36,8 @@ The Curator SHALL NOT have `search_web` or source-proposal tools. Each pending p
 - **THEN** the call is rejected with reason `url_mismatch` and no request is made
 
 #### Scenario: One call per posting
-- **WHEN** the Curator saves a record for the only posting in its batch
-- **THEN** the batch ends after that one model call, and the next batch starts
+- **WHEN** the Curator saves a record for its posting
+- **THEN** the conversation ends after that one model call, and the next posting's starts
 
 #### Scenario: Budget runs out
 - **WHEN** the Curator's step budget runs out with 4 postings unprocessed
@@ -65,7 +65,7 @@ Work-authorization or sponsorship wording SHALL be stored only as the verbatim q
 Code SHALL first treat postings as the same opportunity when they share a job board and job id, or a canonical URL. For postings with different sources, code SHALL offer the Curator candidates from the same company with similar normalized titles, and the Curator decides with `mark_same` and a stated reason. Code SHALL refuse `mark_same` across different companies.
 
 #### Scenario: Same role on two sources
-- **WHEN** a company's careers page and its Ashby board both list "Software Engineer Intern (Summer 2027)"
+- **WHEN** a company's Lever and Ashby boards both list "Software Engineer Intern (Summer 2027)"
 - **THEN** after `mark_same`, one opportunity exists, with both URLs linked
 
 #### Scenario: Cross-company link refused

@@ -15,8 +15,6 @@ from tracker.usecases.internships.curation import UNKNOWN, normalize
 from tracker.usecases.internships.sources import keyword
 from tracker.usecases.internships.store import OpportunityStore
 
-LIVE = ("open", "unknown")
-
 
 class Weights(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -107,7 +105,7 @@ def rank_open(
 ) -> list[dict[str, Any]]:
     """The Rank stage: score every live opportunity, store ranks, return them in order."""
     now = now or datetime.now(UTC)
-    scored = [(score(opp, settings, now), opp) for opp in store.opportunities(LIVE)]
+    scored = [(score(opp, settings, now), opp) for opp in store.opportunities(("open",))]
     scored.sort(
         key=lambda pair: (-pair[0], pair[1]["first_seen_at"], pair[1]["company"], pair[1]["id"])
     )

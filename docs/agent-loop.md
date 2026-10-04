@@ -140,7 +140,7 @@ When the model calls `finish` with arguments (even `{}`), the loop hands them to
 Every call resends the whole conversation, and Groq's free tier allows only a few thousand tokens per minute. Three rules keep prompts small:
 - page text is cut to `fetch.max_chars_for_model` before it reaches the model (the full text stays in state);
 - `_shorten_old_results()` cuts every tool result older than the newest three to 500 characters;
-- the Curator starts a fresh conversation for each posting (`batch_size: 1`), with the posting already in its task, so handling one usually takes a single call of a few thousand tokens.
+- the Curator starts a fresh conversation for each posting, with the posting already in its task, so handling one usually takes a single call of a few thousand tokens.
 
 ## Budgets across agents
 

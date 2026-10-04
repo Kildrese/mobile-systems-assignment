@@ -5,7 +5,6 @@ The use case versions its own schema in `component_versions`, separate from the 
 file from the core upgrades in place.
 """
 
-import hashlib
 import json
 import sqlite3
 from collections.abc import Iterable, Sequence
@@ -101,6 +100,14 @@ MIGRATIONS: list[str] = [
         at TEXT NOT NULL
     );
     """,
+    # Page sources, content hashes, posting update times and last-seen-open runs were
+    # stored but never read.
+    """
+    ALTER TABLE sources DROP COLUMN url;
+    ALTER TABLE raw_postings DROP COLUMN updated_at;
+    ALTER TABLE raw_postings DROP COLUMN content_hash;
+    ALTER TABLE opportunities DROP COLUMN last_seen_open_run;
+    """,
 ]
 
 
@@ -108,14 +115,8 @@ def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def content_hash(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def source_key(kind: str, board: str | None, url: str | None) -> str:
-    if kind == "page":
-        return f"page:{canonicalize(url or '')}"
-    return f"{kind}:{(board or '').lower()}"
+def source_key(kind: str, board: str) -> str:
+    return f"{kind}:{board.lower()}"
 
 
 @dataclass(frozen=True)
@@ -127,7 +128,6 @@ class RawPosting:
     url: str
     text: str
     location: str = ""
-    updated_at: str | None = None
 
 
 def _row(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -168,27 +168,26 @@ class OpportunityStore:
         *,
         company: str,
         kind: str,
-        board: str | None,
-        url: str | None,
+        board: str,
         added_by: str,
         run_id: str,
         evidence_url: str | None = None,
     ) -> tuple[int, bool]:
         """Insert a source unless its key exists. Returns its id and whether it is new."""
-        key = source_key(kind, board, url)
+        key = source_key(kind, board)
         existing = self.db.execute("SELECT id FROM sources WHERE key = ?", (key,)).fetchone()
         if existing:
             return existing["id"], False
         with self.db:
             cursor = self.db.execute(
-                "INSERT INTO sources (key, company, kind, board, url, added_by, added_run, "
-                "evidence_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (key, company, kind, board, url, added_by, run_id, evidence_url),
+                "INSERT INTO sources (key, company, kind, board, added_by, added_run, "
+                "evidence_url) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (key, company, kind, board, added_by, run_id, evidence_url),
             )
         return int(cursor.lastrowid or 0), True
 
-    def has_source(self, kind: str, board: str | None, url: str | None) -> bool:
-        key = source_key(kind, board, url)
+    def has_source(self, kind: str, board: str) -> bool:
+        key = source_key(kind, board)
         return self.db.execute("SELECT 1 FROM sources WHERE key = ?", (key,)).fetchone() is not None
 
     def sources(self) -> list[dict[str, Any]]:
@@ -199,9 +198,6 @@ class OpportunityStore:
     def deactivate_source(self, source_id: int) -> None:
         with self.db:
             self.db.execute("UPDATE sources SET active = 0 WHERE id = ?", (source_id,))
-
-    def source(self, source_id: int) -> dict[str, Any] | None:
-        return _row(self.db.execute("SELECT * FROM sources WHERE id = ?", (source_id,)).fetchone())
 
     def count_sources_added(self, run_id: str, added_by: str) -> int:
         return self.db.execute(
@@ -241,15 +237,13 @@ class OpportunityStore:
         ids = []
         with self.db:
             for p in postings:
-                digest = content_hash(f"{p.title}\n{p.location}\n{p.text}")
                 self.db.execute(
                     "INSERT INTO raw_postings (source_id, external_id, url, canonical_url, "
-                    "title, location, text, updated_at, content_hash, first_seen_run, seen_run) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "title, location, text, first_seen_run, seen_run) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT (source_id, external_id) DO UPDATE SET url = excluded.url, "
                     "canonical_url = excluded.canonical_url, title = excluded.title, "
                     "location = excluded.location, text = excluded.text, "
-                    "updated_at = excluded.updated_at, content_hash = excluded.content_hash, "
                     "seen_run = excluded.seen_run",
                     (
                         source_id,
@@ -259,8 +253,6 @@ class OpportunityStore:
                         p.title,
                         p.location,
                         p.text,
-                        p.updated_at,
-                        digest,
                         run_id,
                         run_id,
                     ),
@@ -276,19 +268,19 @@ class OpportunityStore:
     def posting(self, posting_id: int) -> dict[str, Any] | None:
         return _row(
             self.db.execute(
-                "SELECT p.*, s.company, s.kind AS source_kind FROM raw_postings p "
+                "SELECT p.*, s.company FROM raw_postings p "
                 "JOIN sources s ON s.id = p.source_id WHERE p.id = ?",
                 (posting_id,),
             ).fetchone()
         )
 
-    def pending_postings(self, run_id: str, limit: int | None = None) -> list[dict[str, Any]]:
+    def pending_postings(self, run_id: str) -> list[dict[str, Any]]:
         """Pending postings listed in `run_id`. One no longer listed is not worth curating."""
-        sql = (
+        rows = self.db.execute(
             "SELECT p.*, s.company FROM raw_postings p JOIN sources s ON s.id = p.source_id "
-            "WHERE p.curation = 'pending' AND p.seen_run = ? ORDER BY p.id"
+            "WHERE p.curation = 'pending' AND p.seen_run = ? ORDER BY p.id",
+            (run_id,),
         )
-        rows = self.db.execute(sql + (f" LIMIT {int(limit)}" if limit else ""), (run_id,))
         return [dict(r) for r in rows]
 
     def postings_with_canonical_url(self, canonical_url: str) -> list[dict[str, Any]]:
@@ -350,9 +342,8 @@ class OpportunityStore:
         with self.db:
             cursor = self.db.execute(
                 "INSERT INTO opportunities (company, title, role_type, term, locations_json, "
-                "remote, url, fields_json, status, first_seen_run, first_seen_at, "
-                "last_seen_open_run, checked_run) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)",
+                "remote, url, fields_json, status, first_seen_run, first_seen_at, checked_run) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)",
                 (
                     company,
                     value("title"),
@@ -367,7 +358,6 @@ class OpportunityStore:
                     json.dumps(record),
                     run_id,
                     _now(),
-                    run_id,
                     run_id,
                 ),
             )
@@ -415,7 +405,7 @@ class OpportunityStore:
         return [
             dict(r)
             for r in self.db.execute(
-                "SELECT p.*, s.kind AS source_kind, s.last_read_run, s.last_read_status, "
+                "SELECT p.*, s.last_read_run, s.last_read_status, "
                 "s.company FROM opportunity_links l "
                 "JOIN raw_postings p ON p.id = l.raw_posting_id "
                 "JOIN sources s ON s.id = p.source_id WHERE l.opportunity_id = ? ORDER BY p.id",
@@ -437,21 +427,11 @@ class OpportunityStore:
             self.db.execute(
                 "UPDATE opportunities SET status = ?, status_evidence = ?, "
                 "checked_run = CASE WHEN ? THEN ? ELSE checked_run END, "
-                "last_seen_open_run = CASE WHEN ? = 'open' THEN ? ELSE last_seen_open_run END, "
-                "closed_run = CASE WHEN ? = 'closed' THEN ? WHEN ? = 'open' THEN NULL "
-                "ELSE closed_run END WHERE id = ?",
-                (
-                    status,
-                    evidence,
-                    checked,
-                    run_id,
-                    status,
-                    run_id,
-                    status,
-                    run_id,
-                    status,
-                    opportunity_id,
-                ),
+                # `status` here is still the old value: an opportunity that was already
+                # closed keeps the run it closed in.
+                "closed_run = CASE WHEN ? = 'open' THEN NULL WHEN status = 'closed' "
+                "THEN closed_run ELSE ? END WHERE id = ?",
+                (status, evidence, checked, run_id, status, run_id, opportunity_id),
             )
 
     # Ranks and summaries

@@ -189,8 +189,8 @@ The repository's `config.yaml` runs `use_case: internships`: it tracks Summer 20
 | --- | --- | --- | --- |
 | `scout` | agent (`gpt-oss-120b`) | Searches the web and proposes new job boards with `propose_source` | no |
 | `collect` | code | Reads every watchlist board (Greenhouse, Lever, Ashby JSON APIs, no keys) and keeps postings whose title and location match `options.filters` | yes |
-| `curate` | agent (`openai/gpt-oss-20b`) | Turns pending postings into opportunity records, most relevant first (title matches `ranking.focus_keywords`), one posting per fresh conversation (`batch_size: 1`) with the posting in its task | no |
-| `liveness` | code | Decides open, closed or unknown for every opportunity | no |
+| `curate` | agent (`openai/gpt-oss-20b`) | Turns pending postings into opportunity records, most relevant first (title matches `ranking.focus_keywords`), one posting per fresh conversation with the posting in its task | no |
+| `liveness` | code | Decides open or closed for every opportunity from the boards Collect read | no |
 | `rank` | code | Scores open opportunities with `options.ranking` (role type, term, location, recency, and focus: a software, ML or data title) and marks the top K | yes |
 | `edit` | agent (`gpt-oss-120b`) | Writes short summaries for the opportunities the report shows in full: the first K new ones and the top K | no |
 
@@ -198,13 +198,13 @@ The repository's `config.yaml` runs `use_case: internships`: it tracks Summer 20
 
 **Verified records.** Every field the Curator fills in (title, role type, term, locations, remote, pay, deadline, work authorization) must carry a quote that code finds word for word in the posting text, after normalizing case, whitespace, curly quotes and dashes; otherwise `save_record` answers `quote_not_found`. If the Curator sends a record for the same posting again with quotes that are still not found, those fields are saved as `unknown` (the title must still be found), so a repeated wrong quote costs one retry, not many. Role type and remote policy are listed as allowed values in the schema, and other capitalizations are accepted. Company and URL come from the source, never from the model. Work-authorization wording is stored as a quote only: it never filters or ranks an opportunity. A posting whose URL is already linked to an opportunity is linked by code; the Curator may link postings only within the same company (`mark_same`), otherwise `company_mismatch`. A posting left unresolved in two batches is parked as unclear.
 
-**Lifecycle.** An opportunity listed on a job board closes only when every board it is on was read in this run and none lists it; a board that cannot be read changes nothing (the report notes "not checked this run"). Page-only opportunities are re-checked with a conditional request: 404, 410 or wording from `options.lifecycle.closed_patterns` closes them, a timeout or other failure makes them `unknown`. An opportunity that appears again reopens and keeps its first-seen run.
+**Lifecycle.** An opportunity listed on a job board closes only when every board it is on was read in this run and none lists it; a board that cannot be read changes nothing (the report notes "not checked this run"). Liveness makes no requests of its own: Collect has read the boards. An opportunity that appears again reopens and keeps its first-seen run.
 
 **Report.** Three sections, each opportunity in exactly one:
 
 1. **New since last run**: first seen in this run, by rank; the first K with all fields, the work-authorization quote and the summary.
 2. **Still open**: every earlier opportunity that is still open, accumulated across runs, in one table; the current top K are marked.
-3. **Closed since last run**: with the evidence (the board read, the HTTP status or the closing wording).
+3. **Closed since last run**: with the evidence (the boards read without the job).
 
 Summaries are rejected when they run over 3 sentences or mention a number or month that is not in the record; the report then shows the fields alone.
 

@@ -23,7 +23,7 @@ Tasks marked **[parallel]** depend only on the merged core and can be built now.
 ## 4. Lifecycle (opportunity-lifecycle)
 
 - [x] 4.1 [parallel] Implement board-based liveness (absent from a board that was read → closed; unreadable → unchanged) and reopening. Verify with unit tests for each spec scenario
-- [x] 4.2 [parallel] Implement page-based liveness (conditional request; 404, 410 or closing wording → closed; other failures → unknown). Verify with respx tests: closing wording, 410, timeout → `unknown`
+- [x] 4.2 [parallel] (Later removed with page sources, see design.md.) Implement page-based liveness (conditional request; 404, 410 or closing wording → closed; other failures → unknown). Verify with respx tests: closing wording, 410, timeout → `unknown`
 
 ## 5. Ranking, Editor checks and report (opportunity-report)
 

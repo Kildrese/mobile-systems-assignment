@@ -53,8 +53,7 @@ def test_external_id_unique_per_source(tmp_path):
         try:
             state.db.execute(
                 "INSERT INTO raw_postings (source_id, external_id, url, canonical_url, title, "
-                "text, content_hash, first_seen_run, seen_run) VALUES (?, '1', 'u', 'u', 't', "
-                "'x', 'h', ?, ?)",
+                "text, first_seen_run, seen_run) VALUES (?, '1', 'u', 'u', 't', 'x', ?, ?)",
                 (source_id, RUN1, RUN1),
             )
         except sqlite3.IntegrityError:
@@ -88,13 +87,13 @@ def test_sources_are_unique_by_key(tmp_path):
     state, store = open_store(tmp_path / "s.sqlite")
     try:
         first, new = store.add_source(
-            company="Acme", kind="lever", board="Acme", url=None, added_by="config", run_id=RUN1
+            company="Acme", kind="lever", board="Acme", added_by="config", run_id=RUN1
         )
         second, again = store.add_source(
-            company="Acme", kind="lever", board="acme", url=None, added_by="scout", run_id=RUN2
+            company="Acme", kind="lever", board="acme", added_by="scout", run_id=RUN2
         )
         assert new and not again and first == second
-        assert store.has_source("lever", "ACME", None)
+        assert store.has_source("lever", "ACME")
     finally:
         state.close()
 
@@ -114,7 +113,7 @@ def test_opportunity_lifecycle_columns(tmp_path):
         )
         opp = store.opportunity(oid)
         assert opp["status"] == "open"
-        assert opp["first_seen_run"] == RUN1 == opp["last_seen_open_run"]
+        assert opp["first_seen_run"] == RUN1
         assert opp["locations"] == ["New York, NY"]
         assert store.posting(pid)["curation"] == "saved"
 

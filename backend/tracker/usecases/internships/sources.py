@@ -16,7 +16,7 @@ from typing import Any, Literal
 from urllib.parse import quote
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from tracker.fetch import extract
 from tracker.state import canonicalize
@@ -73,20 +73,13 @@ class WatchlistEntry(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
     company: str = Field(min_length=1, max_length=120)
-    kind: Literal["greenhouse", "lever", "ashby", "page"]
-    board: str | None = None
-    url: str | None = None
+    kind: Literal["greenhouse", "lever", "ashby"]
+    board: str
 
-    @model_validator(mode="after")
-    def board_or_url(self) -> "WatchlistEntry":
-        if self.kind == "page":
-            if not self.url or not self.url.startswith(("https://", "http://")):
-                raise ValueError("a page source needs an http(s) url")
-        else:
-            if not self.board:
-                raise ValueError(f"a {self.kind} source needs a board identifier")
-            check_board_id(self.board)
-        return self
+    @field_validator("board")
+    @classmethod
+    def board_id(cls, board: str) -> str:
+        return check_board_id(board)
 
 
 WATCHLIST_FILE = Path(__file__).with_name("watchlist.yaml")
@@ -105,7 +98,6 @@ def load_watchlist(store: OpportunityStore, entries: list[WatchlistEntry], run_i
             company=entry.company,
             kind=entry.kind,
             board=entry.board,
-            url=entry.url,
             added_by="config",
             run_id=run_id,
         )
@@ -132,7 +124,6 @@ class _GreenhouseJob(_Loose):
     absolute_url: str
     location: _GreenhouseLocation | None = None
     content: str = ""
-    updated_at: str | None = None
 
 
 class _GreenhouseBoard(_Loose):
@@ -159,7 +150,6 @@ class _LeverJob(_Loose):
     lists: list[_LeverList] = Field(default_factory=list)
     additionalPlain: str = ""
     workplaceType: str | None = None
-    createdAt: int | None = None
 
 
 class _AshbyLocation(_Loose):
@@ -175,7 +165,6 @@ class _AshbyJob(_Loose):
     isRemote: bool | None = None
     descriptionPlain: str = ""
     descriptionHtml: str = ""
-    publishedAt: str | None = None
     isListed: bool = True
 
 
@@ -193,7 +182,6 @@ def parse_greenhouse(body: Any) -> list[RawPosting]:
             # `content` is HTML, escaped once more by the API.
             text=_text_from_html(html.unescape(job.content)),
             location=job.location.name if job.location else "",
-            updated_at=job.updated_at,
         )
         for job in board.jobs
     ]
@@ -220,7 +208,6 @@ def parse_lever(body: Any) -> list[RawPosting]:
                 url=job.hostedUrl,
                 text="\n".join(p for p in parts if p),
                 location=location,
-                updated_at=str(job.createdAt) if job.createdAt is not None else None,
             )
         )
     return postings
@@ -244,7 +231,6 @@ def parse_ashby(body: Any) -> list[RawPosting]:
                 url=job.jobUrl,
                 text=text,
                 location=location,
-                updated_at=job.publishedAt,
             )
         )
     return postings
@@ -255,12 +241,6 @@ PARSERS: dict[str, Callable[[Any], list[RawPosting]]] = {
     "lever": parse_lever,
     "ashby": parse_ashby,
 }
-
-
-def parse_page(url: str, text: str) -> list[RawPosting]:
-    """A page source is one posting: the page itself."""
-    title = text.strip().splitlines()[0][:200] if text.strip() else url
-    return [RawPosting(external_id=canonicalize(url), title=title, url=url, text=text)]
 
 
 # Collecting
@@ -276,12 +256,6 @@ class CollectResult:
     @property
     def readable(self) -> bool:
         return self.status in ("ok", "not_modified")
-
-
-def source_url(source: dict[str, Any]) -> str:
-    if source["kind"] == "page":
-        return source["url"]
-    return board_url(source["kind"], source["board"])
 
 
 # Failures that will not change by themselves: the board is gone, too big, or not a board.
@@ -312,7 +286,7 @@ def collect_source(
     run_id: str,
 ) -> CollectResult:
     """Read one source. A failure marks it `unreadable` and never raises."""
-    url = source_url(source)
+    url = board_url(source["kind"], source["board"])
     cached = store.http_cache(url)
     event: dict[str, Any] = {"source": source["key"], "url": url}
     try:
@@ -338,10 +312,7 @@ def collect_source(
     not_modified = result.status == 304 and cached is not None
     body = cached["body"] if not_modified else result.text
     try:
-        if source["kind"] == "page":
-            postings = parse_page(url, body)
-        else:
-            postings = PARSERS[source["kind"]](json.loads(body))
+        postings = PARSERS[source["kind"]](json.loads(body))
     except (ValueError, ValidationError) as err:  # JSONDecodeError is a ValueError
         trace.event(
             "tool",
@@ -437,14 +408,12 @@ def propose_source(
     cap: int,
     company: str,
     kind: str,
-    board_or_url: str,
+    board: str,
     evidence_url: str,
 ) -> ToolOutcome:
-    """Validate a Scout proposal and add it to the watchlist.
+    """Validate a Scout proposal and add the job board to the watchlist.
 
-    `seen_urls` holds canonical URLs returned by search or fetched in this run. The Scout
-    may add job boards only: a page it proposed would be re-read every run, so a page that
-    talked the Scout into proposing it would stay in the pipeline. Pages come from config.
+    `seen_urls` holds canonical URLs returned by search or fetched in this run.
     """
     company = company.strip()
     if not company or len(company) > 120:
@@ -459,12 +428,12 @@ def propose_source(
             "unseen_evidence",
             "evidence_url must be a URL returned by search_web or fetched in this run",
         )
-    board = board_or_url.strip()
+    board = board.strip()
     try:
         check_board_id(board)
     except SourceError as err:
         return ToolOutcome.failure("error", err.reason, err.detail)
-    if store.has_source(kind, board, None):
+    if store.has_source(kind, board):
         return ToolOutcome.failure("error", "duplicate_source", "already on the watchlist")
     if store.count_sources_added(run_id, "scout") >= cap:
         return ToolOutcome.failure(
@@ -474,7 +443,6 @@ def propose_source(
         company=company,
         kind=kind,
         board=board,
-        url=None,
         added_by="scout",
         run_id=run_id,
         evidence_url=evidence_url,

@@ -137,7 +137,7 @@ def test_detail_page_supplies_a_quote(store, policy):
     )
     http = GuardedHttp(policy.fetch, policy.retry, resolver=resolver_for(PUBLIC_IP))
     outcome = fetch_posting_detail(
-        store, pid, "https://boards.greenhouse.io/acme/jobs/1", hosts=POSTING_HOSTS, http=http
+        store, pid, "https://boards.greenhouse.io/acme/jobs/1", http=http
     )
     assert outcome.ok
     assert "Brooklyn" in outcome.untrusted
@@ -151,19 +151,16 @@ def test_detail_page_supplies_a_quote(store, policy):
 
 
 def test_detail_fetch_off_list_host(store, policy):
-    pid = _one_posting(store)
-    calls = []
-
-    class Recorder:
-        def get(self, url, **_):
-            calls.append(url)
-            raise AssertionError("no request should be made")
-
-    outcome = fetch_posting_detail(
-        store, pid, "https://evil.example.org/jobs/1", hosts=POSTING_HOSTS, http=Recorder()
+    # The posting's own page is off the Curator's hosts: the guard refuses it before any
+    # connection (respx would fail an unmocked request), and no fetch is counted.
+    pid = _one_posting(store, "2", url="https://evil.example.org/jobs/2")
+    http = GuardedHttp(
+        policy.fetch, policy.retry, resolver=resolver_for(PUBLIC_IP), allowed_hosts=POSTING_HOSTS
     )
-    assert outcome.reason == "host_not_allowed"
-    assert calls == []
+    with respx.mock:
+        outcome = fetch_posting_detail(store, pid, "https://evil.example.org/jobs/2", http=http)
+    assert (outcome.status, outcome.reason) == ("blocked", "host_not_allowed")
+    assert not outcome.requested
 
 
 def test_detail_fetch_of_another_posting(store):
@@ -175,7 +172,7 @@ def test_detail_fetch_of_another_posting(store):
             raise AssertionError("no request should be made")
 
     outcome = fetch_posting_detail(
-        store, pid, "https://boards.greenhouse.io/acme/jobs/2", hosts=POSTING_HOSTS, http=Refuse()
+        store, pid, "https://boards.greenhouse.io/acme/jobs/2", http=Refuse()
     )
     assert outcome.reason == "url_mismatch"
 

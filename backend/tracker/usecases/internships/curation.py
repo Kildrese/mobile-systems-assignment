@@ -11,11 +11,9 @@ import json
 import re
 import unicodedata
 from typing import Any
-from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from tracker.guard import host_allowed
 from tracker.state import canonicalize
 from tracker.tools import ToolOutcome, validation_message
 from tracker.usecases.internships.http import GuardedHttp, HttpFailure
@@ -23,24 +21,26 @@ from tracker.usecases.internships.store import OpportunityStore
 
 UNKNOWN = "unknown"
 MIN_QUOTE_CHARS = 3
-TITLE_FILLER = {
-    "intern",
-    "interns",
-    "internship",
-    "summer",
-    "fall",
-    "spring",
-    "winter",
-    "co",
-    "op",
-    "coop",
-    "the",
-    "and",
-    "of",
-    "for",
-    "a",
-    "an",
-}
+TITLE_FILLER = set(
+    [
+        "intern",
+        "interns",
+        "internship",
+        "summer",
+        "fall",
+        "spring",
+        "winter",
+        "co",
+        "op",
+        "coop",
+        "the",
+        "and",
+        "of",
+        "for",
+        "a",
+        "an",
+    ]
+)
 COMPANY_SUFFIXES = re.compile(r"\b(inc|llc|ltd|corp|corporation|co|company|hq)\b")
 # Curly quotes, primes, dashes and the no-break space, by code point.
 _QUOTES = str.maketrans(
@@ -285,25 +285,20 @@ def fetch_posting_detail(
     posting_id: int,
     url: str,
     *,
-    hosts: tuple[str, ...],
     http: GuardedHttp,
     max_chars: int = 6000,
 ) -> ToolOutcome:
-    """Fetch a posting's own page, only on the agent's hosts, and keep its text for quotes."""
+    """Fetch a posting's own page and keep its text for quotes. `http` allows only the
+    agent's hosts, so a page elsewhere is blocked before any connection."""
     posting, check = _pending(store, posting_id)
     if posting is None:
         return check
-    try:
-        host = (urlsplit(url).hostname or "").rstrip(".")
-        canonical = canonicalize(url)
-    except ValueError:
-        host = canonical = ""
-    if not host or not host_allowed(host, hosts):
-        return ToolOutcome.failure(
-            "blocked", "host_not_allowed", f"host '{host or url}' is not in this agent's hosts"
-        )
     # Quotes are checked against this text, so it must be this posting's page.
-    if canonical != posting["canonical_url"]:
+    try:
+        same = canonicalize(url) == posting["canonical_url"]
+    except ValueError:
+        same = False
+    if not same:
         return ToolOutcome.failure(
             "error",
             "url_mismatch",
@@ -312,7 +307,7 @@ def fetch_posting_detail(
     try:
         result = http.get(url)
     except HttpFailure as err:
-        blocked = err.reason in {"blocked_address", "scheme_not_allowed"}
+        blocked = err.reason in {"blocked_address", "scheme_not_allowed", "host_not_allowed"}
         outcome = ToolOutcome.failure("blocked" if blocked else "error", err.reason, err.detail)
         outcome.requested = not blocked
         return outcome

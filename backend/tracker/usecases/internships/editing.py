@@ -6,6 +6,7 @@ was asked about, in at most three sentences, and without numbers, amounts, dates
 months that are not in the record: those are where an invented fact shows first.
 """
 
+import calendar
 import json
 import re
 from typing import Any
@@ -18,32 +19,8 @@ from tracker.usecases.internships.store import OpportunityStore
 MAX_SENTENCES = 3
 MAX_CHARS = 600
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
-# "May" is left out: it is far more often the verb.
-_MONTHS = [
-    "january",
-    "february",
-    "march",
-    "april",
-    "june",
-    "july",
-    "august",
-    "september",
-    "october",
-    "november",
-    "december",
-    "jan",
-    "feb",
-    "mar",
-    "apr",
-    "jun",
-    "jul",
-    "aug",
-    "sep",
-    "sept",
-    "oct",
-    "nov",
-    "dec",
-]
+# Full and short month names. "May" is left out: it is far more often the verb.
+_MONTHS = [m for m in (*calendar.month_name[1:], *calendar.month_abbr[1:], "Sept") if m != "May"]
 _MONTH = re.compile(r"\b(" + "|".join(_MONTHS) + r")\b", re.IGNORECASE)
 _SENTENCE_END = re.compile(r"[.!?]+(?=\s|$)")
 
@@ -52,7 +29,7 @@ def wanted(store: OpportunityStore, run_id: str, k: int) -> list[dict[str, Any]]
     """Opportunities whose summary the report shows, by this run's rank: the first K new
     ones (the rest are a one-line list) and the top K. At most 2K, so one reply fits."""
     ranks = store.ranks(run_id)
-    live = [o for o in store.opportunities(("open", "unknown")) if o["id"] in ranks]
+    live = [o for o in store.opportunities(("open",)) if o["id"] in ranks]
     live.sort(key=lambda o: ranks[o["id"]]["rank"])
     shown = {o["id"] for o in [o for o in live if o["first_seen_run"] == run_id][:k]}
     return [o for o in live if o["id"] in shown or ranks[o["id"]]["top_k"]]

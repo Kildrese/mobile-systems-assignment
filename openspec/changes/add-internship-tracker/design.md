@@ -65,10 +65,10 @@ All of them go through the `BoardHttp` seam (D12) over the core `fetch` path, so
 The use case keeps its own schema version in a `component_versions(name, version)` table, not in the core's `PRAGMA user_version`, so the core never needs to know these tables exist. `http_cache` stores the response body, so a `304` re-parses the last body and the board still counts as read with its current postings.
 
 ```
-sources(id PK, company, kind, board, url, added_by, added_run, active, last_read_run, last_read_status)
-raw_postings(id PK, source_id, external_id, url, title, location, text, updated_at, content_hash, seen_run, pending)
+sources(id PK, company, kind, board, added_by, added_run, active, last_read_run, last_read_status)
+raw_postings(id PK, source_id, external_id, url, title, location, text, seen_run, pending)
 opportunities(id PK, company, title, role_type, term, locations_json, remote, url, fields_json, quotes_json,
-              status, status_evidence, first_seen_run, last_seen_open_run, closed_run, unclear_reason)
+              status, status_evidence, first_seen_run, closed_run, unclear_reason)
 opportunity_links(opportunity_id, raw_posting_id, linked_by, reason)
 ranks(run_id, opportunity_id, rank, score, top_k)
 summaries(run_id, opportunity_id, text)
@@ -99,14 +99,13 @@ agents:
              limits: { max_steps: 12, max_tokens: 50000, max_searches: 6, max_fetches: 10 }, options: { max_new_sources: 5 } }
   curator: { model: {name: openai/gpt-oss-20b, max_output_tokens: 1024},
              tools: [get_posting, fetch_posting_detail, save_record, mark_same, flag_unclear],
-             limits: { max_steps: 35, max_tokens: 70000, max_fetches: 20 }, options: { batch_size: 1 },
+             limits: { max_steps: 35, max_tokens: 70000, max_fetches: 20 }, options: {},
              fetch_hosts: [boards.greenhouse.io, job-boards.greenhouse.io, jobs.lever.co, jobs.ashbyhq.com, "<watchlist domains>"] }
   editor:  { model: {name: openai/gpt-oss-120b}, tools: [get_opportunities, finish],
              limits: { max_steps: 6, max_tokens: 25000 } }
 watchlist: [ { company: "...", kind: greenhouse, board: "..." }, ... ]
 filters: { title_keywords: [intern, internship, co-op], locations: ["New York", "NYC", "Brooklyn", "Remote"] }
 ranking: { weights: { role: 3, term: 3, location: 2, recency: 1, focus: 3 }, recency_days: 30 }
-lifecycle: { closed_patterns: ["no longer accepting", "position has been filled", "job is closed"] }
 ```
 Profiles inherit any model fields they omit (provider, temperature) from the top-level `model`. There is no top-level `tools` list: the use case registers its tools in code, and each profile selects from them.
 
@@ -115,7 +114,7 @@ Expected round trips on a first run:
 - Scout: ~12 Groq calls, ≤6 Tavily searches and ≤10 page fetches.
 - Collect: one request per watchlist source (~15–20).
 - Curate: about one Groq call per posting (a few thousand tokens, the posting in the task) and ≤20 detail fetches. The first real run used two calls per posting in a conversation that grew to ~6K tokens, and the per-minute token limit let it save only 7 of 28 postings in the 900 s budget; what is left waits for the next run, most relevant first.
-- Liveness: requests only for page-only opportunities.
+- Liveness: no requests; Collect has read the boards.
 - Edit: ≤6 Groq calls.
 
 On later runs most board requests return `304`, and only new postings are curated. Each host gets one reused `httpx.Client`, so keep-alive and TLS session reuse apply. Requests go out one at a time, which is polite toward the job boards.
@@ -150,8 +149,8 @@ They never import `tracker.conductor`, `tracker.agents`, or registry symbols. HT
 
 ## Risks / Trade-offs
 
-- [The 8B model makes malformed tool calls] → Strict argument validation already returns error results. The core's `ModelOutputError` handling re-prompts once. Small batches limit the damage, and a posting that fails twice is flagged `unclear` by code.
-- [Pre-filter keywords miss postings with unusual titles] → The keywords live in config, filtered counts are traced, and the Scout can also bring in page sources. Accepted for scope.
+- [The 8B model makes malformed tool calls] → Strict argument validation already returns error results. The core's `ModelOutputError` handling re-prompts once. One posting per conversation limits the damage, and a posting that fails twice is flagged `unclear` by code.
+- [Pre-filter keywords miss postings with unusual titles] → The keywords live in config, filtered counts are traced, and the Scout can bring in more boards. Accepted for scope.
 - [A board API changes shape or blocks us] → Each collector validates the response with pydantic, a source that fails is `unreadable` without being closed, and fixtures in tests pin the expected shape.
 - [Cumulative "Still open" grows long] → Shown as a compact table. Only the opportunities shown in full get summaries (the first K new ones and the top K, at most 2K), so the Editor's cost does not grow with the list and its summaries fit in one reply (its output cap is 2,048 tokens, since gpt-oss reasoning counts against it).
 - [Grader expects "Still in top K" and "Dropped"] → Still open marks the top K, Closed is the dropped list, and AGENT.md explains the mapping.
@@ -164,3 +163,7 @@ The internship schema is additive. A state file from the core works as is, and i
 ## Open Questions
 
 - The initial watchlist: about 15 NYC startups whose Greenhouse, Lever or Ashby boards are public. The list is data in `config.yaml` and can be finalized during implementation, after checking each board URL by hand.
+
+## Simplified after the first real runs
+
+A review after the real runs cut what nothing used. Page sources went entirely: no watchlist entry used one, the Scout may only propose boards, and with them went page liveness, closing wording, the `unknown` status and `options.lifecycle`. Columns that were written but never read (`sources.url`, `raw_postings.updated_at` and `content_hash`, `opportunities.last_seen_open_run`) are dropped by a second migration, so a state file from the first runs upgrades in place. The Curator handles one posting per conversation, so `batch_size` is gone.

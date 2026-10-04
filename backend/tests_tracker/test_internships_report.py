@@ -14,16 +14,11 @@ from tracker.usecases.internships.editing import (
     summary_problem,
     wanted,
 )
-from tracker.usecases.internships.lifecycle import LifecycleSettings, run_liveness
+from tracker.usecases.internships.lifecycle import run_liveness
 from tracker.usecases.internships.ranking import RankingSettings, rank_open, score
 from tracker.usecases.internships.report import render, sections
 
 NOW = datetime(2026, 10, 2, 12, tzinfo=UTC)
-
-
-class NoHttp:
-    def get(self, url, **_):
-        raise AssertionError(f"no request expected, got {url}")
 
 
 @pytest.fixture
@@ -171,14 +166,14 @@ def meta(run_id, status="complete"):
 def test_second_day_report(store):
     """Run 1 finds 6; run 2 finds 2 new, 5 of the 6 still open, 1 closed."""
     source_id, run1_ids = _seed(store, 6)
-    run_liveness(store, RUN1, NoHttp(), LifecycleSettings())
+    run_liveness(store, RUN1)
     rank_open(store, RUN1, RankingSettings(), 3, NOW)
 
     # Run 2: the board lists jobs 1-5 (job 6 was taken down) plus new jobs 7 and 8.
     store.upsert_postings(source_id, [posting(str(i)) for i in range(1, 6)], RUN2)
     _, run2_ids = _seed(store, 2, RUN2, start=7)
     store.mark_source_read(source_id, RUN2, "ok")
-    run_liveness(store, RUN2, NoHttp(), LifecycleSettings())
+    run_liveness(store, RUN2)
     rank_open(store, RUN2, RankingSettings(), 3, NOW)
 
     s = sections(store, RUN2)
@@ -202,7 +197,7 @@ def test_still_open_accumulates(store, tmp_path):
     for run in (RUN2, "20261003T120000Z-cccc", "20261004T120000Z-dddd"):
         store.upsert_postings(source_id, [posting("1")], run)
         store.mark_source_read(source_id, run, "ok")
-        run_liveness(store, run, NoHttp(), LifecycleSettings())
+        run_liveness(store, run)
         rank_open(store, run, RankingSettings(), 3, NOW)
         s = sections(store, run)
         assert [o["id"] for o in s.still_open] == [oid]
@@ -212,7 +207,7 @@ def test_still_open_accumulates(store, tmp_path):
 def test_unverified_note_when_board_unreadable(store):
     source_id, _ = _seed(store, 1)
     store.mark_source_read(source_id, RUN2, "unreadable")
-    run_liveness(store, RUN2, NoHttp(), LifecycleSettings())
+    run_liveness(store, RUN2)
     rank_open(store, RUN2, RankingSettings(), 3, NOW)
     text = render(meta(RUN2, "partial"), store, 3)
     assert "(not checked this run)" in text
@@ -244,7 +239,7 @@ def test_pipe_in_title_does_not_break_table(store):
     assert save_record(store, pid, rec, RUN1).ok
     store.mark_source_read(source_id, RUN2, "ok")
     store.upsert_postings(source_id, [posting("1", title="Intern | Platform")], RUN2)
-    run_liveness(store, RUN2, NoHttp(), LifecycleSettings())
+    run_liveness(store, RUN2)
     rank_open(store, RUN2, RankingSettings(), 3, NOW)
     assert "Intern \\| Platform" in render(meta(RUN2), store, 3)
 

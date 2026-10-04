@@ -86,7 +86,6 @@ AGENTS = {
         "instructions": "You turn postings into records.",
         "fetch_hosts": ["boards.greenhouse.io", "jobs.ashbyhq.com"],
         "model": {"name": "small-model"},
-        "options": {"batch_size": 5},
     },
     "editor": {
         "tools": ["get_opportunities", "get_posting"],
@@ -182,7 +181,7 @@ def scout_script():
                 {
                     "company": "Gamma",
                     "kind": "ashby",
-                    "board_or_url": "gamma",
+                    "board": "gamma",
                     "evidence_url": EVIDENCE,
                 },
                 "s2",
@@ -273,8 +272,10 @@ def test_curator_takes_the_most_relevant_postings_first(tmp_path):
         ids = store.upsert_postings(
             source_id, [posting(str(i), title=t) for i, t in enumerate(titles)], RUN1
         )
-        batch = wiring.next_batch(store, RUN1, RankingSettings(), 2)
-        assert [p["id"] for p in batch] == [ids[1], ids[0]]
+        first = wiring.next_posting(store, RUN1, RankingSettings())
+        assert first is not None and first["id"] == ids[1]  # the software role
+        store.set_curation(ids[1], "saved")
+        assert wiring.next_posting(store, RUN1, RankingSettings())["id"] == ids[0]  # then by id
     finally:
         state.close()
 
@@ -518,7 +519,7 @@ def test_injection_page_is_contained(tmp_path, keys):
                 {
                     "company": "Evil",
                     "kind": "page",
-                    "board_or_url": "http://127.0.0.1:8000/careers",
+                    "board": "http://127.0.0.1:8000/careers",
                     "evidence_url": EVIDENCE,
                 },
                 "s2",
@@ -557,7 +558,7 @@ def test_injection_page_is_contained(tmp_path, keys):
             by_tool.setdefault(event.get("tool"), []).append(event)
     assert by_tool["propose_source"][0]["reason"] == "unknown_kind"
     assert by_tool["mark_same"][0]["reason"] == "company_mismatch"
-    assert by_tool["fetch_posting_detail"][0]["reason"] == "host_not_allowed"
+    assert by_tool["fetch_posting_detail"][0]["reason"] == "url_mismatch"
     assert by_tool["get_posting"][0]["injection_suspected"] is True
 
     state = StateStore(policy.state_file)

@@ -7,6 +7,7 @@ import respx
 
 from tests_tracker.conftest import PUBLIC_IP, read_trace, resolver_for
 from tests_tracker.internships_helpers import RUN1, RUN2, open_store, posting
+from tests_tracker.internships_helpers import source as read_source
 from tracker.trace import Trace
 from tracker.usecases.internships.http import GuardedHttp, HttpFailure
 from tracker.usecases.internships.sources import (
@@ -203,9 +204,9 @@ def test_collect_all_one_board_down(store, http, trace, tmp_path):
 @respx.mock
 def test_conditional_request_and_304(store, http, trace, tmp_path):
     source_id, _ = store.add_source(
-        company="Acme", kind="greenhouse", board="acme", url=None, added_by="config", run_id=RUN1
+        company="Acme", kind="greenhouse", board="acme", added_by="config", run_id=RUN1
     )
-    source = store.source(source_id)
+    source = read_source(store, source_id)
     route = respx.get(pinned(board_url("greenhouse", "acme")))
     route.side_effect = [
         httpx.Response(200, headers={**JSON, "etag": '"v1"'}, json=GREENHOUSE),
@@ -225,10 +226,10 @@ def test_conditional_request_and_304(store, http, trace, tmp_path):
 @respx.mock
 def test_bad_json_is_unreadable(store, http, trace):
     source_id, _ = store.add_source(
-        company="Acme", kind="greenhouse", board="acme", url=None, added_by="config", run_id=RUN1
+        company="Acme", kind="greenhouse", board="acme", added_by="config", run_id=RUN1
     )
     respx.get(pinned(board_url("greenhouse", "acme"))).respond(200, headers=JSON, text="{nope")
-    result = collect_source(store, store.source(source_id), http, trace, RUN1)
+    result = collect_source(store, read_source(store, source_id), http, trace, RUN1)
     assert result.status == "unreadable"
     assert result.reason == "bad_response"
 
@@ -237,9 +238,9 @@ def test_collect_respects_guardrails(store, policy, trace):
     # The board host resolves to a private address: blocked, no connection, no crash.
     http = GuardedHttp(policy.fetch, policy.retry, resolver=resolver_for("10.0.0.5"))
     source_id, _ = store.add_source(
-        company="Acme", kind="lever", board="acme", url=None, added_by="config", run_id=RUN1
+        company="Acme", kind="lever", board="acme", added_by="config", run_id=RUN1
     )
-    result = collect_source(store, store.source(source_id), http, trace, RUN1)
+    result = collect_source(store, read_source(store, source_id), http, trace, RUN1)
     assert result.status == "unreadable"
     assert result.reason == "blocked_address"
 
@@ -297,7 +298,7 @@ def _propose(store, seen, **overrides):
     args = {
         "company": "Delta",
         "kind": "lever",
-        "board_or_url": "delta",
+        "board": "delta",
         "evidence_url": "https://news.example.com/delta-hiring",
     }
     args.update(overrides)
@@ -329,23 +330,23 @@ def test_proposal_with_unseen_evidence(store):
 
 def test_proposal_duplicate(store):
     _propose(store, SEEN)
-    assert _propose(store, SEEN, board_or_url="DELTA").reason == "duplicate_source"
+    assert _propose(store, SEEN, board="DELTA").reason == "duplicate_source"
 
 
 def test_proposal_cap(store):
-    assert _propose(store, SEEN, board_or_url="one").ok
-    assert _propose(store, SEEN, board_or_url="two").ok
-    assert _propose(store, SEEN, board_or_url="three").reason == "source_cap_reached"
+    assert _propose(store, SEEN, board="one").ok
+    assert _propose(store, SEEN, board="two").ok
+    assert _propose(store, SEEN, board="three").reason == "source_cap_reached"
 
 
 def test_proposal_bad_identifier_and_kind(store):
-    assert _propose(store, SEEN, board_or_url="../x").reason == "invalid_board"
+    assert _propose(store, SEEN, board="../x").reason == "invalid_board"
     assert _propose(store, SEEN, kind="workday").reason == "unknown_kind"
 
 
 def test_scout_cannot_propose_a_page(store):
     # A page the Scout read could otherwise put itself on the watchlist for every run.
-    outcome = _propose(store, SEEN, kind="page", board_or_url="https://evil.example.com/careers")
+    outcome = _propose(store, SEEN, kind="page", board="https://evil.example.com/careers")
     assert outcome.reason == "unknown_kind"
     assert store.sources() == []
 
@@ -354,18 +355,18 @@ def test_scout_cannot_propose_a_page(store):
 def test_scout_board_that_never_worked_is_deactivated(store, http, trace):
     def add(board, added_by):
         source_id, _ = store.add_source(
-            company=board, kind="lever", board=board, url=None, added_by=added_by, run_id=RUN1
+            company=board, kind="lever", board=board, added_by=added_by, run_id=RUN1
         )
         respx.get(pinned(board_url("lever", board))).respond(404)
-        return store.source(source_id)
+        return read_source(store, source_id)
 
     typo = add("typo", "scout")  # never readable: costs a request every run
     config = add("config", "config")  # the user's own list is never changed
     moved = add("moved", "scout")
     store.mark_source_read(moved["id"], RUN1, "ok")  # worked before: may come back
 
-    for source in (typo, config, store.source(moved["id"])):
+    for source in (typo, config, read_source(store, moved["id"])):
         assert collect_source(store, source, http, trace, RUN2).status == "unreadable"
 
     assert [s["board"] for s in store.sources()] == ["config", "moved"]
-    assert store.has_source("lever", "typo", None)  # cannot be proposed again
+    assert store.has_source("lever", "typo")  # cannot be proposed again

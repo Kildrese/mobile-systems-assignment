@@ -53,8 +53,12 @@ def record(**overrides: Any) -> dict[str, Any]:
     return values
 
 
+def source(store: OpportunityStore, source_id: int) -> dict[str, Any]:
+    return next(s for s in store.sources() if s["id"] == source_id)
+
+
 def add_board(store: OpportunityStore, board: str = "acme", company: str = "Acme") -> int:
     source_id, _ = store.add_source(
-        company=company, kind="greenhouse", board=board, url=None, added_by="config", run_id=RUN1
+        company=company, kind="greenhouse", board=board, added_by="config", run_id=RUN1
     )
     return source_id

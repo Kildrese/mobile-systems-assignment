@@ -10,7 +10,7 @@ The tracker core (merged to `master`) is a general runtime, and `add-agent-orche
 - **Scout agent** (`openai/gpt-oss-120b`). Uses `search_web` and `fetch_article` to find companies and job boards worth tracking, and proposes them with `propose_source`. Code validates each proposal and adds it to the watchlist.
 - **Collectors** (code, no LLM). Read the public Greenhouse, Lever and Ashby board APIs for every watchlist source, with conditional requests, and pre-filter postings by title keywords and location from config.
 - **Curator agent** (`openai/gpt-oss-20b`, which draws on separate per-model quota). Turns raw postings into opportunity records with verbatim quotes for key fields. It fetches a posting's detail page when the JSON lacks something, merges duplicates across sources (`mark_same`), and flags unclear postings. Code rejects any record whose quotes are not in the stored posting text.
-- **Liveness and lifecycle.** Each opportunity is `open`, `closed` or `unknown`. A posting missing from a board that was read successfully is closed. A board that could not be read changes nothing. Postings found outside the job boards are re-checked through the fetch guardrails, and a 404, a 410 or closing wording marks them closed.
+- **Liveness and lifecycle.** Each opportunity is `open` or `closed`. A posting missing from every board that lists it, all read successfully, is closed. A board that could not be read changes nothing. Only job boards are sources: no page is ever re-read.
 - **Ranking in code** with weights from config: role type, term, location, and recency. Work-authorization wording is shown as a quote and never used to score or filter.
 - **Editor agent** (`openai/gpt-oss-120b`). Writes short, quote-grounded summaries of why each top-K opportunity and each new one shown in full fits. It can read records and postings but cannot change ranks, statuses or sources.
 - **Cumulative report.** Three sections: **New since last run** (ranked, the top K in full), **Still open** (every earlier opportunity that is still open, accumulated across runs and never shown again as new, with the current top K marked) and **Closed since last run**.
@@ -22,7 +22,7 @@ The tracker core (merged to `master`) is a general runtime, and `add-agent-orche
 - `internship-pipeline`: the `internships` use case: its three agents and their privileges, the fixed stage order, and how a run degrades when a budget or provider runs out.
 - `opportunity-sources`: the watchlist, proposing sources from the Scout, the Greenhouse, Lever and Ashby collectors, conditional requests, and the pre-filter.
 - `opportunity-curation`: the opportunity record, the Curator's tools, quote verification, and same-role resolution.
-- `opportunity-lifecycle`: open, closed and unknown status, the liveness checks, and first-seen and last-seen tracking across runs.
+- `opportunity-lifecycle`: open and closed status, closing from job boards, and first-seen tracking across runs.
 - `opportunity-report`: ranking in code, the Editor's summaries, and the cumulative New, Still open and Closed report.
 
 ### Modified Capabilities

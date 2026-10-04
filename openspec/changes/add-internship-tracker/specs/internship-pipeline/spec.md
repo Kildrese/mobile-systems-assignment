@@ -23,7 +23,7 @@ The pipeline SHALL run, in this order: Scout (agent `scout`), Collect (code, req
 ### Requirement: Agent privileges for this use case
 The default profiles SHALL give:
 - **Scout**: `search_web`, `fetch_article` and `propose_source`.
-- **Curator**: `get_posting`, `fetch_posting_detail`, `save_record`, `mark_same` and `flag_unclear`, with `fetch_hosts` limited to the job-board posting hosts and the watchlist's domains.
+- **Curator**: `get_posting`, `fetch_posting_detail`, `save_record`, `mark_same` and `flag_unclear`, with `fetch_hosts` limited to the job-board posting hosts.
 - **Editor**: `get_opportunities` and `finish`.
 
 The Curator and Editor SHALL NOT have `search_web` or `propose_source`.

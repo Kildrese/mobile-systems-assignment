@@ -9,7 +9,7 @@ fixed pipeline: Scout (agent), Collect (code, required), Curate (agent), Livenes
 
 import json
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -27,14 +27,11 @@ from tracker.untrusted import injection_suspected, wrap
 from tracker.usecases.internships import curation, editing, lifecycle, ranking, sources
 from tracker.usecases.internships import report as internship_report
 from tracker.usecases.internships.http import GuardedHttp
-from tracker.usecases.internships.lifecycle import LifecycleSettings
 from tracker.usecases.internships.ranking import RankingSettings
 from tracker.usecases.internships.store import OpportunityStore
 
 AGENTS = ("scout", "curator", "editor")
-DEFAULT_BATCH = 1
 DEFAULT_MAX_NEW_SOURCES = 5
-MAX_CHARS_FOR_MODEL = 6000
 
 
 # Options
@@ -49,7 +46,6 @@ class InternshipOptions(BaseModel):
     watchlist: list[sources.WatchlistEntry] | None = None
     filters: sources.Filters = sources.Filters()
     ranking: RankingSettings = RankingSettings()
-    lifecycle: LifecycleSettings = LifecycleSettings()
     # Job boards can be large JSON documents; pages keep fetch.max_bytes.
     board_max_bytes: int = Field(default=8_000_000, gt=0)
 
@@ -91,7 +87,6 @@ def validate(policy: Policy) -> InternshipOptions:
             "Invalid policy:\n  fetch.allowed_hosts must allow the job-board APIs: "
             + ", ".join(blocked)
         )
-    _agent_option(policy, "curator", "batch_size", DEFAULT_BATCH)
     _agent_option(policy, "scout", "max_new_sources", DEFAULT_MAX_NEW_SOURCES)
     return opts
 
@@ -156,7 +151,7 @@ class _Args(BaseModel):
 class ProposeSourceArgs(_Args):
     company: str = Field(min_length=1, max_length=120)
     kind: str = Field(min_length=1, max_length=20)
-    board_or_url: str = Field(min_length=1, max_length=2048)
+    board: str = Field(min_length=1, max_length=100)
     evidence_url: str = Field(min_length=1, max_length=2048)
 
 
@@ -191,10 +186,6 @@ class FlagUnclearArgs(_Args):
     reason: str = Field(min_length=1, max_length=300)
 
 
-class OpportunitiesArgs(_Args):
-    pass
-
-
 def _propose_source(store: OpportunityStore, toolbox: Toolbox, args: ProposeSourceArgs):
     policy = toolbox.policy
     cap = (
@@ -209,13 +200,13 @@ def _propose_source(store: OpportunityStore, toolbox: Toolbox, args: ProposeSour
         cap=cap,
         company=args.company,
         kind=args.kind,
-        board_or_url=args.board_or_url,
+        board=args.board,
         evidence_url=args.evidence_url,
     )
 
 
 def _get_posting(store: OpportunityStore, toolbox: Toolbox, args: PostingArgs):
-    return curation.get_posting(store, args.posting_id, MAX_CHARS_FOR_MODEL)
+    return curation.get_posting(store, args.posting_id, toolbox.policy.fetch.max_chars_for_model)
 
 
 def _fetch_posting_detail(store: OpportunityStore, toolbox: Toolbox, args: DetailArgs):
@@ -223,9 +214,8 @@ def _fetch_posting_detail(store: OpportunityStore, toolbox: Toolbox, args: Detai
         store,
         args.posting_id,
         args.url,
-        hosts=toolbox.fetch_hosts or sources.POSTING_HOSTS,
         http=_toolbox_http(toolbox),
-        max_chars=MAX_CHARS_FOR_MODEL,
+        max_chars=toolbox.policy.fetch.max_chars_for_model,
     )
 
 
@@ -257,7 +247,7 @@ def _flag_unclear(store: OpportunityStore, toolbox: Toolbox, args: FlagUnclearAr
     return curation.flag_unclear(store, args.posting_id, args.reason)
 
 
-def _get_opportunities(store: OpportunityStore, toolbox: Toolbox, args: OpportunitiesArgs):
+def _get_opportunities(store: OpportunityStore, toolbox: Toolbox, args: _Args):
     return editing.get_opportunities(store, toolbox.run_id, toolbox.policy.k)
 
 
@@ -330,9 +320,9 @@ TOOLS = [
         _schema(
             "propose_source",
             "Add a company's public job board to the watchlist. kind is greenhouse, lever or "
-            "ashby; board_or_url is the board identifier. evidence_url must be a page you "
-            "found in this run.",
-            {"company": _STR, "kind": _STR, "board_or_url": _STR, "evidence_url": _STR},
+            "ashby; board is the board identifier. evidence_url must be a page you found in "
+            "this run.",
+            {"company": _STR, "kind": _STR, "board": _STR, "evidence_url": _STR},
         ),
         _needs_store(_propose_source),
         cli=True,
@@ -397,7 +387,7 @@ TOOLS = [
     ),
     ToolSpec(
         "get_opportunities",
-        OpportunitiesArgs,
+        _Args,
         _schema(
             "get_opportunities",
             "List this run's opportunities to summarize: the new ones and the top K.",
@@ -454,12 +444,11 @@ class ScoutStage:
         sources.load_watchlist(store, watchlist(options(ctx.policy)), ctx.run_id)
         known = ", ".join(sorted({s["company"] for s in store.sources()})) or "none yet"
         cap = _agent_option(ctx.policy, "scout", "max_new_sources", DEFAULT_MAX_NEW_SOURCES)
-        limits = ctx.profile.limits if ctx.profile else None
+        assert ctx.profile is not None
+        limits = ctx.profile.limits
         budget = (
             f"You have {limits.max_steps} steps and {limits.max_searches} searches in all; "
             "every tool call takes a step, so keep one for finish. "
-            if limits
-            else ""
         )
         task = (
             f"Find companies hiring for: {ctx.policy.topic}. Search the web, read promising "
@@ -499,39 +488,36 @@ class CollectStage:
         return StageOutcome("complete", reason, usage=usage)
 
 
-def _batch_prompt(store: OpportunityStore, batch: list[dict[str, Any]], trace: Trace) -> str:
-    # Each posting comes with the task, wrapped as untrusted data exactly as get_posting
-    # returns it, so handling one usually takes one model call instead of two.
-    blocks = []
-    for posting in batch:
-        outcome = curation.get_posting(store, posting["id"], MAX_CHARS_FOR_MODEL)
-        assert outcome.untrusted is not None
-        blocks.append(wrap("get_posting", outcome.untrusted, **outcome.attributes))
-        trace.event(
-            "tool",
-            tool="get_posting",
-            args={"posting_id": posting["id"]},
-            status="ok",
-            given_with_task=True,
-            injection_suspected=injection_suspected(outcome.untrusted),
-        )
+def _task(store: OpportunityStore, posting_id: int, max_chars: int, trace: Trace) -> str:
+    # The posting comes with the task, wrapped as untrusted data exactly as get_posting
+    # returns it, so handling it usually takes one model call instead of two.
+    outcome = curation.get_posting(store, posting_id, max_chars)
+    assert outcome.untrusted is not None
+    trace.event(
+        "tool",
+        tool="get_posting",
+        args={"posting_id": posting_id},
+        status="ok",
+        given_with_task=True,
+        injection_suspected=injection_suspected(outcome.untrusted),
+    )
     return (
-        "Turn each posting below into an opportunity record: do exactly one of save_record "
+        "Turn the posting below into an opportunity record: do exactly one of save_record "
         "(a new role), mark_same (the same role as a same-company candidate listed with the "
         "posting), or flag_unclear (not a usable internship posting). Quote the posting word "
         "for word for every field you fill in; use 'unknown' otherwise. Your work ends as "
-        "soon as every posting is handled.\n\n" + "\n\n".join(blocks)
+        "soon as the posting is handled.\n\n"
+        + wrap("get_posting", outcome.untrusted, **outcome.attributes)
     )
 
 
-def next_batch(
-    store: OpportunityStore, run_id: str, settings: RankingSettings, size: int
-) -> list[dict[str, Any]]:
-    """The most relevant pending postings first: when the budget runs out, what is left
-    over is what matters least, and it waits for the next run."""
+def next_posting(
+    store: OpportunityStore, run_id: str, settings: RankingSettings
+) -> dict[str, Any] | None:
+    """The most relevant pending posting: when the budget runs out, what is left over is
+    what matters least, and it waits for the next run."""
     pending = store.pending_postings(run_id)
-    pending.sort(key=lambda p: (-ranking.focus(p["title"], settings), p["id"]))
-    return pending[:size]
+    return min(pending, key=lambda p: (-ranking.focus(p["title"], settings), p["id"]), default=None)
 
 
 @dataclass
@@ -543,67 +529,66 @@ class CurateStage:
     providers: frozenset = field(default_factory=frozenset)
 
     def run(self, ctx: StageContext) -> StageOutcome:
+        """One posting per fresh conversation, so each prompt stays a few thousand tokens."""
         store = OpportunityStore(ctx.state)
         linked = sum(
             1
             for p in store.pending_postings(ctx.run_id)
             if curation.link_exact(store, p["id"]) is not None
         )
-        size = _agent_option(ctx.policy, "curator", "batch_size", DEFAULT_BATCH)
         settings = options(ctx.policy).ranking
-        batches = 0
-        while batch := next_batch(store, ctx.run_id, settings, size):
-            batches += 1
-            stop = self._batch(ctx, store, batch)
+        postings = 0
+        while posting := next_posting(store, ctx.run_id, settings):
+            postings += 1
+            stop = self._curate(ctx, store, posting["id"])
             if stop.finish is None:  # budget or provider stop: leftovers stay pending
                 outcome = StageOutcome.from_stop(stop)
-                outcome.usage = {"batches": batches, "linked_by_code": linked}
+                outcome.usage = {"postings": postings, "linked_by_code": linked}
                 return outcome
-            self._settle(ctx, store, batch)
-        return StageOutcome("complete", usage={"batches": batches, "linked_by_code": linked})
+            self._settle(ctx, store, posting["id"])
+        return StageOutcome("complete", usage={"postings": postings, "linked_by_code": linked})
 
-    def _batch(self, ctx: StageContext, store: OpportunityStore, batch: list[dict]) -> Stop:
-        ids = [p["id"] for p in batch]
-        attempts = {"finish": 0}
+    def _curate(self, ctx: StageContext, store: OpportunityStore, posting_id: int) -> Stop:
+        finishes = 0
+
+        def pending() -> bool:
+            return store.posting(posting_id)["curation"] == "pending"
 
         def finish(arguments: dict[str, Any], step: int, toolbox: Toolbox, trace: Trace):
-            attempts["finish"] += 1
-            left = [i for i in ids if store.posting(i)["curation"] == "pending"]
+            nonlocal finishes
+            finishes += 1
+            left = pending()
             trace.event("tool", step=step, tool="finish", args=arguments, status="ok", pending=left)
-            if left and attempts["finish"] < 2:
+            if left and finishes < 2:
                 return json.dumps(
-                    {"error": "postings_pending", "detail": f"still pending: {left}"}
+                    {"error": "posting_pending", "detail": f"posting {posting_id} is unhandled"}
                 ), None
             return "", {"pending": left}
 
-        def done() -> dict[str, list[int]] | None:
-            pending = any(store.posting(i)["curation"] == "pending" for i in ids)
-            return None if pending else {"pending": []}
-
+        max_chars = ctx.policy.fetch.max_chars_for_model
         stop, _ = ctx.run_agent(
-            _batch_prompt(store, batch, ctx.trace),
+            _task(store, posting_id, max_chars, ctx.trace),
             finish=finish,
             finish_schema=NOTE_SCHEMA,
-            done=done,
+            done=lambda: None if pending() else {"pending": False},
         )
         return stop
 
-    def _settle(self, ctx: StageContext, store: OpportunityStore, batch: list[dict]) -> None:
-        """A posting left pending after a finished batch counts a failure; two park it."""
-        for posting in batch:
-            if store.posting(posting["id"])["curation"] != "pending":
-                continue
-            if store.add_failure(posting["id"]) >= 2:
-                store.set_curation(
-                    posting["id"], "unclear", unclear_reason="curator left it unresolved twice"
-                )
-                ctx.trace.event(
-                    "tool",
-                    tool="flag_unclear",
-                    args={"posting_id": posting["id"]},
-                    status="ok",
-                    reason="unresolved_twice",
-                )
+    def _settle(self, ctx: StageContext, store: OpportunityStore, posting_id: int) -> None:
+        """A posting left pending after a finished conversation counts a failure; two park it."""
+        if store.posting(posting_id)["curation"] != "pending":
+            return
+        if store.add_failure(posting_id) >= 2:
+            store.set_curation(
+                posting_id, "unclear", unclear_reason="curator left it unresolved twice"
+            )
+            ctx.trace.event(
+                "tool",
+                tool="flag_unclear",
+                args={"posting_id": posting_id},
+                status="ok",
+                reason="unresolved_twice",
+            )
 
 
 @dataclass
@@ -615,24 +600,8 @@ class LivenessStage:
     providers: frozenset = field(default_factory=frozenset)
 
     def run(self, ctx: StageContext) -> StageOutcome:
-        opts = options(ctx.policy)
-        counts = lifecycle.run_liveness(
-            OpportunityStore(ctx.state),
-            ctx.run_id,
-            board_http(ctx, opts),
-            opts.lifecycle,
-            ctx.trace,
-        )
-        return StageOutcome(
-            "complete",
-            usage={
-                "requests": counts.requests,
-                "closed": counts.closed,
-                "reopened": counts.opened,
-                "unchanged": counts.unchanged,
-                "unknown": counts.unknown,
-            },
-        )
+        counts = lifecycle.run_liveness(OpportunityStore(ctx.state), ctx.run_id)
+        return StageOutcome("complete", usage=asdict(counts))
 
 
 @dataclass

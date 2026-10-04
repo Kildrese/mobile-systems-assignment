@@ -76,7 +76,7 @@ agents:
       You find NYC startups that hire software or ML interns for {topic}.
       Search for recent internship postings and lists of NYC startups that are hiring.
       When a company has a public Greenhouse, Lever or Ashby job board, propose it with
-      propose_source: kind is greenhouse, lever or ashby and board_or_url is the board
+      propose_source: kind is greenhouse, lever or ashby and board is the board
       identifier from the board URL (boards.greenhouse.io/<id>, jobs.lever.co/<id>,
       jobs.ashbyhq.com/<id>). Cite as evidence_url a page you found in this run.
       Prefer startups based in New York. Do not propose large public companies.
@@ -87,7 +87,6 @@ agents:
     tools: [get_posting, fetch_posting_detail, save_record, mark_same, flag_unclear]
     fetch_hosts: [boards.greenhouse.io, job-boards.greenhouse.io, jobs.lever.co, jobs.ashbyhq.com]
     limits: {max_steps: 35, max_tokens: 70000, max_fetches: 20}
-    options: {batch_size: 1}  # one posting per conversation keeps each prompt small
     instructions: |
       You turn job postings into structured records. Copy every quote word for word
       from the posting. If the posting does not state a field, set it to unknown.
@@ -103,25 +102,11 @@ agents:
       searching for {topic}. Use only facts in the record. Never add pay, dates or
       numbers that the record does not contain.
 
-# Use-case settings, validated by the internship use case.
-options:
-  # Leave out `watchlist` to use the seed list shipped with the use case
-  # (backend/tracker/usecases/internships/watchlist.yaml).
-  filters:
-    title_keywords: [intern, internship, co-op]
-    locations: [New York, NYC, Brooklyn, Remote]
-  ranking:
-    weights: {role: 3, term: 3, location: 2, recency: 1, focus: 3}
-    recency_days: 30
-    role_types: [internship]
-    terms: [Summer 2027]
-    locations: [New York, NYC, Brooklyn, Remote]
-    # Title words for the roles we want; a design or sales internship ranks below them.
-    focus_keywords: [software, engineer, engineering, developer, machine learning, ML, AI, data, research]
-  lifecycle:
-    closed_patterns:
-      - no longer accepting applications
-      - no longer accepting
-      - position has been filled
-      - job is closed
-      - this job is no longer available
+# Use-case settings, validated by the internship use case. Everything has a default in
+# code; set a key here only to change it:
+#   watchlist   the boards to read (default: usecases/internships/watchlist.yaml)
+#   filters     title_keywords, locations: which postings reach the Curator
+#               (sources.Filters)
+#   ranking     weights, recency_days, role_types, terms, locations, focus_keywords:
+#               how the top K is chosen (ranking.RankingSettings)
+options: {}

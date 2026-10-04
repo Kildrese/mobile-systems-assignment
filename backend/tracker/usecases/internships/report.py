@@ -12,8 +12,6 @@ from typing import Any
 from tracker.report import ReportMeta, describe_stop
 from tracker.usecases.internships.store import OpportunityStore
 
-LIVE = ("open", "unknown")
-
 
 @dataclass
 class Sections:
@@ -38,9 +36,9 @@ def sections(store: OpportunityStore, run_id: str) -> Sections:
             "top_k": bool(r and r["top_k"]),
             "verified": opp["checked_run"] == run_id and opp["status"] == "open",
         }
-        if opp["status"] in LIVE and opp["first_seen_run"] == run_id:
+        if opp["status"] == "open" and opp["first_seen_run"] == run_id:
             out.new.append(opp)
-        elif opp["status"] in LIVE:
+        elif opp["status"] == "open":
             out.still_open.append(opp)
         elif opp["status"] == "closed" and opp["closed_run"] == run_id:
             out.closed.append(opp)
@@ -116,7 +114,7 @@ def _full_entry(opp: dict[str, Any], summary: str | None, number: int) -> list[s
             lines.append(f"- **{label}:** {_one_line(_value(opp, name))}")
     if quote := _quote(opp, "work_authorization"):
         lines.append(f'- **Work authorization (quoted):** "{_one_line(quote)}"')
-    if opp["status"] == "unknown" or not opp["verified"]:
+    if not opp["verified"]:
         lines.append("- **Note:** could not be checked in this run")
     lines += [f"- <{opp['url']}>", ""]
     return lines
