@@ -37,6 +37,7 @@ def opp(**overrides):
     base = {
         "id": 1,
         "company": "Acme",
+        "title": "Software Engineering Intern",
         "role_type": "internship",
         "term": "Summer 2027",
         "locations": ["New York, NY"],
@@ -54,11 +55,15 @@ def opp(**overrides):
 def test_score_matches_and_unknowns():
     s = RankingSettings()
     full = score(opp(), s, NOW)
-    assert full == pytest.approx(3 + 3 + 2 + (1 - 1 / 30))
+    assert full == pytest.approx(3 + 3 + 2 + (1 - 1 / 30) + 3)  # role, term, place, age, focus
     assert score(opp(term="unknown"), s, NOW) == pytest.approx(full - 1.5)
     assert score(opp(term="Fall 2026"), s, NOW) == pytest.approx(full - 3)
     assert score(opp(locations=["London"], remote="remote"), s, NOW) == pytest.approx(full)
     assert score(opp(locations=["London"]), s, NOW) == pytest.approx(full - 2)
+    # Not a software, ML or data role: below the same internship that is one.
+    assert score(opp(title="Product Design Intern"), s, NOW) == pytest.approx(full - 3)
+    assert score(opp(title="ML Research Intern"), s, NOW) == pytest.approx(full)
+    assert score(opp(title="HTML Email Designer Intern"), s, NOW) == pytest.approx(full - 3)
 
 
 def test_work_authorization_does_not_change_score():
@@ -235,3 +240,11 @@ def test_pipe_in_title_does_not_break_table(store):
     run_liveness(store, RUN2, NoHttp(), LifecycleSettings())
     rank_open(store, RUN2, RankingSettings(), 3, NOW)
     assert "Intern \\| Platform" in render(meta(RUN2), store, 3)
+
+
+def test_postings_waiting_for_review_are_counted(store):
+    source_id = add_board(store)
+    store.upsert_postings(source_id, [posting("1"), posting("2")], RUN1)
+    text = render(meta(RUN1, "partial"), store, 3)
+    assert "**Waiting for review:** 2 postings listed in this run" in text
+    assert "Waiting for review" not in render(meta(RUN2), store, 3)  # not listed in RUN2

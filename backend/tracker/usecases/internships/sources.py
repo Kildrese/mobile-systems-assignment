@@ -284,6 +284,26 @@ def source_url(source: dict[str, Any]) -> str:
     return board_url(source["kind"], source["board"])
 
 
+# Failures that will not change by themselves: the board is gone, too big, or not a board.
+PERMANENT_REASONS = {"too_large", "unsupported_content_type", "bad_response"}
+GONE = (404, 410)
+
+
+def _unreadable(
+    store: OpportunityStore, source: dict[str, Any], run_id: str, reason: str, status: int | None
+) -> bool:
+    """Mark the source unreadable. A board the Scout added that never worked and fails
+    for good is deactivated, so it does not cost a request and a warning every run;
+    config sources, and boards that worked before, stay. Returns whether it was."""
+    store.mark_source_read(source["id"], run_id, "unreadable")
+    never_read = source["last_read_status"] not in ("ok", "not_modified")
+    permanent = reason in PERMANENT_REASONS or status in GONE
+    if source["added_by"] == "scout" and never_read and permanent:
+        store.deactivate_source(source["id"])
+        return True
+    return False
+
+
 def collect_source(
     store: OpportunityStore,
     source: dict[str, Any],
@@ -302,7 +322,6 @@ def collect_source(
             last_modified=cached["last_modified"] if cached else None,
         )
     except HttpFailure as err:
-        store.mark_source_read(source["id"], run_id, "unreadable")
         trace.event(
             "tool",
             tool="collect",
@@ -312,6 +331,7 @@ def collect_source(
             detail=err.detail,
             http_status=err.status,
             attempt=err.attempts,
+            deactivated=_unreadable(store, source, run_id, err.reason, err.status),
         )
         return CollectResult(source["id"], "unreadable", reason=err.reason)
 
@@ -323,7 +343,6 @@ def collect_source(
         else:
             postings = PARSERS[source["kind"]](json.loads(body))
     except (ValueError, ValidationError) as err:  # JSONDecodeError is a ValueError
-        store.mark_source_read(source["id"], run_id, "unreadable")
         trace.event(
             "tool",
             tool="collect",
@@ -331,6 +350,7 @@ def collect_source(
             status="error",
             reason="bad_response",
             detail=str(err)[:300],
+            deactivated=_unreadable(store, source, run_id, "bad_response", None),
         )
         return CollectResult(source["id"], "unreadable", reason="bad_response")
 
@@ -361,13 +381,14 @@ class Filters(BaseModel):
     locations: tuple[str, ...] = ("New York", "NYC", "Brooklyn", "Remote")
 
 
-def _keyword(word: str) -> re.Pattern[str]:
+def keyword(word: str) -> re.Pattern[str]:
+    """A case-insensitive whole-word match: "intern" matches "Intern," but not "internal"."""
     return re.compile(rf"(?<![a-z]){re.escape(word.lower())}(?![a-z])", re.IGNORECASE)
 
 
 def prefilter(postings: list[RawPosting], filters: Filters) -> tuple[list[RawPosting], int]:
     """Keep postings with a matching title and a matching or missing location."""
-    titles = [_keyword(w) for w in filters.title_keywords]
+    titles = [keyword(w) for w in filters.title_keywords]
     places = [p.lower() for p in filters.locations]
     kept = []
     for p in postings:

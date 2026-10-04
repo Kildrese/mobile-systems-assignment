@@ -14,7 +14,7 @@ An opportunity record SHALL have: company, title, role type (`internship`, `new_
 - **THEN** the record's term is `unknown`, with no quote
 
 ### Requirement: Curator tools
-The Curator agent SHALL work through pending postings listed in this run, in batches, and have exactly these tools:
+The Curator agent SHALL work through pending postings listed in this run in batches of `agents.curator.options.batch_size` (1 by default), the most relevant first: postings whose title matches `ranking.focus_keywords` before the others, then by id. Each batch SHALL start a fresh conversation whose task carries each posting's text and same-company candidates, wrapped as untrusted data exactly as `get_posting` returns them, and SHALL end as soon as every posting in it is handled, without waiting for `finish`. The Curator SHALL have exactly these tools:
 - `get_posting(id)` returns stored posting text as untrusted data.
 - `fetch_posting_detail(posting_id, url)` fetches a posting's own page, limited to the Curator's `fetch_hosts`, and keeps its text with that posting so quotes can come from it. A `url` that is not the posting's own URL is rejected with reason `url_mismatch`.
 - `save_record(posting_id, record)` stores an opportunity record.
@@ -31,9 +31,13 @@ The Curator SHALL NOT have `search_web` or source-proposal tools. Each pending p
 - **WHEN** the Curator calls `fetch_posting_detail` for a posting with the URL of a different job
 - **THEN** the call is rejected with reason `url_mismatch` and no request is made
 
+#### Scenario: One call per posting
+- **WHEN** the Curator saves a record for the only posting in its batch
+- **THEN** the batch ends after that one model call, and the next batch starts
+
 #### Scenario: Budget runs out
 - **WHEN** the Curator's step budget runs out with 4 postings unprocessed
-- **THEN** those postings stay `pending` for the next run, and the stage outcome is partial
+- **THEN** those postings stay `pending` for the next run, they are the least relevant of the run's postings, and the stage outcome is partial
 
 ### Requirement: Quotes are verified by code
 `save_record` SHALL accept a record only when every non-`unknown` field's quote appears in that posting's stored text (board text or fetched detail page), compared after whitespace and case normalization. If a quote is not found, the record is rejected with reason `quote_not_found`, naming the field. The Curator may then retry, or mark the field `unknown`.

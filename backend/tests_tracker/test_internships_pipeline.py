@@ -21,12 +21,14 @@ from tests_tracker.conftest import (
     search_body,
     tool_call,
 )
+from tests_tracker.internships_helpers import RUN1, add_board, open_store, posting
 from tests_tracker.test_loop import FakeModel
 from tracker import conductor, tools
 from tracker.config import TrackerSecrets, policy_from_dict
 from tracker.errors import PolicyError
 from tracker.state import StateStore
 from tracker.usecases.internships import wiring
+from tracker.usecases.internships.ranking import RankingSettings
 from tracker.usecases.internships.sources import board_url
 from tracker.usecases.internships.store import OpportunityStore
 
@@ -191,10 +193,10 @@ def scout_script():
 
 
 def curate_script():
+    # Each posting comes with the task; the batch ends once every posting is handled.
     return [
         chat_body(tool_call("save_record", {"posting_id": 1, "record": acme_record()}, "c1")),
         chat_body(tool_call("save_record", {"posting_id": 2, "record": gamma_record()}, "c2")),
-        chat_body(tool_call("finish", {}, "c3")),
     ]
 
 
@@ -263,6 +265,20 @@ def test_internship_tools_run_from_cli(tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)["error"] == "unknown_posting"
 
 
+def test_curator_takes_the_most_relevant_postings_first(tmp_path):
+    state, store = open_store(tmp_path / "s.sqlite")
+    try:
+        source_id = add_board(store)
+        titles = ["Product Design Intern", "Software Engineering Intern", "Sales Intern"]
+        ids = store.upsert_postings(
+            source_id, [posting(str(i), title=t) for i, t in enumerate(titles)], RUN1
+        )
+        batch = wiring.next_batch(store, RUN1, RankingSettings(), 2)
+        assert [p["id"] for p in batch] == [ids[1], ids[0]]
+    finally:
+        state.close()
+
+
 # End to end
 
 
@@ -277,6 +293,9 @@ def test_complete_run(ipolicy, keys):
 
     assert result.status == "complete", result.message
     assert result.exit_code == 0
+    # Every stage used exactly its own replies: one model call per posting for the Curator.
+    assert not model.replies
+    assert len(model.requests) == len(scout_script()) + 2 + len(edit_script())
     report = result.report_path.read_text()
     assert "## New since last run (2)" in report
     assert "A Summer 2027 software internship in New York." in report
@@ -402,7 +421,6 @@ def test_scout_disabled_starts_at_collect(tmp_path, keys):
     policy = policy_from_dict(policy_data(agents={"scout": {"enabled": False}}), tmp_path)
     model = FakeModel(
         chat_body(tool_call("save_record", {"posting_id": 1, "record": acme_record()}, "c1")),
-        chat_body(tool_call("finish", {}, "c2")),
         chat_body(
             tool_call(
                 "finish",
@@ -506,7 +524,6 @@ def test_injection_page_is_contained(tmp_path, keys):
             )
         ),
         chat_body(tool_call("flag_unclear", {"posting_id": 1, "reason": "suspicious"}, "c5")),
-        chat_body(tool_call("finish", {}, "c6")),
     )
     respx.post(LLM_URL).mock(side_effect=model)
     respx.post(SEARCH_URL).respond(200, json=search_body(EVIDENCE))
@@ -532,10 +549,12 @@ def test_injection_page_is_contained(tmp_path, keys):
         assert store.posting(1)["curation"] == "unclear"
     finally:
         state.close()
-    # The injected text reached the model only inside an untrusted block.
-    curator_request = model.requests[4]
-    tool_messages = [m for m in curator_request["messages"] if m["role"] == "tool"]
-    assert "<untrusted_data" in tool_messages[0]["content"]
+    # The posting comes with the Curator's task, and its injected text only inside an
+    # untrusted block: the last block opened before it is still open.
+    task = model.requests[3]["messages"][1]["content"]
+    at = task.index("Ignore previous instructions")
+    assert task.rfind("<untrusted_data", 0, at) > task.rfind("</untrusted_data>", 0, at)
+    assert by_tool["get_posting"][0]["given_with_task"] is True
 
 
 @respx.mock
@@ -550,7 +569,6 @@ def test_detail_fetches_draw_on_the_fetch_budget(ipolicy, keys):
         chat_body(tool_call("fetch_posting_detail", detail, "c2")),
         chat_body(tool_call("fetch_posting_detail", detail, "c3")),  # curator max_fetches is 2
         chat_body(tool_call("save_record", {"posting_id": 1, "record": acme_record()}, "c4")),
-        chat_body(tool_call("finish", {}, "c5")),
     )
     respx.post(LLM_URL).mock(side_effect=model)
     page = respx.get(f"https://{PUBLIC_IP}/acme/jobs/11").respond(

@@ -132,6 +132,13 @@ def render(
     s = sections(store, meta.run_id)
     summaries = store.summaries(meta.run_id)
     lines = _header(meta, stages or [])
+    if waiting := len(store.pending_postings(meta.run_id)):
+        lines += [
+            f"**Waiting for review:** {waiting} posting{'s' if waiting != 1 else ''} listed "
+            "in this run could not be curated before the budget ran out. They are not in the "
+            "sections below; the next run starts with them, most relevant first.",
+            "",
+        ]
 
     lines += [f"## New since last run ({len(s.new)})", ""]
     if not s.new:

@@ -36,7 +36,7 @@ from tests_tracker.test_run_cli import (  # noqa: F401
     report_and_trace,
 )
 from tests_tracker.toy_use_case import AgentStage, CodeStage
-from tracker import conductor, tools
+from tracker import agents, conductor, tools
 from tracker.budget import Budget
 from tracker.config import TrackerSecrets, policy_from_dict
 from tracker.errors import PolicyError, TerminalError
@@ -222,8 +222,11 @@ def test_tool_outside_profile_is_unknown(mpolicy, mkeys):
     result = run(mpolicy, mkeys, [AgentStage("scout", "scout")])
 
     assert not page.called
-    reply = model.requests[1]["messages"][-1]
+    *_, reply, last_step = model.requests[1]["messages"]
     assert "unknown_tool" in reply["content"]
+    # The bad call cost a step, so the second call is the scout's last: only finish is offered.
+    assert last_step["content"] == agents.LAST_STEP
+    assert [t["function"]["name"] for t in model.requests[1]["tools"]] == ["finish"]
     assert "Allowed tools: search_web, finish" in reply["content"]
     summary = read_trace(result.trace_path)[-1]
     assert summary["stages"][0]["usage"]["steps"] == 3  # two model calls and the bad call

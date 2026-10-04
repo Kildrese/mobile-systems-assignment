@@ -2,7 +2,8 @@
 
 Each criterion scores 1 for a match, 0 for a mismatch and 0.5 when the record says
 `unknown`, so a sparse posting is neither buried nor promoted. Work-authorization
-wording is never an input.
+wording is never an input. `focus` scores the title against the kind of role the search
+is for (software, ML, data), so a design or sales internship ranks below them.
 """
 
 from datetime import UTC, datetime
@@ -11,6 +12,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from tracker.usecases.internships.curation import UNKNOWN, normalize
+from tracker.usecases.internships.sources import keyword
 from tracker.usecases.internships.store import OpportunityStore
 
 LIVE = ("open", "unknown")
@@ -23,6 +25,7 @@ class Weights(BaseModel):
     term: float = Field(default=3, ge=0)
     location: float = Field(default=2, ge=0)
     recency: float = Field(default=1, ge=0)
+    focus: float = Field(default=3, ge=0)
 
 
 class RankingSettings(BaseModel):
@@ -33,6 +36,18 @@ class RankingSettings(BaseModel):
     role_types: tuple[str, ...] = ("internship",)
     terms: tuple[str, ...] = ("Summer 2027",)
     locations: tuple[str, ...] = ("New York", "NYC", "Brooklyn", "Remote")
+    # Whole words in the title that mark the roles the search is for.
+    focus_keywords: tuple[str, ...] = (
+        "software",
+        "engineer",
+        "engineering",
+        "developer",
+        "machine learning",
+        "ML",
+        "AI",
+        "data",
+        "research",
+    )
 
 
 def _role(opp: dict[str, Any], s: RankingSettings) -> float:
@@ -66,6 +81,11 @@ def _recency(opp: dict[str, Any], s: RankingSettings, now: datetime) -> float:
     return max(0.0, 1.0 - age_days / s.recency_days)
 
 
+def focus(title: str, s: RankingSettings) -> float:
+    """1 when the title names a role the search is for. Also orders postings for curation."""
+    return 1.0 if any(keyword(k).search(title) for k in s.focus_keywords) else 0.0
+
+
 def score(opp: dict[str, Any], settings: RankingSettings, now: datetime) -> float:
     w = settings.weights
     total = (
@@ -73,6 +93,7 @@ def score(opp: dict[str, Any], settings: RankingSettings, now: datetime) -> floa
         + w.term * _term(opp, settings)
         + w.location * _location(opp, settings)
         + w.recency * _recency(opp, settings, now)
+        + w.focus * focus(opp["title"], settings)
     )
     return round(total, 6)
 

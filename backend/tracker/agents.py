@@ -28,6 +28,10 @@ SHORTENED_CHARS = 500
 
 # (arguments, step, toolbox, trace) -> (content for the model, result or None to go on).
 FinishHandler = Callable[[dict[str, Any], int, Toolbox, Trace], tuple[str, Any | None]]
+# Checked after each reply's tool calls: a result ends the agent as if it had finished.
+DoneCheck = Callable[[], Any | None]
+
+LAST_STEP = "This is your last step: call finish now with what you have."
 
 
 @dataclass
@@ -102,6 +106,7 @@ class AgentLoop:
         finish: FinishHandler | None = None,
         finish_schema: dict[str, Any] | None = None,
         nudge: str | None = None,
+        done: DoneCheck | None = None,
     ) -> None:
         self.policy = policy
         self.profile = profile
@@ -111,6 +116,7 @@ class AgentLoop:
         self.chat = chat
         self.task_prompt = task_prompt
         self.finish = finish or report_finish(policy.k)
+        self.done = done
         # `finish` is always offered: it is how an agent ends.
         self.tools = tuple(dict.fromkeys((*profile.tools, "finish")))
         self.schemas = [
@@ -138,11 +144,17 @@ class AgentLoop:
         while True:
             if reason := budget.check_model_call():
                 return Stop(reason=reason)
+            # On the last step only finish is offered, so the agent ends with its result
+            # instead of a step limit.
+            schemas = self.schemas
+            if budget.steps_left() == 1:
+                schemas = [s for s in self.schemas if s["function"]["name"] == "finish"]
+                messages.append({"role": "user", "content": LAST_STEP})
             budget.count(steps=1)
             step = budget.steps
             _shorten_old_results(messages, tool_messages)
             try:
-                reply = self.chat.chat(messages, self.schemas, step)
+                reply = self.chat.chat(messages, schemas, step)
             except ModelOutputError as err:
                 messages.append(
                     {
@@ -187,6 +199,8 @@ class AgentLoop:
                 else:
                     content = json.dumps(outcome.data, ensure_ascii=False)
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
+            if self.done is not None and (result := self.done()) is not None:
+                return Stop(finish=result)
 
     def _dispatch(
         self, name: str, arguments: dict[str, Any] | None, parse_error: str | None, step: int

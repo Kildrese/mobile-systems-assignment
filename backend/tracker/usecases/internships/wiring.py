@@ -22,7 +22,7 @@ from tracker.guard import host_allowed
 from tracker.report import ReportMeta
 from tracker.tools import Toolbox, ToolOutcome, ToolSpec, register, validation_message
 from tracker.trace import Trace
-from tracker.untrusted import injection_suspected
+from tracker.untrusted import injection_suspected, wrap
 from tracker.usecases.internships import curation, editing, lifecycle, ranking, sources
 from tracker.usecases.internships import report as internship_report
 from tracker.usecases.internships.http import GuardedHttp
@@ -31,7 +31,7 @@ from tracker.usecases.internships.ranking import RankingSettings
 from tracker.usecases.internships.store import OpportunityStore
 
 AGENTS = ("scout", "curator", "editor")
-DEFAULT_BATCH = 5
+DEFAULT_BATCH = 1
 DEFAULT_MAX_NEW_SOURCES = 5
 MAX_CHARS_FOR_MODEL = 6000
 
@@ -279,7 +279,13 @@ _RECORD = {
         "locations": {**_FIELD, "description": "value is a list of places"},
         "remote": {**_FIELD, "description": "onsite, hybrid, remote or unknown"},
         "compensation": _FIELD,
-        "deadline": _FIELD,
+        "deadline": {
+            **_FIELD,
+            "description": (
+                "The date applications close. Not the internship's start or end dates; "
+                "unknown if the posting names no application deadline"
+            ),
+        },
         "work_authorization": {
             **_FIELD,
             "description": "Any work-authorization or sponsorship sentence, quoted",
@@ -466,17 +472,39 @@ class CollectStage:
         return StageOutcome("complete", reason, usage=usage)
 
 
-def _batch_prompt(batch: list[dict[str, Any]]) -> str:
-    # Ids only: titles come from the boards, so they reach the model only through
-    # get_posting, inside an untrusted block.
+def _batch_prompt(store: OpportunityStore, batch: list[dict[str, Any]], trace: Trace) -> str:
+    # Each posting comes with the task, wrapped as untrusted data exactly as get_posting
+    # returns it, so handling one usually takes one model call instead of two.
+    blocks = []
+    for posting in batch:
+        outcome = curation.get_posting(store, posting["id"], MAX_CHARS_FOR_MODEL)
+        assert outcome.untrusted is not None
+        blocks.append(wrap("get_posting", outcome.untrusted, **outcome.attributes))
+        trace.event(
+            "tool",
+            tool="get_posting",
+            args={"posting_id": posting["id"]},
+            status="ok",
+            given_with_task=True,
+            injection_suspected=injection_suspected(outcome.untrusted),
+        )
     return (
-        "Turn each posting below into an opportunity record. For each posting id, read it "
-        "with get_posting, then do exactly one of: save_record (a new role), mark_same (the "
-        "same role as a candidate get_posting lists), or flag_unclear (not a usable "
-        "internship posting). Quote the posting word for word for every field you fill in; "
-        "use 'unknown' otherwise. Call finish when every posting is handled.\n\n"
-        f"Posting ids: {[p['id'] for p in batch]}"
+        "Turn each posting below into an opportunity record: do exactly one of save_record "
+        "(a new role), mark_same (the same role as a same-company candidate listed with the "
+        "posting), or flag_unclear (not a usable internship posting). Quote the posting word "
+        "for word for every field you fill in; use 'unknown' otherwise. Your work ends as "
+        "soon as every posting is handled.\n\n" + "\n\n".join(blocks)
     )
+
+
+def next_batch(
+    store: OpportunityStore, run_id: str, settings: RankingSettings, size: int
+) -> list[dict[str, Any]]:
+    """The most relevant pending postings first: when the budget runs out, what is left
+    over is what matters least, and it waits for the next run."""
+    pending = store.pending_postings(run_id)
+    pending.sort(key=lambda p: (-ranking.focus(p["title"], settings), p["id"]))
+    return pending[:size]
 
 
 @dataclass
@@ -495,8 +523,9 @@ class CurateStage:
             if curation.link_exact(store, p["id"]) is not None
         )
         size = _agent_option(ctx.policy, "curator", "batch_size", DEFAULT_BATCH)
+        settings = options(ctx.policy).ranking
         batches = 0
-        while batch := store.pending_postings(ctx.run_id, size):
+        while batch := next_batch(store, ctx.run_id, settings, size):
             batches += 1
             stop = self._batch(ctx, store, batch)
             if stop.finish is None:  # budget or provider stop: leftovers stay pending
@@ -520,7 +549,16 @@ class CurateStage:
                 ), None
             return "", {"pending": left}
 
-        stop, _ = ctx.run_agent(_batch_prompt(batch), finish=finish, finish_schema=NOTE_SCHEMA)
+        def done() -> dict[str, list[int]] | None:
+            pending = any(store.posting(i)["curation"] == "pending" for i in ids)
+            return None if pending else {"pending": []}
+
+        stop, _ = ctx.run_agent(
+            _batch_prompt(store, batch, ctx.trace),
+            finish=finish,
+            finish_schema=NOTE_SCHEMA,
+            done=done,
+        )
         return stop
 
     def _settle(self, ctx: StageContext, store: OpportunityStore, batch: list[dict]) -> None:

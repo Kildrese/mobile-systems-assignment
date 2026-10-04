@@ -17,7 +17,7 @@ from typing import Any, Literal, Protocol
 import httpx
 
 from tracker import report
-from tracker.agents import AgentLoop, FinishHandler, Stop
+from tracker.agents import AgentLoop, DoneCheck, FinishHandler, Stop
 from tracker.budget import Budget
 from tracker.config import AgentProfile, ModelSettings, Policy, TrackerSecrets
 from tracker.errors import PolicyError, TerminalError
@@ -152,6 +152,7 @@ class StageContext:
         *,
         finish: FinishHandler | None = None,
         finish_schema: dict[str, Any] | None = None,
+        done: DoneCheck | None = None,
     ) -> tuple[Stop, Toolbox]:
         """Run this stage's agent once, from a fresh conversation."""
         assert self.profile is not None, "run_agent needs an agent stage"
@@ -166,6 +167,7 @@ class StageContext:
             task_prompt,
             finish=finish,
             finish_schema=finish_schema,
+            done=done,
         ).run()
         return stop, toolbox
 

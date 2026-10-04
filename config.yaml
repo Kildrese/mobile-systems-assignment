@@ -87,7 +87,7 @@ agents:
     tools: [get_posting, fetch_posting_detail, save_record, mark_same, flag_unclear]
     fetch_hosts: [boards.greenhouse.io, job-boards.greenhouse.io, jobs.lever.co, jobs.ashbyhq.com]
     limits: {max_steps: 35, max_tokens: 70000, max_fetches: 20}
-    options: {batch_size: 5}
+    options: {batch_size: 1}  # one posting per conversation keeps each prompt small
     instructions: |
       You turn job postings into structured records. Copy every quote word for word
       from the posting. If the posting does not state a field, set it to unknown.
@@ -109,11 +109,13 @@ options:
     title_keywords: [intern, internship, co-op]
     locations: [New York, NYC, Brooklyn, Remote]
   ranking:
-    weights: {role: 3, term: 3, location: 2, recency: 1}
+    weights: {role: 3, term: 3, location: 2, recency: 1, focus: 3}
     recency_days: 30
     role_types: [internship]
     terms: [Summer 2027]
     locations: [New York, NYC, Brooklyn, Remote]
+    # Title words for the roles we want; a design or sales internship ranks below them.
+    focus_keywords: [software, engineer, engineering, developer, machine learning, ML, AI, data, research]
   lifecycle:
     closed_patterns:
       - no longer accepting applications

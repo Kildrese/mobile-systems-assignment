@@ -49,15 +49,17 @@ while True:
     1. budget.check_model_call()         the agent's steps and tokens, then the run's
                                          steps, tokens (minus reserve), cost, wall time
          exhausted → Stop(reason)
-    2. budget.count(steps=1)             charged to the agent and to the run
-    3. shorten old tool results          keep the newest 3 in full, cut older ones to 500 chars
-    4. reply = chat.chat(messages, tools)    one HTTP call, retries inside (see below)
+    2. last step left?                   offer only finish, and tell the model so
+    3. budget.count(steps=1)             charged to the agent and to the run
+    4. shorten old tool results          keep the newest 3 in full, cut older ones to 500 chars
+       reply = chat.chat(messages, tools)    one HTTP call, retries inside (see below)
     5. charge prompt + completion tokens, at the profile's model price
     6. no tool call in the reply?        append a nudge, go to 1
     7. for each tool call:
          finish        → the finish handler; accepted → Stop(finish), refused → its error, continue
          anything else → _dispatch(): validate args, check the tool's budget, run the tool
                          append the result as a tool message
+       then the caller's done check, if any: a result → Stop(finish) without another call
 ```
 
 The same loop as a diagram (a reply with several tool calls goes through the tool branch once per call):
@@ -66,7 +68,9 @@ The same loop as a diagram (a reply with several tool calls goes through the too
 flowchart TD
     start(["system prompt + task prompt"]) --> check{"budget left for a model call?"}
     check -- no --> stopBudget(["Stop: budget reason"])
-    check -- yes --> step["count a step, shorten old results"]
+    check -- yes --> last{"last step?"}
+    last -- yes --> onlyFinish["offer only finish, say it is the last step"] --> step
+    last -- no --> step["count a step, shorten old results"]
     step --> chat["chat(): one model call, retries inside"]
     chat -- terminal failure --> stopTerminal(["Stop: terminal error"])
     chat -- malformed tool call --> fix["tell the model what went wrong"] --> check
@@ -77,8 +81,12 @@ flowchart TD
     handler -- yes --> stopFinish(["Stop: finish"])
     handler -- no --> refused["error back to the model"] --> check
     calls -- any other tool --> dispatch["_dispatch(): agent's tool? valid args? budget left? run, count"]
-    dispatch --> result["result as a tool message, retrieved text wrapped as untrusted"] --> check
+    dispatch --> result["result as a tool message, retrieved text wrapped as untrusted"] --> doneCheck{"caller's done check?"}
+    doneCheck -- "work done" --> stopDone(["Stop: finish"])
+    doneCheck -- not yet --> check
 ```
+
+The last-step rule means an agent that keeps calling tools still gets one chance to end with its result instead of a step limit. The done check lets a caller end a conversation as soon as its work is in state: the Curator's batch ends once every posting in it is handled, without a `finish` call.
 
 ### Step 4: the model call
 
@@ -122,7 +130,7 @@ When the model calls `finish` with arguments (even `{}`), the loop hands them to
 | --- | --- | --- |
 | Single-agent tracker | `report_finish(k)` | At least one item cites a URL this run searched or fetched; items citing only unseen URLs are dropped, at most K are kept |
 | Scout | `_note_finish` | Always (an optional note) |
-| Curator, per batch | pending check | Every posting in the batch is handled, or on the second `finish` (what is left counts a failure; twice parks the posting) |
+| Curator, per batch | pending check | On the second `finish` if postings are left (each counts a failure; twice parks it). Usually not needed: the batch's done check ends it once every posting is handled |
 | Editor | `finish_summaries` | At least one summary passes the checks: requested id, at most 3 sentences, no numbers or months that are not in the record |
 
 ### Keeping prompts small
@@ -130,7 +138,7 @@ When the model calls `finish` with arguments (even `{}`), the loop hands them to
 Every call resends the whole conversation, and Groq's free tier allows only a few thousand tokens per minute. Three rules keep prompts small:
 - page text is cut to `fetch.max_chars_for_model` before it reaches the model (the full text stays in state);
 - `_shorten_old_results()` cuts every tool result older than the newest three to 500 characters;
-- the Curator starts a fresh conversation for each batch of postings, so one batch's postings never ride along in the next one's prompts.
+- the Curator starts a fresh conversation for each posting (`batch_size: 1`), with the posting already in its task, so handling one usually takes a single call of a few thousand tokens.
 
 ## Budgets across agents
 
@@ -165,7 +173,7 @@ Ctrl-C ends any run without a report; the run row is marked failed.
 ```json
 {"kind": "model", "stage": "curate", "agent": "curator", "step": 3, "tool": "openai/gpt-oss-20b", "status": "retry", "http_status": 429, "failure_class": "transient", "reason": "rate_limit", "wait_seconds": 7.0, "attempt": 1, "latency_ms": 212.4}
 {"kind": "model", "stage": "curate", "agent": "curator", "step": 3, "tool": "openai/gpt-oss-20b", "status": "ok", "attempt": 2, "latency_ms": 948.1, "prompt_tokens": 2310, "completion_tokens": 96, "total_tokens": 2406}
-{"kind": "tool", "stage": "curate", "agent": "curator", "step": 3, "tool": "get_posting", "status": "ok", "args": {"posting_id": 12}, "injection_suspected": false}
+{"kind": "tool", "stage": "curate", "agent": "curator", "step": 3, "tool": "save_record", "status": "ok", "args": {"posting_id": 12, "record": {"...": "..."}}}
 ```
 
 The last line of every trace is a `summary` event with the outcome, the stop reason and totals for steps, searches, fetches, tokens, credits and wall time; under the conductor it also lists each stage's outcome and usage. (Fields are abbreviated here; see [tracker.md](tracker.md#state-reports-and-traces) for the full list.)

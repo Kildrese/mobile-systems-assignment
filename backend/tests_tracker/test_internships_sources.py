@@ -348,3 +348,24 @@ def test_scout_cannot_propose_a_page(store):
     outcome = _propose(store, SEEN, kind="page", board_or_url="https://evil.example.com/careers")
     assert outcome.reason == "unknown_kind"
     assert store.sources() == []
+
+
+@respx.mock
+def test_scout_board_that_never_worked_is_deactivated(store, http, trace):
+    def add(board, added_by):
+        source_id, _ = store.add_source(
+            company=board, kind="lever", board=board, url=None, added_by=added_by, run_id=RUN1
+        )
+        respx.get(pinned(board_url("lever", board))).respond(404)
+        return store.source(source_id)
+
+    typo = add("typo", "scout")  # never readable: costs a request every run
+    config = add("config", "config")  # the user's own list is never changed
+    moved = add("moved", "scout")
+    store.mark_source_read(moved["id"], RUN1, "ok")  # worked before: may come back
+
+    for source in (typo, config, store.source(moved["id"])):
+        assert collect_source(store, source, http, trace, RUN2).status == "unreadable"
+
+    assert [s["board"] for s in store.sources()] == ["config", "moved"]
+    assert store.has_source("lever", "typo", None)  # cannot be proposed again

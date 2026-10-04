@@ -43,7 +43,7 @@ The stages, in order:
 ```
 scout     AgentLoop(scout)       -> sources(proposed)  -> validate -> sources(active)
 collect   code, per source      -> raw_postings        -> prefilter
-curate    AgentLoop(curator) over batches of pending postings -> opportunities, opportunity_links
+curate    AgentLoop(curator) per posting, most relevant first -> opportunities, opportunity_links
 liveness  code                  -> opportunities.status / evidence
 rank      code                  -> ranks (this run)
 edit      AgentLoop(editor)      -> summaries (this run), validated
@@ -80,7 +80,7 @@ http_cache(url PK, etag, last_modified, body_hash, at)
 Normalization: NFKC, collapse whitespace, lowercase, and unify straight and curly quotes and dashes. A quote must be at least 3 characters and be a substring of the normalized posting text (board text plus any fetched detail page for that posting). Candidates for same-role matching: same normalized company, and title token Jaccard ≥ 0.5 after removing filler words ("intern", "internship", "summer", years, punctuation). An exact `(board, external_id)` or canonical URL match is linked by code without asking the model.
 
 ### D8. Ranking
-`score = w_role * role_match + w_term * term_match + w_loc * loc_match + w_recent * recency`. Each match is 0, 0.5 (`unknown`) or 1. Recency decays linearly over `ranking.recency_days`. Weights live in config. Ranks are stored per run, so "top K" in any past report can be reproduced.
+`score = w_role * role_match + w_term * term_match + w_loc * loc_match + w_recent * recency + w_focus * focus`, where `focus` is 1 when the title names a role the search is for (`ranking.focus_keywords`: software, ML, data, ...); the first real run put a design internship in the top K without it. Each match is 0, 0.5 (`unknown`) or 1. Recency decays linearly over `ranking.recency_days`. Weights live in config. Ranks are stored per run, so "top K" in any past report can be reproduced.
 
 ### D9. Summary checks
 The Editor's `finish(summaries=[{opportunity_id, text}])` is checked per summary: the id exists and is in the requested set, the text is at most 3 sentences, and every number, currency amount or date in the text appears in the record's fields or quotes (regex extraction plus normalization). A rejected summary is dropped and the rejection is traced. The report then falls back to the fields alone.
@@ -99,13 +99,13 @@ agents:
              limits: { max_steps: 12, max_tokens: 50000, max_searches: 6, max_fetches: 10 }, options: { max_new_sources: 5 } }
   curator: { model: {name: openai/gpt-oss-20b, max_output_tokens: 1024},
              tools: [get_posting, fetch_posting_detail, save_record, mark_same, flag_unclear],
-             limits: { max_steps: 35, max_tokens: 70000, max_fetches: 20 }, options: { batch_size: 5 },
+             limits: { max_steps: 35, max_tokens: 70000, max_fetches: 20 }, options: { batch_size: 1 },
              fetch_hosts: [boards.greenhouse.io, job-boards.greenhouse.io, jobs.lever.co, jobs.ashbyhq.com, "<watchlist domains>"] }
   editor:  { model: {name: openai/gpt-oss-120b}, tools: [get_opportunities, finish],
              limits: { max_steps: 6, max_tokens: 25000 } }
 watchlist: [ { company: "...", kind: greenhouse, board: "..." }, ... ]
 filters: { title_keywords: [intern, internship, co-op], locations: ["New York", "NYC", "Brooklyn", "Remote"] }
-ranking: { weights: { role: 3, term: 3, location: 2, recency: 1 }, recency_days: 30 }
+ranking: { weights: { role: 3, term: 3, location: 2, recency: 1, focus: 3 }, recency_days: 30 }
 lifecycle: { closed_patterns: ["no longer accepting", "position has been filled", "job is closed"] }
 ```
 Profiles inherit any model fields they omit (provider, temperature) from the top-level `model`. There is no top-level `tools` list: the use case registers its tools in code, and each profile selects from them.
@@ -114,7 +114,7 @@ Profiles inherit any model fields they omit (provider, temperature) from the top
 Expected round trips on a first run:
 - Scout: ~12 Groq calls, ≤6 Tavily searches and ≤10 page fetches.
 - Collect: one request per watchlist source (~15–20).
-- Curate: ~10–35 Groq calls and ≤20 detail fetches.
+- Curate: about one Groq call per posting (a few thousand tokens, the posting in the task) and ≤20 detail fetches. The first real run used two calls per posting in a conversation that grew to ~6K tokens, and the per-minute token limit let it save only 7 of 28 postings in the 900 s budget; what is left waits for the next run, most relevant first.
 - Liveness: requests only for page-only opportunities.
 - Edit: ≤6 Groq calls.
 

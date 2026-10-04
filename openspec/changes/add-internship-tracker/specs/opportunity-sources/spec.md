@@ -29,11 +29,15 @@ The Scout agent SHALL have a `propose_source(company, kind, board_or_url, eviden
 - **THEN** the proposal is rejected with reason `unseen_evidence`
 
 ### Requirement: Job-board collectors
-Collect SHALL read each Greenhouse, Lever and Ashby source through its public JSON endpoint, without keys and without a model. It SHALL produce one raw posting per job, with the board's job id, title, location, URL, description text and update time when present. Each request SHALL go through the core fetch guardrails and the transient/terminal failure handling. A failed source SHALL be recorded as `unreadable` for this run and SHALL NOT stop the other sources. Retries SHALL honor a `Retry-After` up to `retry.max_wait_seconds`, and no request or wait SHALL go past the run's `max_wall_seconds`. When no source is readable, Collect SHALL be `failed` if state holds no opportunities yet, and `partial` otherwise.
+Collect SHALL read each Greenhouse, Lever and Ashby source through its public JSON endpoint, without keys and without a model. It SHALL produce one raw posting per job, with the board's job id, title, location, URL, description text and update time when present. Each request SHALL go through the core fetch guardrails and the transient/terminal failure handling. A failed source SHALL be recorded as `unreadable` for this run and SHALL NOT stop the other sources. Retries SHALL honor a `Retry-After` up to `retry.max_wait_seconds`, and no request or wait SHALL go past the run's `max_wall_seconds`. When no source is readable, Collect SHALL be `failed` if state holds no opportunities yet, and `partial` otherwise. A source the Scout added that has never been read successfully SHALL be deactivated when it fails for a reason that does not pass by itself (HTTP 404 or 410, too large, not a supported content type, or a body the parser rejects); it is then not read again and cannot be proposed again. Config sources, and sources that were read successfully before, SHALL never be deactivated.
 
 #### Scenario: One board down
 - **WHEN** one Greenhouse board returns 503 after the capped retries, and the others succeed
 - **THEN** the others' postings are collected, the failed source is marked `unreadable` for this run, and Collect completes
+
+#### Scenario: Scout added a board that cannot be read
+- **WHEN** a board the Scout proposed is larger than `options.board_max_bytes` on its first read
+- **THEN** it is marked `unreadable`, deactivated, and not requested in later runs
 
 ### Requirement: Conditional requests
 Collect and Liveness SHALL store each response's `ETag` and `Last-Modified` and send `If-None-Match` / `If-Modified-Since` on later runs. A `304` SHALL reuse the stored postings for that source and count as a successful read.

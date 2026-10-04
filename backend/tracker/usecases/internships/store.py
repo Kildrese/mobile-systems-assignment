@@ -192,7 +192,13 @@ class OpportunityStore:
         return self.db.execute("SELECT 1 FROM sources WHERE key = ?", (key,)).fetchone() is not None
 
     def sources(self) -> list[dict[str, Any]]:
-        return [dict(r) for r in self.db.execute("SELECT * FROM sources ORDER BY id")]
+        """Active sources. A deactivated one stays in the table, so it is never re-added."""
+        sql = "SELECT * FROM sources WHERE active = 1 ORDER BY id"
+        return [dict(r) for r in self.db.execute(sql)]
+
+    def deactivate_source(self, source_id: int) -> None:
+        with self.db:
+            self.db.execute("UPDATE sources SET active = 0 WHERE id = ?", (source_id,))
 
     def source(self, source_id: int) -> dict[str, Any] | None:
         return _row(self.db.execute("SELECT * FROM sources WHERE id = ?", (source_id,)).fetchone())
