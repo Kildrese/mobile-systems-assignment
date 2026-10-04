@@ -43,7 +43,7 @@ limits:
   max_tokens: 150000
   reserve_tokens: 5000
   max_cost_usd: 0.50
-  max_wall_seconds: 900
+  max_wall_seconds: 1500  # Groq free tier: much of a run is waiting on per-minute limits
 
 retry:
   max_attempts: 4

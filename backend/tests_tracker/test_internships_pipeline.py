@@ -24,8 +24,9 @@ from tests_tracker.conftest import (
 from tests_tracker.internships_helpers import RUN1, add_board, open_store, posting
 from tests_tracker.test_loop import FakeModel
 from tracker import conductor, tools
+from tracker.agents import Stop
 from tracker.config import TrackerSecrets, policy_from_dict
-from tracker.errors import PolicyError
+from tracker.errors import PolicyError, TerminalError
 from tracker.state import StateStore
 from tracker.usecases.internships import wiring
 from tracker.usecases.internships.ranking import RankingSettings
@@ -434,6 +435,75 @@ def test_repeated_wrong_quote_is_saved_as_unknown(tmp_path, keys):
     [opp] = opportunities(policy)
     assert opp["term"] == "unknown"
     assert opp["fields"]["compensation"]["value"] == "$45/hour"  # verified fields kept
+
+
+# The Scout's stage outcome
+
+
+@pytest.mark.parametrize(
+    ("stop", "searches", "expected"),
+    [
+        (Stop(finish={"note": "done"}), 0, ("complete", None)),
+        (Stop(finish={"reason": "max_new_sources"}), 1, ("complete", "max_new_sources")),
+        (Stop(reason="scout.max_steps"), 6, ("complete", "searches_spent")),
+        (Stop(reason="scout.max_tokens"), 6, ("complete", "searches_spent")),
+        (Stop(reason="scout.max_steps"), 3, ("partial", "scout.max_steps")),
+        (Stop(reason="max_wall_seconds"), 6, ("partial", "max_wall_seconds")),
+        (Stop(reason="max_tokens"), 6, ("partial", "max_tokens")),  # the run's, not the Scout's
+        (Stop(terminal=TerminalError("groq", "quota", "daily")), 6, ("partial", "terminal:quota")),
+    ],
+)
+def test_scout_outcome(stop, searches, expected):
+    outcome = wiring.scout_outcome(stop, searches, 6, "scout")
+    assert (outcome.outcome, outcome.reason) == expected
+
+
+PROPOSE_GAMMA = {"company": "Gamma", "kind": "ashby", "board": "gamma", "evidence_url": EVIDENCE}
+
+
+@respx.mock
+def test_scout_out_of_steps_after_its_searches_is_complete(ipolicy, keys):
+    scout = [
+        chat_body(tool_call("search_web", {"query": "NYC startup internships"}, "s1")),
+        chat_body(tool_call("search_web", {"query": "NYC startups hiring interns"}, "s2")),
+        chat_body(tool_call("propose_source", PROPOSE_GAMMA, "s3")),
+        chat_body(content="Still reading."),  # no finish on the last step: out of steps
+    ]
+    respx.post(LLM_URL).mock(side_effect=FakeModel(*scout, *curate_script(), *edit_script()))
+    respx.post(SEARCH_URL).respond(200, json=search_body(EVIDENCE))
+    mock_boards()
+
+    result = run(ipolicy, keys)
+
+    assert result.status == "complete", result.message
+    assert "| scout | complete | searches_spent |" in result.report_path.read_text()
+    stages = read_trace(result.trace_path)[-1]["stages"]
+    assert (stages[0]["outcome"], stages[0]["reason"]) == ("complete", "searches_spent")
+    assert sorted(o["company"] for o in opportunities(ipolicy)) == ["Acme", "Gamma"]
+
+
+@respx.mock
+def test_scout_stops_at_the_proposal_cap(tmp_path, keys):
+    policy = policy_from_dict(
+        policy_data(agents={"scout": {"options": {"max_new_sources": 1}}}), tmp_path
+    )
+    scout = [
+        chat_body(tool_call("search_web", {"query": "NYC startup internships"}, "s1")),
+        chat_body(tool_call("propose_source", PROPOSE_GAMMA, "s2")),
+    ]
+    model = FakeModel(*scout, *curate_script(), *edit_script())
+    respx.post(LLM_URL).mock(side_effect=model)
+    respx.post(SEARCH_URL).respond(200, json=search_body(EVIDENCE))
+    mock_boards()
+
+    result = run(policy, keys)
+
+    assert result.status == "complete", result.message
+    # No Scout call after the cap: the next request was already the Curator's.
+    assert not model.replies
+    assert len(model.requests) == len(scout) + 2 + len(edit_script())
+    stages = read_trace(result.trace_path)[-1]["stages"]
+    assert (stages[0]["outcome"], stages[0]["reason"]) == ("complete", "max_new_sources")
 
 
 @respx.mock
