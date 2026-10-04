@@ -24,6 +24,6 @@ Implemented in PR #16 before this proposal existed. The tasks record what was bu
 
 ## 5. Rollout
 
-- [ ] 5.1 Add the repository secrets `GROQ_API_KEY`, `TAVILY_API_KEY` and `DATABASE_URL`
+- [x] 5.1 Add the repository secrets `GROQ_API_KEY`, `TAVILY_API_KEY` and `DATABASE_URL`
 - [x] 5.2 Apply the migration to Neon (`./scripts/db-migrate-neon.sh`) before merging
 - [ ] 5.3 Trigger the workflow manually once and check the page in production
