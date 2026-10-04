@@ -45,7 +45,7 @@ Tasks marked **[parallel]** depend only on the merged core and can be built now.
   - Status: 10 boards researched and committed; the format test passes. Still open: checking each board against the live APIs, which this environment's network policy blocks.
 - [x] 7.2 [after orchestration] Write the internship `config.yaml` (design D10) using that watchlist. Verify the committed config loads
 - [x] 7.3 [after orchestration] Add an internship section to `docs/tracker.md` (stages, agents and their privileges, budget split, lifecycle, report layout, hosts to allowlist) and update the README run instructions. Verify the documented offline commands run as written
-- [ ] 7.4 [parallel] Keep ruff and the full `tests_tracker` suite green in CI throughout. Verify the CI job passes on the branch
+- [x] 7.4 [parallel] Keep ruff and the full `tests_tracker` suite green in CI throughout. Verify the CI job passes on the branch
   - Status: green locally (ruff, format, 244 tests). CI runs only on pull requests and pushes to master, so this is verified when the PR is opened.
 
 ## 8. Integration check
