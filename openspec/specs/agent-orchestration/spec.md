@@ -2,7 +2,6 @@
 
 ## Purpose
 Lets the tracker runtime run several narrowly scoped agents under a conductor written in code. Each agent has its own model, tools, hosts, budget and instructions, while the run keeps one set of global budgets, one state file and one trace. Use cases build on this; it contains no use-case logic.
-
 ## Requirements
 ### Requirement: Agent profiles
 The policy MAY define an `agents` mapping from agent name to profile. A profile SHALL define `tools` (a selection from the tools registered in code by the core and the configured use case; policy cannot add tools), `limits` (`max_steps` and `max_tokens`, plus `max_searches` and `max_fetches` when it has those tools) and `instructions`. It MAY define `model` fields (any field left out is inherited from the top-level `model`), `fetch_hosts`, `enabled` (default true) and use-case settings under `options`. Agent names SHALL be lowercase identifiers.
@@ -66,16 +65,20 @@ A stage SHALL receive the policy, its own profile, the state store, the trace an
 - **THEN** its first model call contains only its own instructions and task, plus data it reads through its tools, and nothing from an earlier agent's conversation
 
 ### Requirement: Stage and run outcomes
-Each stage SHALL end as `complete`, `partial` (stopped by a budget, or ended early with work left over), `skipped` (disabled, or skipped after a terminal failure), or `failed`. The run SHALL be:
+Each stage SHALL end as `complete`, `partial` (stopped by a budget, or ended early with work left over), `skipped` (disabled, or skipped after a terminal failure), or `failed`. After a terminal failure, later agent stages that need what failed SHALL be skipped: for a daily quota from the stage's own model provider, the stages using that same model, because providers such as Groq count daily quotas per model; for any other terminal failure (bad key, payment, a rejected request, unreachable), every stage using that provider. The run SHALL be:
 - `failed` when a stage marked `required` failed;
 - `partial` when any stage is partial, failed without being marked `required`, or was skipped after a terminal failure;
 - `complete` otherwise.
 
-Exit codes SHALL follow the core: `0` complete, `2` partial, `3` failed. A report SHALL be written in every outcome.
+The run's stop reason SHALL be that of the first stage with a terminal failure, if any, and otherwise that of the first stage that was not complete. Exit codes SHALL follow the core: `0` complete, `2` partial, `3` failed. A report SHALL be written in every outcome.
 
-#### Scenario: Terminal provider failure mid-run
-- **WHEN** an agent stage gets a terminal failure from a model provider (for example a daily quota)
-- **THEN** that stage is partial, later agent stages using that provider are `skipped` with reason `terminal:<kind>`, later code stages still run, the report is written, and the command exits `2`
+#### Scenario: Daily quota mid-run
+- **WHEN** an agent stage gets a daily-quota failure from its model provider
+- **THEN** that stage is partial, later agent stages using the same model are `skipped` with reason `terminal:quota`, stages using another model of that provider still run, later code stages still run, the report is written, and the command exits `2`
+
+#### Scenario: Rejected key mid-run
+- **WHEN** an agent stage gets an authentication failure from its model provider
+- **THEN** later agent stages using that provider are `skipped` with reason `terminal:auth`, whatever their model
 
 #### Scenario: Required stage fails
 - **WHEN** a code stage marked `required` raises a terminal error
