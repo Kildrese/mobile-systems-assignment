@@ -30,7 +30,10 @@ cd backend
 uv run python -m tracker run                       # policy from config.yaml at the repo root
 uv run python -m tracker run --config other.yaml   # another policy file
 uv run python -m tracker run --out my-report.md    # another report path
+uv run python -m tracker run --config ../config.smoke.yaml --out ../reports/smoke.md
 ```
+
+`config.smoke.yaml` is `config.yaml` with small budgets (300 s, 2 searches, a few steps per agent): a real run in a few minutes to try a change. It keeps its own state file, `.tracker/smoke.sqlite`, so it never changes the state the graded runs build on.
 
 The command prints the outcome and the report and trace paths.
 

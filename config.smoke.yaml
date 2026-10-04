@@ -1,0 +1,116 @@
+# Smoke test: config.yaml with small budgets, so a real run takes minutes, not a quarter
+# hour. It keeps its own state file (.tracker/smoke.sqlite), so it never touches the
+# state the graded runs build on. Run from backend/:
+#   uv run python -m tracker run --config ../config.smoke.yaml --out ../reports/smoke.md
+# Tracker policy: the internship use case. Everything the agents may do is set here and
+# validated before the first network call; nothing during a run can change it. API keys
+# never go here: they come from the environment or backend/.env (see backend/.env.example).
+# Relative paths below resolve against this file's directory.
+#
+# Pipeline (fixed in code): Scout (agent) -> Collect (code) -> Curate (agent) ->
+# Liveness (code) -> Rank (code) -> Edit (agent) -> report. See docs/tracker.md.
+# The single-agent tracker on a news topic is in examples/single-agent.yaml.
+
+use_case: internships
+topic: "Summer 2027 software and ML internships at NYC startups"
+k: 5  # the top K, marked in the report (3 to 10)
+
+model:
+  provider: groq
+  name: openai/gpt-oss-120b
+  max_output_tokens: 1024
+  temperature: 0.2
+  reasoning_effort: low
+
+providers:
+  groq:
+    base_url: https://api.groq.com/openai/v1
+    key_env: GROQ_API_KEY
+    price_per_mtok_in: 0  # free tier
+    price_per_mtok_out: 0
+    # A 429 whose body matches one of these is a daily quota: terminal, never retried.
+    quota_patterns: ["per day", "\\(RPD\\)", "\\(TPD\\)"]
+
+search:
+  provider: tavily
+  key_env: TAVILY_API_KEY
+  max_results: 5
+  depth: basic  # 1 credit per search
+  price_per_credit: 0.008  # pay-as-you-go price; keeps the cost budget meaningful
+  quota_patterns: ["plan", "credit"]
+
+# Hard caps for the whole run. The agents' own limits below must fit inside them.
+limits:
+  max_steps: 20
+  max_searches: 2
+  max_fetches: 4
+  max_tokens: 70000
+  reserve_tokens: 5000
+  max_cost_usd: 0.10
+  max_wall_seconds: 300
+
+retry:
+  max_attempts: 4
+  base_seconds: 1.0
+  max_wait_seconds: 60
+
+fetch:
+  allowed_schemes: [https, http]
+  allowed_hosts: ["*"]  # any public host; address checks still apply to every request
+  connect_timeout: 5
+  read_timeout: 10
+  deadline_seconds: 20
+  max_bytes: 2000000
+  max_redirects: 5
+  max_chars_for_model: 6000
+
+state_path: .tracker/smoke.sqlite
+
+# Used only by the single-agent path; each agent below has its own instructions.
+instructions: |
+  You track {topic}. Report the {k} most relevant opportunities with sources.
+
+agents:
+  scout:
+    # Reads the open web, so it may only propose sources; code validates each one.
+    tools: [search_web, fetch_article, propose_source]
+    limits: {max_steps: 4, max_tokens: 20000, max_searches: 2, max_fetches: 2}
+    options: {max_new_sources: 5}
+    instructions: |
+      You find NYC startups that hire software or ML interns for {topic}.
+      Search for recent internship postings and lists of NYC startups that are hiring.
+      When a company has a public Greenhouse, Lever or Ashby job board, propose it with
+      propose_source: kind is greenhouse, lever or ashby and board is the board
+      identifier from the board URL (boards.greenhouse.io/<id>, jobs.lever.co/<id>,
+      jobs.ashbyhq.com/<id>). Cite as evidence_url a page you found in this run.
+      Prefer startups based in New York. Do not propose large public companies.
+      When your searches are used up, propose the boards you found and call finish.
+  curator:
+    # A smaller model on a separate Groq quota. Reads postings, never the open web.
+    model: {name: openai/gpt-oss-20b}
+    tools: [get_posting, fetch_posting_detail, save_record, mark_same, flag_unclear]
+    fetch_hosts: [boards.greenhouse.io, job-boards.greenhouse.io, jobs.lever.co, jobs.ashbyhq.com]
+    limits: {max_steps: 8, max_tokens: 20000, max_fetches: 2}
+    instructions: |
+      You turn job postings into structured records. Copy every quote word for word
+      from the posting. If the posting does not state a field, set it to unknown.
+      Record any sentence about work authorization or visa sponsorship as written;
+      never judge it. Use mark_same only for the same role at the same company.
+  editor:
+    # All summaries go in one finish call, and gpt-oss's reasoning counts against the cap.
+    model: {max_output_tokens: 2048}
+    tools: [get_opportunities]
+    limits: {max_steps: 6, max_tokens: 25000}
+    instructions: |
+      You write short, factual summaries of internship opportunities for a student
+      searching for {topic}. Use only facts in the record. Never add pay, dates or
+      numbers that the record does not contain.
+
+# Use-case settings, validated by the internship use case. Everything has a default in
+# code; set a key here only to change it:
+#   watchlist   the boards to read (default: usecases/internships/watchlist.yaml)
+#   filters     title_keywords, locations: which postings reach the Curator
+#               (sources.Filters)
+#   ranking     weights, recency_days, role_types, terms, locations, focus_keywords:
+#               how the top K is chosen (ranking.RankingSettings)
+options: {}

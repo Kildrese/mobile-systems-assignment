@@ -614,6 +614,10 @@ def test_committed_configs_load():
     assert policy.agents["curator"].model.name == "openai/gpt-oss-20b"
     assert "search_web" not in policy.agents["curator"].tools
     assert "search_web" not in policy.agents["editor"].tools
+    # The smoke config never shares the graded runs' state.
+    smoke = load_policy(root / "config.smoke.yaml")
+    assert wiring.stages(smoke)[0].name == "scout"
+    assert smoke.state_file != policy.state_file
     single = load_policy(root / "examples" / "single-agent.yaml")
     assert single.use_case is None and not single.agents
     assert single.reports_path == root / "reports"
