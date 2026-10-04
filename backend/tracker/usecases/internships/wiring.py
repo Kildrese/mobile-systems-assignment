@@ -431,6 +431,18 @@ SUMMARIES_SCHEMA = _schema(
 # Stages
 
 
+def scout_outcome(stop: Stop, searches: int, max_searches: int, agent: str) -> StageOutcome:
+    """The Scout's work is searching: once its searches are spent, its own step or token
+    budget ending the stage is the end of its work, not a shortfall. A stop with searches
+    left, on the run's budgets or the wall clock, or after a provider failure is partial."""
+    if isinstance(stop.finish, dict) and (reason := stop.finish.get("reason")):
+        return StageOutcome("complete", reason)
+    spent = searches >= max_searches
+    if spent and stop.reason in (f"{agent}.max_steps", f"{agent}.max_tokens"):
+        return StageOutcome("complete", "searches_spent")
+    return StageOutcome.from_stop(stop)
+
+
 @dataclass
 class ScoutStage:
     name: str = "scout"
@@ -456,8 +468,18 @@ class ScoutStage:
             f"call propose_source. Add at most {cap} new sources. "
             f"Already on the watchlist: {known}. {budget}Call finish when done."
         )
-        stop, _ = ctx.run_agent(task, finish=_note_finish, finish_schema=NOTE_SCHEMA)
-        return StageOutcome.from_stop(stop)
+        # Every further proposal would be rejected once the cap is reached.
+        stop, _ = ctx.run_agent(
+            task,
+            finish=_note_finish,
+            finish_schema=NOTE_SCHEMA,
+            done=lambda: (
+                {"reason": "max_new_sources"}
+                if store.count_sources_added(ctx.run_id, "scout") >= cap
+                else None
+            ),
+        )
+        return scout_outcome(stop, ctx.budget.searches, limits.max_searches or 0, ctx.budget.name)
 
 
 @dataclass

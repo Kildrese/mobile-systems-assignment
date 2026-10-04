@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tests_tracker.conftest import BASE_POLICY, deep_merge
 from tracker.config import CONFIG_NAME, TrackerSecrets, find_root, load_policy, policy_from_dict
@@ -105,6 +106,13 @@ def test_committed_config_is_valid():
     assert policy.model.provider == "groq"
     assert policy.model.name == "openai/gpt-oss-120b"
     assert policy.state_file == REPO_ROOT / ".tracker" / "state.sqlite"
+
+
+def test_scheduled_job_outlasts_the_wall_clock_budget():
+    # Setup, saving state and publishing need room after the run's own deadline.
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/tracker.yml").read_text())
+    timeout = workflow["jobs"]["run"]["timeout-minutes"] * 60
+    assert timeout >= load_policy().limits.max_wall_seconds + 300
 
 
 def test_policy_fixed_for_run(write_config):
