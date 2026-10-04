@@ -1,3 +1,7 @@
+# Smoke test: config.yaml with small budgets, so a real run takes minutes, not a quarter
+# hour. It keeps its own state file (.tracker/smoke.sqlite), so it never touches the
+# state the graded runs build on. Run from backend/:
+#   uv run python -m tracker run --config ../config.smoke.yaml --out ../reports/smoke.md
 # Tracker policy: the internship use case. Everything the agents may do is set here and
 # validated before the first network call; nothing during a run can change it. API keys
 # never go here: they come from the environment or backend/.env (see backend/.env.example).
@@ -37,13 +41,13 @@ search:
 
 # Hard caps for the whole run. The agents' own limits below must fit inside them.
 limits:
-  max_steps: 60
-  max_searches: 6
-  max_fetches: 40
-  max_tokens: 150000
+  max_steps: 20
+  max_searches: 2
+  max_fetches: 4
+  max_tokens: 70000
   reserve_tokens: 5000
-  max_cost_usd: 0.50
-  max_wall_seconds: 900
+  max_cost_usd: 0.10
+  max_wall_seconds: 300
 
 retry:
   max_attempts: 4
@@ -60,7 +64,7 @@ fetch:
   max_redirects: 5
   max_chars_for_model: 6000
 
-state_path: .tracker/state.sqlite
+state_path: .tracker/smoke.sqlite
 
 # Used only by the single-agent path; each agent below has its own instructions.
 instructions: |
@@ -70,7 +74,7 @@ agents:
   scout:
     # Reads the open web, so it may only propose sources; code validates each one.
     tools: [search_web, fetch_article, propose_source]
-    limits: {max_steps: 12, max_tokens: 50000, max_searches: 6, max_fetches: 10}
+    limits: {max_steps: 4, max_tokens: 20000, max_searches: 2, max_fetches: 2}
     options: {max_new_sources: 5}
     instructions: |
       You find NYC startups that hire software or ML interns for {topic}.
@@ -86,7 +90,7 @@ agents:
     model: {name: openai/gpt-oss-20b}
     tools: [get_posting, fetch_posting_detail, save_record, mark_same, flag_unclear]
     fetch_hosts: [boards.greenhouse.io, job-boards.greenhouse.io, jobs.lever.co, jobs.ashbyhq.com]
-    limits: {max_steps: 35, max_tokens: 70000, max_fetches: 20}
+    limits: {max_steps: 8, max_tokens: 20000, max_fetches: 2}
     instructions: |
       You turn job postings into structured records. Copy every quote word for word
       from the posting. If the posting does not state a field, set it to unknown.

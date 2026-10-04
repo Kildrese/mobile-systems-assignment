@@ -28,6 +28,10 @@ SHORTENED_CHARS = 500
 
 # (arguments, step, toolbox, trace) -> (content for the model, result or None to go on).
 FinishHandler = Callable[[dict[str, Any], int, Toolbox, Trace], tuple[str, Any | None]]
+# Checked after each reply's tool calls: a result ends the agent as if it had finished.
+DoneCheck = Callable[[], Any | None]
+
+LAST_STEP = "This is your last step: call finish now with what you have."
 
 
 @dataclass
@@ -102,6 +106,7 @@ class AgentLoop:
         finish: FinishHandler | None = None,
         finish_schema: dict[str, Any] | None = None,
         nudge: str | None = None,
+        done: DoneCheck | None = None,
     ) -> None:
         self.policy = policy
         self.profile = profile
@@ -111,6 +116,7 @@ class AgentLoop:
         self.chat = chat
         self.task_prompt = task_prompt
         self.finish = finish or report_finish(policy.k)
+        self.done = done
         # `finish` is always offered: it is how an agent ends.
         self.tools = tuple(dict.fromkeys((*profile.tools, "finish")))
         self.schemas = [
@@ -135,14 +141,23 @@ class AgentLoop:
             {"role": "user", "content": self.task_prompt},
         ]
         tool_messages: list[_ToolMessage] = []
+        # The next call resends at least the last one's prompt and reply.
+        next_call = 0
         while True:
             if reason := budget.check_model_call():
                 return Stop(reason=reason)
+            # On the last call the budget allows, by steps or by tokens, only finish is
+            # offered, so the agent ends with its result instead of a budget limit.
+            schemas = self.schemas
+            last_by_tokens = budget.tokens_left() < next_call + self.profile.model.max_output_tokens
+            if budget.steps_left() == 1 or (next_call and last_by_tokens):
+                schemas = [s for s in self.schemas if s["function"]["name"] == "finish"]
+                messages.append({"role": "user", "content": LAST_STEP})
             budget.count(steps=1)
             step = budget.steps
             _shorten_old_results(messages, tool_messages)
             try:
-                reply = self.chat.chat(messages, self.schemas, step)
+                reply = self.chat.chat(messages, schemas, step)
             except ModelOutputError as err:
                 messages.append(
                     {
@@ -159,13 +174,14 @@ class AgentLoop:
             budget.charge_tokens(
                 reply.usage.prompt_tokens, reply.usage.completion_tokens, self.price
             )
+            next_call = reply.usage.prompt_tokens + reply.usage.completion_tokens
             messages.append(reply.as_message())
             if not reply.tool_calls:
                 messages.append({"role": "user", "content": self.nudge})
                 continue
 
             for call in reply.tool_calls:
-                if call.name == "finish" and call.arguments:
+                if call.name == "finish" and call.arguments is not None:
                     content, finished = self.finish(call.arguments, step, toolbox, trace)
                     if finished is not None:
                         return Stop(finish=finished)
@@ -187,6 +203,8 @@ class AgentLoop:
                 else:
                     content = json.dumps(outcome.data, ensure_ascii=False)
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
+            if self.done is not None and (result := self.done()) is not None:
+                return Stop(finish=result)
 
     def _dispatch(
         self, name: str, arguments: dict[str, Any] | None, parse_error: str | None, step: int
@@ -226,18 +244,20 @@ class AgentLoop:
             budget.count(steps=1)
             return refuse("error", "invalid_arguments", validation_message(err))
 
-        # A cached article costs no fetch.
+        # A use-case tool may draw on the search or fetch budget; a cached article is free.
+        kind = spec.budget or name
         cached = name == "fetch_article" and toolbox.is_cached(args.url)
-        if not cached and (reason := budget.check_tool(name)):
-            return refuse("budget", "budget_exhausted", f"{reason} reached")
+        if not cached and (reason := budget.check_tool(kind)):
+            return refuse(
+                "budget",
+                "budget_exhausted",
+                f"{reason} reached. Use your other tools, or call finish if you are done.",
+            )
         outcome = spec.handler(toolbox, args, step)
-        if name == "search_web" and outcome.ok:
+        if kind == "search_web" and outcome.ok:
             budget.count(searches=1, credits=float(outcome.data.get("credits", 0)))
-        elif name == "fetch_article" and (
-            outcome.status == "ok"
-            or (outcome.status == "error" and outcome.reason != "invalid_arguments")
-        ):
-            budget.count(fetches=1)  # a request went out
+        elif kind == "fetch_article" and outcome.requested:
+            budget.count(fetches=1)
         return outcome
 
 

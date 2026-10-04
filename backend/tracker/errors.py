@@ -204,7 +204,14 @@ def send_with_retries(
         }
         if isinstance(outcome, Terminal):
             on_attempt(
-                {**event, "status": "error", "failure_class": "terminal", "reason": outcome.kind}
+                {
+                    **event,
+                    "status": "error",
+                    "failure_class": "terminal",
+                    "reason": outcome.kind,
+                    # What the provider said, e.g. which quota ran out and when it resets.
+                    "detail": outcome.message,
+                }
             )
             raise TerminalError(provider.name, outcome.kind, outcome.message)
 

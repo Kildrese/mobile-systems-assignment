@@ -36,7 +36,7 @@ from tests_tracker.test_run_cli import (  # noqa: F401
     report_and_trace,
 )
 from tests_tracker.toy_use_case import AgentStage, CodeStage
-from tracker import conductor, tools
+from tracker import agents, conductor, tools
 from tracker.budget import Budget
 from tracker.config import TrackerSecrets, policy_from_dict
 from tracker.errors import PolicyError, TerminalError
@@ -222,8 +222,11 @@ def test_tool_outside_profile_is_unknown(mpolicy, mkeys):
     result = run(mpolicy, mkeys, [AgentStage("scout", "scout")])
 
     assert not page.called
-    reply = model.requests[1]["messages"][-1]
+    *_, reply, last_step = model.requests[1]["messages"]
     assert "unknown_tool" in reply["content"]
+    # The bad call cost a step, so the second call is the scout's last: only finish is offered.
+    assert last_step["content"] == agents.LAST_STEP
+    assert [t["function"]["name"] for t in model.requests[1]["tools"]] == ["finish"]
     assert "Allowed tools: search_web, finish" in reply["content"]
     summary = read_trace(result.trace_path)[-1]
     assert summary["stages"][0]["usage"]["steps"] == 3  # two model calls and the bad call
@@ -319,8 +322,11 @@ def test_agent_limit_partial_and_later_stages_run(make_policy, mkeys):
 
 
 @respx.mock
-def test_terminal_failure_skips_that_provider(mpolicy, mkeys):
-    fake = FakeModel(httpx.Response(429, text="Rate limit reached on requests per day (RPD)"))
+def test_daily_quota_skips_only_that_model(mpolicy, mkeys):
+    # Groq counts daily quotas per model: the reader's model still has its own.
+    fake = FakeModel(
+        httpx.Response(429, text="Rate limit reached on requests per day (RPD)"), finish()
+    )
     respx.post(LLM_URL).mock(side_effect=fake)
     respx.post(LLM2_URL).mock(side_effect=FakeModel(finish()))
     ran = []
@@ -329,21 +335,45 @@ def test_terminal_failure_skips_that_provider(mpolicy, mkeys):
         CodeStage("store", lambda ctx: ran.append("store")),
         AgentStage("read", "reader"),
         AgentStage("write", "writer"),
+        AgentStage("rescan", "scout"),
     ]
 
     result = run(mpolicy, mkeys, stages)
 
     assert (result.status, result.exit_code) == ("partial", 2)
     assert ran == ["store"]
-    assert len(fake.requests) == 1
+    assert len(fake.requests) == 2  # the quota, then the reader's finish
     stages = read_trace(result.trace_path)[-1]["stages"]
     assert [(s["outcome"], s["reason"]) for s in stages] == [
         ("partial", "terminal:quota"),
         ("complete", None),
-        ("skipped", "terminal:quota"),
         ("complete", None),
+        ("complete", None),
+        ("skipped", "terminal:quota"),
     ]
     assert result.report_path.is_file()
+
+
+@respx.mock
+def test_auth_failure_skips_that_provider(mpolicy, mkeys):
+    fake = FakeModel(httpx.Response(401, json={"error": {"message": "Invalid API Key"}}))
+    respx.post(LLM_URL).mock(side_effect=fake)
+    respx.post(LLM2_URL).mock(side_effect=FakeModel(finish()))
+    stages = [
+        AgentStage("scan", "scout"),
+        AgentStage("read", "reader"),
+        AgentStage("write", "writer"),
+    ]
+
+    result = run(mpolicy, mkeys, stages)
+
+    assert len(fake.requests) == 1
+    stages = read_trace(result.trace_path)[-1]["stages"]
+    assert [(s["outcome"], s["reason"]) for s in stages] == [
+        ("partial", "terminal:auth"),
+        ("skipped", "terminal:auth"),
+        ("complete", None),
+    ]
 
 
 @respx.mock
@@ -466,3 +496,30 @@ def test_docs_example_validates(tmp_path):
 
 
 assert toy_use_case  # imported for its `echo` registration
+
+
+def test_provider_failure_decides_the_status_over_an_earlier_budget_stop():
+    stages = [CodeStage("a"), CodeStage("b")]
+    budget_stop = conductor.StageOutcome("partial", "scout.max_steps", stage="a")
+    failure = TerminalError("groq", "quota", "daily quota")
+    terminal = conductor.StageOutcome("partial", "terminal:quota", terminal=failure, stage="b")
+    status, decider = conductor.run_status(stages, [budget_stop, terminal])
+    assert (status, decider) == ("partial", terminal)
+    assert conductor.run_status(stages, [budget_stop])[1] is budget_stop
+
+
+@respx.mock
+def test_last_call_the_token_budget_allows_offers_only_finish(mpolicy, mkeys):
+    # The scout has 8,000 tokens. Its first call uses 4,500, so a second one resending at
+    # least that cannot fit with a reply: it is offered only finish and ends complete.
+    search = chat_body(tool_call("search_web", {"query": "q"}), prompt=4000, completion=500)
+    model = FakeModel(search, finish())
+    respx.post(LLM_URL).mock(side_effect=model)
+    respx.post(SEARCH_URL).respond(200, json=search_body("https://news.example.com/a"))
+
+    result = run(mpolicy, mkeys, [AgentStage("scan", "scout")])
+
+    assert [t["function"]["name"] for t in model.requests[0]["tools"]] == ["search_web", "finish"]
+    assert [t["function"]["name"] for t in model.requests[1]["tools"]] == ["finish"]
+    assert model.requests[1]["messages"][-1]["content"] == agents.LAST_STEP
+    assert read_trace(result.trace_path)[-1]["stages"][0]["outcome"] == "complete"

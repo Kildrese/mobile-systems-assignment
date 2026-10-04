@@ -73,6 +73,22 @@ class Budget:
             return "max_wall_seconds"
         return None
 
+    def steps_left(self) -> int:
+        """Model calls left before a step limit stops the agent: its own, or the run's."""
+        if self.parent is not None:
+            assert self.limits is not None
+            return min(self.limits.max_steps - self.steps, self.parent.steps_left())
+        return self.policy.limits.max_steps - self.steps
+
+    def tokens_left(self) -> int:
+        """Tokens left before a token limit stops the agent: its own, or the run's (less
+        the reserve)."""
+        if self.parent is not None:
+            assert self.limits is not None
+            return min(self.limits.max_tokens - self.total_tokens, self.parent.tokens_left())
+        limits = self.policy.limits
+        return limits.max_tokens - limits.reserve_tokens - self.total_tokens
+
     def check_tool(self, name: str) -> str | None:
         """The name of the exhausted budget, or None when the tool call may proceed."""
         if self.parent is not None:

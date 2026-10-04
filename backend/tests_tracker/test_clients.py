@@ -1,5 +1,7 @@
 """ChatClient and SearchClient against faked providers (respx)."""
 
+import json
+
 import httpx
 import pytest
 import respx
@@ -83,6 +85,10 @@ def test_chat_daily_429_is_terminal_without_retry(policy, trace):
         chat_client(policy, trace).chat([], None, step=1)
     assert err.value.kind == "quota"
     assert route.call_count == 1
+    # The trace says what ran out, not only that something did (AGENT.md quotes it).
+    (event,) = read_trace(trace.path)
+    assert event["reason"] == "quota"
+    assert event["detail"] == err.value.message
 
 
 @respx.mock
@@ -98,10 +104,20 @@ def test_chat_bad_key_is_clean_terminal(policy, trace):
 
 
 @respx.mock
-def test_chat_malformed_tool_call_is_model_error(policy, trace):
-    respx.post(LLM_URL).respond(400, json={"error": {"code": "tool_use_failed"}})
+@pytest.mark.parametrize("code", ["tool_use_failed", "output_parse_failed"])
+def test_chat_malformed_output_is_model_error(policy, trace, code):
+    # Both are the model's mistake (seen from gpt-oss on Groq): retried, never terminal.
+    respx.post(LLM_URL).respond(400, json={"error": {"code": code}})
     with pytest.raises(ModelOutputError):
         chat_client(policy, trace).chat([], None, step=1)
+
+
+@respx.mock
+def test_chat_requires_a_tool_call_when_tools_are_offered(policy, trace):
+    route = respx.post(LLM_URL).respond(json=chat_body(tool_call("finish", {})))
+    tools = [{"type": "function", "function": {"name": "finish", "parameters": {}}}]
+    chat_client(policy, trace).chat([], tools, step=1)
+    assert json.loads(route.calls[0].request.content)["tool_choice"] == "required"
 
 
 @respx.mock

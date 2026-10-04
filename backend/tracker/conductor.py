@@ -17,7 +17,7 @@ from typing import Any, Literal, Protocol
 import httpx
 
 from tracker import report
-from tracker.agents import AgentLoop, FinishHandler, Stop
+from tracker.agents import AgentLoop, DoneCheck, FinishHandler, Stop
 from tracker.budget import Budget
 from tracker.config import AgentProfile, ModelSettings, Policy, TrackerSecrets
 from tracker.errors import PolicyError, TerminalError
@@ -152,6 +152,7 @@ class StageContext:
         *,
         finish: FinishHandler | None = None,
         finish_schema: dict[str, Any] | None = None,
+        done: DoneCheck | None = None,
     ) -> tuple[Stop, Toolbox]:
         """Run this stage's agent once, from a fresh conversation."""
         assert self.profile is not None, "run_agent needs an agent stage"
@@ -166,6 +167,7 @@ class StageContext:
             task_prompt,
             finish=finish,
             finish_schema=finish_schema,
+            done=done,
         ).run()
         return stop, toolbox
 
@@ -215,11 +217,15 @@ def run_status(
     for o in outcomes:
         if o.outcome == "failed" and o.stage in required:
             return "failed", o
-    for o in outcomes:
-        skipped_after_failure = o.outcome == "skipped" and o.reason != "disabled"
-        if o.outcome in ("partial", "failed") or skipped_after_failure:
-            return "partial", o
-    return "complete", None
+    problems = [
+        o
+        for o in outcomes
+        if o.outcome in ("partial", "failed") or (o.outcome == "skipped" and o.reason != "disabled")
+    ]
+    if not problems:
+        return "complete", None
+    # A provider failure says more than a budget stop in an earlier stage.
+    return "partial", next((o for o in problems if o.terminal is not None), problems[0])
 
 
 def run(
@@ -263,20 +269,27 @@ def run(
     )
     run_ctx = StageContext(policy, None, state, trace, budget, clients, run_id)
     outcomes: list[StageOutcome] = []
-    dead: dict[str, str] = {}  # provider -> terminal kind
+    # Who failed for good -> terminal kind: a provider, or one model for a daily quota.
+    dead: dict[str, str] = {}
     try:
         state.start_run(run_id, policy.topic, policy.k)
         for stage in stages:
             profile = policy.agents[stage.agent] if stage.agent else None
-            needs = set(stage.providers) | ({profile.model.provider} if profile else set())
+            needs = set(stage.providers)
+            if profile is not None:
+                needs |= {profile.model.provider, _model_key(profile)}
             if profile is not None and not profile.enabled:
                 outcome = StageOutcome("skipped", "disabled")
             elif hit := sorted(needs & dead.keys()):
                 outcome = StageOutcome("skipped", f"terminal:{dead[hit[0]]}")
             else:
                 outcome = _run_stage(stage, profile, run_ctx)
-            if outcome.terminal is not None:
-                dead[outcome.terminal.provider] = outcome.terminal.kind
+            if (t := outcome.terminal) is not None:
+                # Groq counts daily quotas per model: another model may still have some.
+                own_quota = profile is not None and (
+                    t.kind == "quota" and t.provider == profile.model.provider
+                )
+                dead[_model_key(profile) if own_quota else t.provider] = t.kind
             outcome.stage, outcome.agent = stage.name, stage.agent
             outcomes.append(outcome)
 
@@ -321,6 +334,10 @@ def run(
         why = decider.detail or report.describe_stop(decider.reason)
         message = f"Run {run_id} {status}: stage {decider.stage} {decider.outcome}, {why}."
     return RunResult(run_id, status, reason, report_path, trace_path, message)
+
+
+def _model_key(profile: AgentProfile) -> str:
+    return f"{profile.model.provider} model {profile.model.name}"
 
 
 def _run_stage(stage: Stage, profile: AgentProfile | None, run_ctx: StageContext) -> StageOutcome:

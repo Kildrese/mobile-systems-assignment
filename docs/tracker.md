@@ -1,5 +1,7 @@
 # Tracker
 
+For a step-by-step walkthrough of the loop itself, see [agent-loop.md](agent-loop.md).
+
 The tracker is an agent that finds the top K developments on a topic, ranks and summarizes them with sources, and writes a Markdown report. Its loop is written by hand in `backend/tracker/` (no agent framework). Code enforces the budgets, classifies API failures, guards every fetch and records each call in a trace.
 
 It shares `backend/`'s uv project but imports nothing from the FastAPI app and needs neither Postgres nor Docker.
@@ -28,7 +30,10 @@ cd backend
 uv run python -m tracker run                       # policy from config.yaml at the repo root
 uv run python -m tracker run --config other.yaml   # another policy file
 uv run python -m tracker run --out my-report.md    # another report path
+uv run python -m tracker run --config ../config.smoke.yaml --out ../reports/smoke.md
 ```
+
+`config.smoke.yaml` is `config.yaml` with small budgets (300 s, 2 searches, a few steps per agent): a real run in a few minutes to try a change. It keeps its own state file, `.tracker/smoke.sqlite`, so it never changes the state the graded runs build on.
 
 The command prints the outcome and the report and trace paths.
 
@@ -37,7 +42,9 @@ The command prints the outcome and the report and trace paths.
 | `0` | Complete: the model called `finish` within all budgets |
 | `2` | Partial: a budget ran out; the report uses the evidence gathered so far |
 | `3` | Terminal provider failure (bad key, quota, payment, unreachable); a partial report is still written |
-| `1` | Invalid policy, missing key, or another run holds the state file. Nothing was called |
+| `1` | Invalid policy, missing key, a model the provider does not offer, or another run holds the state file. No model or search call was made |
+
+Before the run starts, the command asks each model provider for its model list (one request per provider) and stops with exit `1` if the policy names a model that is not on it, such as a retired one. If the list cannot be fetched (network down, rejected key), the check is skipped and the run's own failure handling takes over.
 
 ## Running the tools without the model
 
@@ -78,6 +85,7 @@ Everything the agent may do is in one file at the repository root. It is validat
 | `fetch` | Guardrail settings, see below |
 | `instructions` | The system prompt; `{topic}` and `{k}` are filled in |
 | `state_path`, `reports_dir`, `traces_dir` | Defaults `.tracker/state.sqlite`, `reports`, `traces` |
+| `use_case`, `agents`, `options` | Multiple agents for a use case built into the tracker; see [Multiple agents](#multiple-agents) and [The internship use case](#the-internship-use-case) |
 
 Switching provider is a config change: add an entry under `providers` (Groq, OpenRouter and Gemini's OpenAI-compatible endpoint all work) and point `model.provider` at it.
 
@@ -111,7 +119,7 @@ Every failed call to the model or search provider is classified and the class is
 | Terminal `request` | Any other 4xx | Stop |
 | Terminal `unreachable` | Transient failures that used up all attempts | Stop |
 
-A terminal failure prints one line naming the provider, the class and the likely fix (no stack trace), writes a partial report and the trace, and exits `3`. After a model-provider failure no further model call is made. A Groq `tool_use_failed` 400 (the model emitted a malformed tool call) is not a provider failure: the model is told and the run continues.
+A terminal failure prints one line naming the provider, the class and the likely fix (no stack trace), writes a partial report and the trace, and exits `3`. After a model-provider failure no further model call is made. A Groq 400 `tool_use_failed` or `output_parse_failed` (the model emitted a malformed tool call, or output Groq could not parse) is not a provider failure: the model is told and the run continues.
 
 ## Fetch guardrails
 
@@ -134,7 +142,7 @@ Search results and page text reach the model only inside `<untrusted_data>` bloc
 
 | Path | Contents | In git |
 | --- | --- | --- |
-| `.tracker/state.sqlite` | Runs (status, stop reason, usage), fetched articles by canonical URL with text and content hash, searches, reported items | No |
+| `.tracker/state.sqlite` | Runs (status, stop reason, usage), fetched articles by canonical URL with their text, searches, reported items | No |
 | `reports/<run_id>.md` | The report: topic, run id, time, status, budget used, ranked items with sources | No |
 | `traces/<run_id>.jsonl` | One JSON event per model call attempt and tool call, then a summary event | No |
 
@@ -157,7 +165,7 @@ agents:
     limits: {max_steps: 4, max_tokens: 8000, max_searches: 3}
     instructions: Find candidate pages about {topic}.
   reader:
-    model: {name: llama-3.1-8b-instant}   # provider, temperature, ... from `model`
+    model: {name: openai/gpt-oss-20b}     # provider, temperature, ... from `model`
     tools: [fetch_article]
     fetch_hosts: ["*.example.com"]
     limits: {max_steps: 4, max_tokens: 8000, max_fetches: 4}
@@ -170,9 +178,52 @@ agents:
 
 **Stages.** The use case defines an ordered list of stages in code: an agent stage runs one agent loop for a profile, a code stage runs plain code. Model output never changes the order. Each stage gets the policy, its own profile, the state store, its trace and its budget, never another agent's conversation: stages hand data on only through records in the state store.
 
-**Outcomes.** Each stage ends `complete`, `partial` (stopped by a budget or a provider failure), `skipped` (its agent has `enabled: false`, or a provider it needs failed for good earlier in the run) or `failed` (it raised). A stage the use case marks required cannot be disabled. The run is `failed` (exit `3`) when a required stage failed; `partial` (exit `2`) when any stage was partial, failed, or skipped after a provider failure; otherwise `complete` (exit `0`). After a terminal provider failure, later stages that need that provider are skipped and the rest, including code stages, still run. A report is written in every case.
+**Outcomes.** Each stage ends `complete`, `partial` (stopped by a budget or a provider failure), `skipped` (its agent has `enabled: false`, or a provider it needs failed for good earlier in the run) or `failed` (it raised). A stage the use case marks required cannot be disabled. The run is `failed` (exit `3`) when a required stage failed; `partial` (exit `2`) when any stage was partial, failed, or skipped after a provider failure; otherwise `complete` (exit `0`). After a terminal failure, later agent stages that need what failed are skipped and the rest, including code stages, still run. A daily quota skips only the stages on that model, because Groq counts daily quotas per model; any other terminal failure (bad key, payment, a rejected request, unreachable) skips every stage on that provider. The run's stop reason names the first provider failure, if any, ahead of an earlier budget stop. A report is written in every case.
 
 **Trace fields.** Every event written during a stage carries `stage`, and agent stages also `agent`. The summary event adds `stages`: per stage its `name`, `agent`, `outcome`, `reason` and `usage`.
+
+## The internship use case
+
+The repository's `config.yaml` runs `use_case: internships`: it tracks Summer 2027 software and ML internships at NYC startups and keeps a cumulative report. The single-agent tracker on a news topic is in `examples/single-agent.yaml` (`uv run python -m tracker run --config ../examples/single-agent.yaml`). The code is in `backend/tracker/usecases/internships/`.
+
+**Pipeline.** Fixed in code:
+
+| Stage | Kind | What it does | Required |
+| --- | --- | --- | --- |
+| `scout` | agent (`gpt-oss-120b`) | Searches the web and proposes new job boards with `propose_source` | no |
+| `collect` | code | Reads every watchlist board (Greenhouse, Lever, Ashby JSON APIs, no keys) and keeps postings whose title and location match `options.filters` | yes |
+| `curate` | agent (`openai/gpt-oss-20b`) | Turns pending postings into opportunity records, most relevant first (title matches `ranking.focus_keywords`), one posting per fresh conversation with the posting in its task | no |
+| `liveness` | code | Decides open or closed for every opportunity from the boards Collect read | no |
+| `rank` | code | Scores open opportunities with `options.ranking` (role type, term, location, recency, and focus: a software, ML or data title) and marks the top K | yes |
+| `edit` | agent (`gpt-oss-120b`) | Writes short summaries for the opportunities the report shows in full: the first K new ones and the top K | no |
+
+**Privileges.** Only the Scout reads the open web, and it can only *propose* sources. Code accepts a proposal only for a Greenhouse, Lever or Ashby board with a valid identifier, never a page (a page the Scout read could otherwise put itself on the watchlist for every run), citing an `evidence_url` the Scout actually saw in this run, up to `max_new_sources` per run. The Curator has no search and fetches only a posting's own page on the job-board posting hosts (`fetch_hosts`); posting text and titles reach it only as untrusted data, in its task or through `get_posting`. The Editor can read records but cannot change ranks, statuses or sources. Agents never talk to each other: stages hand on records through the state file.
+
+**Verified records.** Every field the Curator fills in (title, role type, term, locations, remote, pay, deadline, work authorization) must carry a quote that code finds word for word in the posting text, after normalizing case, whitespace, curly quotes and dashes; otherwise `save_record` answers `quote_not_found`. If the Curator sends a record for the same posting again with quotes that are still not found, those fields are saved as `unknown` (the title must still be found), so a repeated wrong quote costs one retry, not many. Role type and remote policy are listed as allowed values in the schema, and other capitalizations are accepted. Company and URL come from the source, never from the model. Work-authorization wording is stored as a quote only: it never filters or ranks an opportunity. A posting whose URL is already linked to an opportunity is linked by code; the Curator may link postings only within the same company (`mark_same`), otherwise `company_mismatch`. A posting left unresolved in two batches is parked as unclear.
+
+**Lifecycle.** An opportunity listed on a job board closes only when every board it is on was read in this run and none lists it; a board that cannot be read changes nothing (the report notes "not checked this run"). Liveness makes no requests of its own: Collect has read the boards. An opportunity that appears again reopens and keeps its first-seen run.
+
+**Report.** Three sections, each opportunity in exactly one:
+
+1. **New since last run**: first seen in this run, by rank; the first K with all fields, the work-authorization quote and the summary.
+2. **Still open**: every earlier opportunity that is still open, accumulated across runs, in one table; the current top K are marked.
+3. **Closed since last run**: with the evidence (the boards read without the job).
+
+Summaries are rejected when they run over 3 sentences or mention a number or month that is not in the record; the report then shows the fields alone.
+
+**Network.** Boards are read with `If-None-Match`/`If-Modified-Since`; a `304` re-parses the cached body, so an unchanged board costs no download and still counts as read. Board JSON may be up to `options.board_max_bytes` (default 8 MB); pages keep `fetch.max_bytes`. The Curator's detail-page fetches draw on its `max_fetches`. Board and page requests honor `Retry-After` up to `retry.max_wait_seconds` and stop at the run's `max_wall_seconds`; a source left unread is `unreadable`, and if none could be read Collect is `partial` (or `failed` on a first run). A board the Scout added that has never been read and fails for good (404 or 410, too large, not JSON the parser accepts) is deactivated, so it does not cost a request every run; config boards never are. When the Curator's budget runs out, the report says how many postings are still waiting for review; the next run starts with them, most relevant first.
+
+**Watchlist.** Without `options.watchlist`, the run starts from `backend/tracker/usecases/internships/watchlist.yaml` (ten NYC boards). Check those boards against the live APIs before relying on them.
+
+**Tools without the model.** Every internship tool runs from the command line against the state file, for example:
+
+```bash
+uv run python -m tracker.tools get_posting 1
+uv run python -m tracker.tools flag_unclear 7 "no term or location"
+uv run python -m tracker.tools save_record 1 '{"title": {"value": "SWE Intern", "quote": "SWE Intern"}}'
+```
+
+**Hosts to allow.** A real run needs `api.groq.com`, `api.tavily.com`, `boards-api.greenhouse.io`, `api.lever.co`, `api.ashbyhq.com` and the posting hosts (`boards.greenhouse.io`, `job-boards.greenhouse.io`, `jobs.lever.co`, `jobs.ashbyhq.com`), plus whatever pages the Scout reads.
 
 ## Tests
 

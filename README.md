@@ -45,13 +45,14 @@ Ctrl-C stops both servers. The database keeps running; stop it with `./scripts/d
 
 ## Tracker
 
-A hand-written agent loop that searches, fetches and ranks the top K developments on a topic and writes a report to `reports/`, with a trace in `traces/`. It needs only Python, uv and two free API keys, no Docker or Postgres.
+Hand-written agents that track Summer 2027 software and ML internships at NYC startups: a Scout finds job boards, code reads them, a Curator turns postings into quote-verified records, code decides what is still open and ranks it, and an Editor writes short summaries. Each run writes a cumulative report (New since last run, Still open, Closed since last run) to `reports/`, with a trace in `traces/`. It needs only Python, uv and two free API keys, no Docker or Postgres.
 
 ```bash
 cd backend
 uv sync
 cp .env.example .env                  # then set GROQ_API_KEY and TAVILY_API_KEY
-uv run python -m tracker run          # exit 0 complete, 2 partial, 3 provider failure
+uv run python -m tracker run          # exit 0 complete, 2 partial, 3 failed
+uv run python -m tracker run --config ../examples/single-agent.yaml   # the single-agent tracker
 ```
 
 Each tool also runs without the model:
@@ -62,7 +63,7 @@ uv run python -m tracker.tools fetch_article https://example.com/
 uv run python -m tracker.tools finish report.json
 ```
 
-The topic, model, tools, budgets and allowed hosts are all in [`config.yaml`](config.yaml). See [docs/tracker.md](docs/tracker.md) for the policy fields, budgets, failure handling, fetch guardrails, state and trace format.
+The topic, agents, models, tools, budgets, watchlist and allowed hosts are all in [`config.yaml`](config.yaml). See [docs/tracker.md](docs/tracker.md) for the policy fields, budgets, failure handling, fetch guardrails, state and trace format.
 
 ## Documentation
 
@@ -73,5 +74,6 @@ The topic, model, tools, budgets and allowed hosts are all in [`config.yaml`](co
 | [docs/architecture.md](docs/architecture.md) | Two-origin setup, CORS, token handling, CSP, and the security decisions |
 | [docs/deployment.md](docs/deployment.md) | Production on Vercel and Neon, production migrations, CI |
 | [docs/tracker.md](docs/tracker.md) | The agentic tracker: setup, policy, budgets, failure handling, guardrails, state and traces |
+| [docs/agent-loop.md](docs/agent-loop.md) | How the agent loop works step by step: model calls, tool dispatch, budgets, finishing and partial reports |
 
 This project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec) for spec-driven development: approved specs are in `openspec/specs/`, proposed changes in `openspec/changes/`.

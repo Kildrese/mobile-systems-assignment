@@ -29,7 +29,7 @@ AGENT_NAME = re.compile(r"[a-z][a-z0-9_]*")
 # Use cases the tracker can run: name -> module. Fixed in code, never a free-form import
 # path. A use case module registers its tools on import and defines `stages(policy)` and,
 # optionally, `report_writer`.
-USE_CASES: dict[str, str] = {}
+USE_CASES: dict[str, str] = {"internships": "tracker.usecases.internships.wiring"}
 
 
 class _Strict(BaseModel):
@@ -172,9 +172,14 @@ class AgentProfile(_Strict):
 
     @model_validator(mode="after")
     def tool_limits(self) -> "AgentProfile":
-        for tool, limit in (("search_web", "max_searches"), ("fetch_article", "max_fetches")):
-            if tool in self.tools and getattr(self.limits, limit) is None:
-                raise ValueError(f"limits.{limit} is required when tools include {tool}")
+        from tracker.tools import REGISTRY
+
+        # A tool draws on its own budget, or on the one its spec names.
+        drawn = {name: REGISTRY[name].budget or name for name in self.tools if name in REGISTRY}
+        for kind, limit in (("search_web", "max_searches"), ("fetch_article", "max_fetches")):
+            users = [name for name, budget in drawn.items() if budget == kind]
+            if users and getattr(self.limits, limit) is None:
+                raise ValueError(f"limits.{limit} is required when tools include {users[0]}")
         return self
 
     @classmethod
@@ -210,6 +215,8 @@ class Policy(_Strict):
     reports_dir: str = "reports"
     traces_dir: str = "traces"
     use_case: str | None = None
+    # Settings for the use case, validated by the use case itself before the run starts.
+    options: dict[str, Any] = Field(default_factory=dict)
     agents: dict[str, AgentProfile] = Field(default_factory=dict)
     # The directory relative paths resolve against: the policy file's directory.
     base_dir: Path

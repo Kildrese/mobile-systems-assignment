@@ -1,0 +1,79 @@
+# Tracker policy. Everything the agent may do is set here and validated before the
+# first network call; nothing during a run can change it. API keys never go here:
+# they come from the environment or backend/.env (see backend/.env.example).
+# Relative paths below resolve against this file's directory.
+#
+# The single-agent tracker on a neutral topic from the assignment text. Run it with
+#   cd backend && uv run python -m tracker run --config ../examples/single-agent.yaml
+# The repository's own config.yaml runs the internship use case instead.
+topic: "Open-source robotics foundation models"
+k: 5  # 3 to 10
+
+model:
+  provider: groq
+  name: openai/gpt-oss-120b
+  max_output_tokens: 1024
+  temperature: 0.2
+  reasoning_effort: low
+
+providers:
+  groq:
+    base_url: https://api.groq.com/openai/v1
+    key_env: GROQ_API_KEY
+    price_per_mtok_in: 0  # free tier
+    price_per_mtok_out: 0
+    # A 429 whose body matches one of these is a daily quota: terminal, never retried.
+    quota_patterns: ["per day", "\\(RPD\\)", "\\(TPD\\)"]
+
+search:
+  provider: tavily
+  key_env: TAVILY_API_KEY
+  max_results: 5
+  depth: basic  # 1 credit per search
+  price_per_credit: 0.008  # pay-as-you-go price; keeps the cost budget meaningful
+  quota_patterns: ["plan", "credit"]
+
+limits:
+  max_steps: 15  # model calls per run
+  max_searches: 6
+  max_fetches: 12
+  max_tokens: 60000  # prompt + completion, whole run
+  reserve_tokens: 9000  # held back for the final synthesis call of a partial report
+  max_cost_usd: 0.50
+  max_wall_seconds: 300
+
+retry:
+  max_attempts: 4
+  base_seconds: 1.0
+  max_wait_seconds: 60
+
+fetch:
+  allowed_schemes: [https, http]
+  allowed_hosts: ["*"]  # any public host; address checks still apply
+  connect_timeout: 5
+  read_timeout: 10
+  deadline_seconds: 20
+  max_bytes: 2000000
+  max_redirects: 5
+  max_chars_for_model: 6000
+
+state_path: ../.tracker/single-agent.sqlite
+reports_dir: ../reports
+traces_dir: ../traces
+
+instructions: |
+  You are a research tracker for {topic}. Your job is to find the {k} most important
+  recent developments on this topic and report them with sources.
+
+  How to work:
+  - Search with focused queries, then fetch the most promising primary sources
+    (official announcements, papers, repositories, reputable news).
+  - Prefer recent, concrete developments (releases, results, funding, policy) over
+    opinion pieces and listicles. Merge reports of the same development into one item.
+  - Rank by importance: impact on the field, novelty and credibility of the source.
+
+  Output contract:
+  - Call finish with at most {k} items, most important first. Each item has a short
+    title, a 2-4 sentence factual summary and the source URLs you actually used.
+  - Cite only URLs returned by search_web or fetched with fetch_article in this run.
+  - If the evidence is thin, say so in the note instead of guessing.
