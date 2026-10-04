@@ -1,7 +1,41 @@
-import { Outlet } from "react-router";
+import { Link, Outlet, useLocation } from "react-router";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Brand } from "@/components/layout/brand";
 import { UserMenu } from "@/components/layout/user-menu";
 import { Toaster } from "@/components/ui/sonner";
+
+const PAGE_NAMES: Record<string, string> = {
+  "/internships": "Internships",
+  "/account": "Account",
+};
+
+// Home › current page. Not shown on home itself.
+function Breadcrumbs() {
+  const name = PAGE_NAMES[useLocation().pathname];
+  if (!name) return null;
+  return (
+    <Breadcrumb className="mb-6">
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          <BreadcrumbLink asChild>
+            <Link to="/">Home</Link>
+          </BreadcrumbLink>
+        </BreadcrumbItem>
+        <BreadcrumbSeparator />
+        <BreadcrumbItem>
+          <BreadcrumbPage>{name}</BreadcrumbPage>
+        </BreadcrumbItem>
+      </BreadcrumbList>
+    </Breadcrumb>
+  );
+}
 
 // Every signed-in page.
 export function AppLayout() {
@@ -14,6 +48,7 @@ export function AppLayout() {
         </div>
       </header>
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
+        <Breadcrumbs />
         <Outlet />
       </main>
       <Toaster />
