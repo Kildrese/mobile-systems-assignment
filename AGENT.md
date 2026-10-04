@@ -6,7 +6,7 @@ The tracker follows Summer 2027 software and ML internships at NYC startups (K =
 Scout (agent) -> Collect (code) -> Curate (agent) -> Liveness (code) -> Rank (code) -> Edit (agent) -> report
 ```
 
-All numbers below come from run 1, `20261004T153200Z-608f` ([report](reports/run1.md), trace `traces/20261004T153200Z-608f.jsonl`).
+All numbers below come from run 1, `20261004T173811Z-d334` ([report](reports/run1.md), [trace](traces/20261004T173811Z-d334.jsonl)). It was the first production run, from the daily workflow with empty state.
 
 ## 1. Workflow vs. agent
 
@@ -31,14 +31,15 @@ All numbers below come from run 1, `20261004T153200Z-608f` ([report](reports/run
 
 ## 2. The network
 
-Run 1 made **84 HTTP round trips to 5 services** in 872 s of wall time:
+Run 1 made **117 HTTP round trips to 5 services** in 901 s of wall time:
 
 | Service | Round trips | What they were |
 | --- | --- | --- |
-| `api.groq.com` (gpt-oss-120b) | 1 + 26 | The model-list check before the run (not traced), 14 successful calls (Scout 12, Editor 2), 12 answered 429 |
-| `api.groq.com` (gpt-oss-20b) | 39 | 16 successful Curator calls, 19 answered 429, 4 answered 400 `tool_use_failed` (the model's tool call was malformed; the model is told and the run continues) |
-| `api.tavily.com` | 6 | One per search. A 7th search was refused by `scout.max_searches` before any request |
-| `boards-api.greenhouse.io`, `api.ashbyhq.com`, `api.lever.co` | 12 | One per board: 9 × `304 Not Modified`, 2 × `200`, 1 × refused because `Content-Length` was 9.6 MB (Shield AI's Lever board, above the 8 MB cap) |
+| `api.groq.com` | 1 | The model-list check before the run (not traced) |
+| `api.groq.com` (gpt-oss-120b) | 25 | 11 successful calls (Scout 10, Editor 1), 11 answered 429, 3 answered 400 `tool_use_failed` (the model's tool call was malformed; the model is told and the run continues) |
+| `api.groq.com` (gpt-oss-20b) | 73 | 28 successful Curator calls, 40 answered 429, 5 answered 400 `tool_use_failed` |
+| `api.tavily.com` | 6 | One per search (`scout.max_searches`) |
+| `boards-api.greenhouse.io`, `api.ashbyhq.com`, `api.lever.co` | 12 | One per board: 11 × `200` (empty state, so nothing was cached), 1 × refused because `Content-Length` was 9.6 MB (Shield AI's Lever board, above the 8 MB cap) |
 
 The Scout fetched no pages (`fetches: 0`), and the Curator fetched no detail pages: the board APIs return the full posting text.
 
@@ -46,14 +47,14 @@ The Scout fetched no pages (`fetches: 0`), and the Curator fetched no detail pag
 
 | Time | Spent on |
 | --- | --- |
-| **856 s (98%)** | Sleeping before retrying the 31 rate-limited Groq calls. Groq's free tier allows 8,000 tokens per minute per model, and each Scout or Curator call sends 2,000–6,000 prompt tokens, so after about two calls a minute the next one gets a 429. The waits were 1–47 s each, taken from Groq's `retry-after`. |
-| 33 s | Groq inference in total, across the 30 successful calls (25 s) plus the failed attempts |
-| 15 s | Tavily, about 2.5 s per search |
-| 3.6 s | All 12 boards. Nine `304`s needed no download. |
+| **847 s (94%)** | Sleeping before retrying the 51 rate-limited Groq calls. Groq's free tier allows 8,000 tokens per minute per model, and each Scout or Curator call sends 2,000–6,000 prompt tokens, so after about two calls a minute the next one gets a 429. The waits were 1–48 s each, taken from Groq's `retry-after`. |
+| 28 s | Groq inference, across the 39 successful calls |
+| 9 s | Tavily, about 1.5 s per search |
+| 2.3 s | All 12 boards |
 
-Stage times: Scout 358 s, Collect 4 s, Curator 507 s (it stopped at `max_wall_seconds`, which was then 900 s), Editor 2 s.
+Stage times: Scout 353 s, Collect 3 s, Curator 542 s, Editor 1 s. The Editor was cut off by `max_wall_seconds` (then 900 s) after one call, so run 1's report has no summaries. That is why the wall-clock budget is now 1,500 s.
 
-The network cost is not bandwidth or latency: it is the provider's per-minute token window. That's why the Curator runs on gpt-oss-20b (a separate quota from the Scout's 120b), page text is cut to `fetch.max_chars_for_model`, older tool results are shortened, and `max_wall_seconds` is now 1,500 s.
+The network cost is not bandwidth or latency: it is the provider's per-minute token window. That's why the Curator runs on gpt-oss-20b (a separate quota from the Scout's 120b), page text is cut to `fetch.max_chars_for_model`, and older tool results are shortened. A second run is cheaper on the network: boards that haven't changed answer `304` without a body, and curated postings are not sent to the model again.
 
 ## 3. "New"
 
@@ -96,8 +97,8 @@ The quota patterns are in `config.yaml`: for Groq `["per day", "\\(RPD\\)", "\\(
 
 - The result is `Transient`, and `send_with_retries()` sleeps for `retry-after`. Without the header it uses exponential backoff `min(60, 1 × 2^attempt)` with 50–100% jitter.
 - It tries up to `retry.max_attempts` = 4 times.
-- Each wait is traced as `status: "retry"` with its `wait_seconds`. Run 1 did this 31 times.
-- If a wait would pass `max_wall_seconds`, the stage stops and the report is marked partial. That is how the Curator stopped in run 1.
+- Each wait is traced as `status: "retry"` with its `wait_seconds`. Run 1 did this 51 times.
+- If a wait would pass `max_wall_seconds`, the stage stops and the report is marked partial. That is how the Editor stopped in run 1.
 - If all 4 attempts fail, the failure becomes terminal `unreachable`.
 
 **Daily cap** (the body names RPD or TPD, or `retry-after` is longer than 60 s):
@@ -114,8 +115,8 @@ Tavily signals an exhausted plan with HTTP 432, which is always terminal. 401/40
 
 | Resource | Used | Price | Cost |
 | --- | --- | --- | --- |
-| Groq gpt-oss-120b (Scout + Editor) | 58,931 tokens, 26 requests | free tier | $0 |
-| Groq gpt-oss-20b (Curator) | 59,643 tokens, 39 requests | free tier | $0 |
+| Groq gpt-oss-120b (Scout + Editor) | 50,009 tokens, 25 requests | free tier | $0 |
+| Groq gpt-oss-20b (Curator) | 70,801 tokens, 73 requests | free tier | $0 |
 | Tavily | 6 credits (basic search, 1 credit each) | free tier; $0.008 a credit pay-as-you-go | $0 ($0.048 at the paid price, the figure the cost budget counts) |
 | Job boards | 12 requests | public, no key | $0 |
 
@@ -125,10 +126,10 @@ So a run costs **$0** on the free tiers, and $0.048 at paid prices. The policy c
 
 | Free tier | Limit | One run uses | Runs out |
 | --- | --- | --- | --- |
-| Groq TPM (each model) | 8,000 tokens/min | Hit within every run | Not a daily problem: it turns into waiting (856 s in run 1) |
-| Groq TPD (gpt-oss-120b) | 200,000 tokens/day | ~59,000 (30%) | Never at one run a day; the 4th run on the same day would. It resets daily. |
-| Groq TPD (gpt-oss-20b) | 200,000 tokens/day | ~60,000 (30%), up to 70,000 (the Curator's cap) | Never at one run a day |
-| Groq RPD | 1,000 requests/day | 27–39 per model | Never |
+| Groq TPM (each model) | 8,000 tokens/min | Hit within every run | Not a daily problem: it turns into waiting (847 s in run 1) |
+| Groq TPD (gpt-oss-120b) | 200,000 tokens/day | ~50,000 (25%), up to 75,000 (the Scout's and Editor's caps) | Never at one run a day; the 3rd or 4th run on the same day would. It resets daily. |
+| Groq TPD (gpt-oss-20b) | 200,000 tokens/day | ~71,000 (35%; the Curator's cap is 70,000, overshot by its last call) | Never at one run a day; the 3rd run on the same day would |
+| Groq RPD | 1,000 requests/day | 25–73 per model | Never |
 | **Tavily** | **1,000 credits/month** | **6** (`max_searches`) | **The first to run out, but not within a month at one run a day.** 30 runs use 180 credits (18%). Tavily is the only quota that accumulates past a day. At the Scout's cap it lasts 166 runs; with no monthly reset that is day 167. Spent faster, by manual and smoke runs too, it runs out first. |
 
 The binding limit is Groq's per-minute token window. It doesn't cost money; it costs wall time. That's why `max_wall_seconds` is the budget a run most often hits.

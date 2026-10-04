@@ -30,3 +30,7 @@ traces/*
 .idea/
 .mcp.json
 .claude/settings.json
+# The submission's two runs (Assignment 1B); every other run stays local
+!reports/run1.md
+!reports/run2.md
+!traces/20261004T173811Z-d334.jsonl
