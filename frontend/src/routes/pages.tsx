@@ -79,8 +79,14 @@ export function HomePage() {
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {TILES.map(({ to, icon: Icon, title, description, external }) => {
-          const card = (
+        {TILES.map(({ to, icon: Icon, title, description, external }) => (
+          <Link
+            key={to}
+            to={to}
+            target={external ? "_blank" : undefined}
+            rel="noreferrer"
+            className="rounded-[min(var(--radius-4xl),24px)] outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+          >
             <Card className="h-full transition-colors hover:bg-muted">
               <CardHeader>
                 <Icon className="mb-2 size-5 text-muted-foreground" />
@@ -88,20 +94,9 @@ export function HomePage() {
                 <CardDescription>{description}</CardDescription>
               </CardHeader>
             </Card>
-          );
-          const className =
-            "rounded-[min(var(--radius-4xl),24px)] outline-none focus-visible:ring-3 focus-visible:ring-ring/30";
-          return external ? (
-            <a key={to} href={to} target="_blank" rel="noreferrer" className={className}>
-              {card}
-              <span className="sr-only"> (opens in a new tab)</span>
-            </a>
-          ) : (
-            <Link key={to} to={to} className={className}>
-              {card}
-            </Link>
-          );
-        })}
+            {external && <span className="sr-only"> (opens in a new tab)</span>}
+          </Link>
+        ))}
       </div>
     </div>
   );

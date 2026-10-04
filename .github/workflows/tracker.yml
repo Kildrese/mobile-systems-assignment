@@ -54,16 +54,11 @@ jobs:
       # Exit 1 means nothing ran (bad policy or key): fail without publishing.
       # 0 complete, 2 partial and 3 provider failure all wrote a report worth publishing.
       - name: Run the tracker
-        id: tracker
-        run: |
-          set +e
-          uv run python -m tracker run
-          code=$?
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          [ "$code" -ne 1 ]
+        run: uv run python -m tracker run || [ $? -ne 1 ]
 
+      # Exit 1 left the state untouched, so saving it again is harmless.
       - uses: actions/cache/save@v4
-        if: always() && steps.tracker.outputs.code != '1'
+        if: always()
         with:
           path: .tracker
           key: tracker-state-${{ github.run_id }}

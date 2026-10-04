@@ -1,8 +1,7 @@
 // The latest daily internship report. Read-only: the tracker runs on a schedule
 // (.github/workflows/tracker.yml), never from the app.
 import { useQuery } from "@tanstack/react-query";
-import { Download, ExternalLink, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { Download, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { getLatestInternshipReportOptions } from "@/api/@tanstack/react-query.gen";
 import { exportInternshipReport } from "@/api/sdk.gen";
@@ -114,29 +113,6 @@ async function downloadReport(runId: string) {
   URL.revokeObjectURL(url);
 }
 
-function ExportButton({ runId }: { runId: string }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="cursor-pointer"
-      disabled={busy}
-      onClick={() => {
-        setBusy(true);
-        void downloadReport(runId).finally(() => setBusy(false));
-      }}
-    >
-      {busy ? (
-        <Loader2 data-icon="inline-start" className="animate-spin" />
-      ) : (
-        <Download data-icon="inline-start" />
-      )}
-      Export
-    </Button>
-  );
-}
-
 export function InternshipReport() {
   const query = useQuery(getLatestInternshipReportOptions());
 
@@ -168,7 +144,15 @@ export function InternshipReport() {
           {run.topic} · updated {new Date(run.startedAt).toLocaleString()}
           {run.status !== "complete" && ` · ${run.status} run`}
         </p>
-        <ExportButton runId={run.id} />
+        <Button
+          variant="outline"
+          size="sm"
+          className="cursor-pointer"
+          onClick={() => void downloadReport(run.id)}
+        >
+          <Download data-icon="inline-start" />
+          Export
+        </Button>
       </div>
       {SECTIONS.map(({ key, title, empty }) => {
         const list = offers.filter((o) => o.section === key);

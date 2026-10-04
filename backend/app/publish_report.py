@@ -1,6 +1,6 @@
 """Copy the latest internship tracker run from the tracker's state file into Postgres:
 
-    uv run python -m app.publish_report [--config PATH]
+    uv run python -m app.publish_report
 
 The daily tracker workflow (`.github/workflows/tracker.yml`) runs this right after
 `python -m tracker run`. It is the only writer of `tracker_runs` and `internship_offers`:
@@ -8,7 +8,6 @@ the API only reads them and can never start the tracker. Publishing a run again 
 its rows, so a retried job is safe.
 """
 
-import argparse
 import sys
 from datetime import datetime
 from typing import Any
@@ -87,21 +86,11 @@ def publish(db: Session, run: dict[str, Any], rows: list[dict[str, Any]], markdo
     db.commit()
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--config", help="tracker policy (default: config.yaml at the repo root)")
-    args = parser.parse_args(argv)
-
+def main() -> int:
     try:
-        policy = load_policy(args.config)
+        policy = load_policy()
     except PolicyError as err:
         print(err, file=sys.stderr)
-        return 1
-    if policy.use_case != "internships":
-        print("Only the internships use case is published.", file=sys.stderr)
-        return 1
-    if not policy.state_file.exists():
-        print(f"No state file at {policy.state_file}: nothing to publish.", file=sys.stderr)
         return 1
 
     with StateStore(policy.state_file) as state:
