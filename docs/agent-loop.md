@@ -49,7 +49,9 @@ while True:
     1. budget.check_model_call()         the agent's steps and tokens, then the run's
                                          steps, tokens (minus reserve), cost, wall time
          exhausted → Stop(reason)
-    2. last step left?                   offer only finish, and tell the model so
+    2. last step left?                   by steps, or by tokens (the last prompt and reply
+                                         plus one more reply would not fit): offer only
+                                         finish, and tell the model so
     3. budget.count(steps=1)             charged to the agent and to the run
     4. shorten old tool results          keep the newest 3 in full, cut older ones to 500 chars
        reply = chat.chat(messages, tools)    one HTTP call, retries inside (see below)
@@ -86,7 +88,7 @@ flowchart TD
     doneCheck -- not yet --> check
 ```
 
-The last-step rule means an agent that keeps calling tools still gets one chance to end with its result instead of a step limit. The done check lets a caller end a conversation as soon as its work is in state: the Curator's batch ends once every posting in it is handled, without a `finish` call.
+The last-step rule means an agent that keeps calling tools still gets one chance to end with its result instead of a step or token limit. Since every call resends the conversation, the next prompt is at least the last prompt plus its reply, which is what the token check uses. The done check lets a caller end a conversation as soon as its work is in state: the Curator's batch ends once every posting in it is handled, without a `finish` call.
 
 ### Step 4: the model call
 

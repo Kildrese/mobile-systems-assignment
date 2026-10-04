@@ -48,15 +48,17 @@ _MONTH = re.compile(r"\b(" + "|".join(_MONTHS) + r")\b", re.IGNORECASE)
 _SENTENCE_END = re.compile(r"[.!?]+(?=\s|$)")
 
 
-def wanted(store: OpportunityStore, run_id: str) -> list[dict[str, Any]]:
-    """Opportunities the Editor should summarize: new or top K, by this run's rank."""
+def wanted(store: OpportunityStore, run_id: str, k: int) -> list[dict[str, Any]]:
+    """Opportunities whose summary the report shows, by this run's rank: the first K new
+    ones (the rest are a one-line list) and the top K. At most 2K, so one reply fits."""
     ranks = store.ranks(run_id)
     live = [o for o in store.opportunities(("open", "unknown")) if o["id"] in ranks]
     live.sort(key=lambda o: ranks[o["id"]]["rank"])
-    return [o for o in live if o["first_seen_run"] == run_id or ranks[o["id"]]["top_k"]]
+    shown = {o["id"] for o in [o for o in live if o["first_seen_run"] == run_id][:k]}
+    return [o for o in live if o["id"] in shown or ranks[o["id"]]["top_k"]]
 
 
-def get_opportunities(store: OpportunityStore, run_id: str) -> ToolOutcome:
+def get_opportunities(store: OpportunityStore, run_id: str, k: int) -> ToolOutcome:
     items = [
         {
             "opportunity_id": o["id"],
@@ -65,7 +67,7 @@ def get_opportunities(store: OpportunityStore, run_id: str) -> ToolOutcome:
             "fields": o["fields"],
             "url": o["url"],
         }
-        for o in wanted(store, run_id)
+        for o in wanted(store, run_id, k)
     ]
     return ToolOutcome(
         "ok",

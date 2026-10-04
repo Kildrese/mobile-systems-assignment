@@ -141,13 +141,16 @@ class AgentLoop:
             {"role": "user", "content": self.task_prompt},
         ]
         tool_messages: list[_ToolMessage] = []
+        # The next call resends at least the last one's prompt and reply.
+        next_call = 0
         while True:
             if reason := budget.check_model_call():
                 return Stop(reason=reason)
-            # On the last step only finish is offered, so the agent ends with its result
-            # instead of a step limit.
+            # On the last call the budget allows, by steps or by tokens, only finish is
+            # offered, so the agent ends with its result instead of a budget limit.
             schemas = self.schemas
-            if budget.steps_left() == 1:
+            last_by_tokens = budget.tokens_left() < next_call + self.profile.model.max_output_tokens
+            if budget.steps_left() == 1 or (next_call and last_by_tokens):
                 schemas = [s for s in self.schemas if s["function"]["name"] == "finish"]
                 messages.append({"role": "user", "content": LAST_STEP})
             budget.count(steps=1)
@@ -171,6 +174,7 @@ class AgentLoop:
             budget.charge_tokens(
                 reply.usage.prompt_tokens, reply.usage.completion_tokens, self.price
             )
+            next_call = reply.usage.prompt_tokens + reply.usage.completion_tokens
             messages.append(reply.as_message())
             if not reply.tool_calls:
                 messages.append({"role": "user", "content": self.nudge})

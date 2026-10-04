@@ -105,6 +105,23 @@ class FieldValue(BaseModel):
         return self.value == UNKNOWN or self.value == [] or self.value == ""
 
 
+ROLE_TYPES = ("internship", "new_grad", "other", UNKNOWN)
+REMOTE = ("onsite", "hybrid", "remote", UNKNOWN)
+# Spellings models use for an allowed value. Only case, spacing and these words differ.
+ALIASES = {"intern": "internship", "new_graduate": "new_grad", "on_site": "onsite"}
+
+
+def _choice(v: FieldValue, allowed: tuple[str, ...], name: str) -> FieldValue:
+    """The field with its value spelled as one of `allowed` ("Internship" -> "internship")."""
+    if not isinstance(v.value, str):
+        raise ValueError(f"{name} must be one of {', '.join(allowed)}")
+    key = "_".join(v.value.lower().replace("-", " ").split())
+    value = ALIASES.get(key, key)
+    if value not in allowed:
+        raise ValueError(f"{name} must be one of {', '.join(allowed)}")
+    return FieldValue(value=value, quote=v.quote)
+
+
 def _unknown() -> FieldValue:
     return FieldValue(value=UNKNOWN)
 
@@ -126,16 +143,12 @@ class OpportunityRecord(BaseModel):
     @field_validator("role_type")
     @classmethod
     def known_role(cls, v: FieldValue) -> FieldValue:
-        if v.value not in ("internship", "new_grad", "other", UNKNOWN):
-            raise ValueError("role_type must be internship, new_grad, other or unknown")
-        return v
+        return _choice(v, ROLE_TYPES, "role_type")
 
     @field_validator("remote")
     @classmethod
     def known_remote(cls, v: FieldValue) -> FieldValue:
-        if v.value not in ("onsite", "hybrid", "remote", UNKNOWN):
-            raise ValueError("remote must be onsite, hybrid, remote or unknown")
-        return v
+        return _choice(v, REMOTE, "remote")
 
     @field_validator("locations")
     @classmethod

@@ -192,7 +192,7 @@ The repository's `config.yaml` runs `use_case: internships`: it tracks Summer 20
 | `curate` | agent (`openai/gpt-oss-20b`) | Turns pending postings into opportunity records, most relevant first (title matches `ranking.focus_keywords`), one posting per fresh conversation (`batch_size: 1`) with the posting in its task | no |
 | `liveness` | code | Decides open, closed or unknown for every opportunity | no |
 | `rank` | code | Scores open opportunities with `options.ranking` (role type, term, location, recency, and focus: a software, ML or data title) and marks the top K | yes |
-| `edit` | agent (`gpt-oss-120b`) | Writes short summaries for new and top-K opportunities | no |
+| `edit` | agent (`gpt-oss-120b`) | Writes short summaries for the opportunities the report shows in full: the first K new ones and the top K | no |
 
 **Privileges.** Only the Scout reads the open web, and it can only *propose* sources. Code accepts a proposal only for a Greenhouse, Lever or Ashby board with a valid identifier, never a page (a page the Scout read could otherwise put itself on the watchlist for every run), citing an `evidence_url` the Scout actually saw in this run, up to `max_new_sources` per run. The Curator has no search and fetches only a posting's own page on the job-board posting hosts (`fetch_hosts`); posting text and titles reach it only as untrusted data, in its task or through `get_posting`. The Editor can read records but cannot change ranks, statuses or sources. Agents never talk to each other: stages hand on records through the state file.
 

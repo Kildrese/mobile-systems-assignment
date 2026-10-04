@@ -132,6 +132,8 @@ def _needs_store(handler):
         extra = {}
         if outcome.untrusted is not None:
             extra["injection_suspected"] = injection_suspected(outcome.untrusted)
+        if not outcome.ok:
+            extra["detail"] = outcome.data.get("detail")
         toolbox.trace.event(
             "tool",
             step=step,
@@ -239,7 +241,7 @@ def _flag_unclear(store: OpportunityStore, toolbox: Toolbox, args: FlagUnclearAr
 
 
 def _get_opportunities(store: OpportunityStore, toolbox: Toolbox, args: OpportunitiesArgs):
-    return editing.get_opportunities(store, toolbox.run_id)
+    return editing.get_opportunities(store, toolbox.run_id, toolbox.policy.k)
 
 
 def _schema(name: str, description: str, properties: dict[str, Any]) -> dict[str, Any]:
@@ -266,6 +268,14 @@ _FIELD = {
     },
     "required": ["value"],
 }
+
+
+def _choice_field(allowed: tuple[str, ...]) -> dict[str, Any]:
+    """A field whose value is one of `allowed`, listed in the schema the model sees."""
+    value = {"type": "string", "enum": list(allowed)}
+    return {**_FIELD, "properties": {**_FIELD["properties"], "value": value}}
+
+
 _RECORD = {
     "type": "object",
     "description": (
@@ -274,10 +284,10 @@ _RECORD = {
     ),
     "properties": {
         "title": _FIELD,
-        "role_type": {**_FIELD, "description": "internship, new_grad, other or unknown"},
+        "role_type": _choice_field(curation.ROLE_TYPES),
         "term": {**_FIELD, "description": "e.g. 'Summer 2027', or unknown"},
         "locations": {**_FIELD, "description": "value is a list of places"},
-        "remote": {**_FIELD, "description": "onsite, hybrid, remote or unknown"},
+        "remote": _choice_field(curation.REMOTE),
         "compensation": _FIELD,
         "deadline": {
             **_FIELD,
@@ -633,7 +643,7 @@ class EditStage:
 
     def run(self, ctx: StageContext) -> StageOutcome:
         store = OpportunityStore(ctx.state)
-        allowed = {o["id"] for o in editing.wanted(store, ctx.run_id)}
+        allowed = {o["id"] for o in editing.wanted(store, ctx.run_id, ctx.policy.k)}
         if not allowed:
             return StageOutcome("complete", "nothing to summarize")
 

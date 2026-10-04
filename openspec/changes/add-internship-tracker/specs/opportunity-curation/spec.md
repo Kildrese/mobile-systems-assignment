@@ -7,7 +7,11 @@ Turns raw postings into verified opportunity records: structured fields, each ba
 ## ADDED Requirements
 
 ### Requirement: Opportunity record
-An opportunity record SHALL have: company, title, role type (`internship`, `new_grad`, `other`), term (for example "Summer 2027", or `unknown`), locations, remote policy, application URL, and, when the posting states them, compensation, deadline and work-authorization wording. Every field except company and URL SHALL carry the verbatim quote it was taken from, or `unknown` with no quote.
+An opportunity record SHALL have: company, title, role type (`internship`, `new_grad`, `other`), term (for example "Summer 2027", or `unknown`), locations, remote policy, application URL, and, when the posting states them, compensation, deadline and work-authorization wording. Every field except company and URL SHALL carry the verbatim quote it was taken from, or `unknown` with no quote. The schema the Curator sees SHALL list the allowed values of role type and remote policy, and code SHALL accept them in any case and spacing, and `intern` for `internship`, storing the canonical value.
+
+#### Scenario: Another spelling of an allowed value
+- **WHEN** the Curator submits role type `Internship` and remote policy `Remote`
+- **THEN** the record is stored with `internship` and `remote`
 
 #### Scenario: Term not stated
 - **WHEN** a posting never mentions a season or year

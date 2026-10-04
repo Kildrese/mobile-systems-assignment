@@ -94,6 +94,8 @@ agents:
       Record any sentence about work authorization or visa sponsorship as written;
       never judge it. Use mark_same only for the same role at the same company.
   editor:
+    # All summaries go in one finish call, and gpt-oss's reasoning counts against the cap.
+    model: {max_output_tokens: 2048}
     tools: [get_opportunities]
     limits: {max_steps: 6, max_tokens: 25000}
     instructions: |

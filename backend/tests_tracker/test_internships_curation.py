@@ -247,3 +247,32 @@ def test_company_and_title_normalization():
         "Software Engineering Intern, Summer 2027", "Software Engineering Intern (Fall 2026)"
     ) == pytest.approx(1.0)
     assert title_similarity("Design Intern", "Software Engineering Intern") == 0.0
+
+
+@pytest.mark.parametrize(
+    ("role_type", "remote", "stored"),
+    [  # spellings gpt-oss-20b used in a real run
+        ("Internship", "unknown", ("internship", "unknown")),
+        ("intern", "remote", ("internship", "remote")),
+        ("internship", "Remote", ("internship", "remote")),
+        ("New Grad", "On-site", ("new_grad", "onsite")),
+    ],
+)
+def test_choice_fields_accept_other_spellings(store, role_type, remote, stored):
+    pid = _one_posting(store)
+    rec = record(
+        role_type={"value": role_type, "quote": "12-week paid internship"},
+        remote={"value": remote} if remote == "unknown" else {"value": remote, "quote": "Pay"},
+    )
+    outcome = save_record(store, pid, rec, RUN1)
+    assert outcome.ok, outcome.data
+    opp = store.opportunity(outcome.data["opportunity_id"])
+    assert (opp["role_type"], opp["remote"]) == stored
+
+
+def test_choice_field_rejects_other_values(store):
+    pid = _one_posting(store)
+    rec = record(role_type={"value": "contract", "quote": "12-week paid internship"})
+    outcome = save_record(store, pid, rec, RUN1)
+    assert outcome.reason == "invalid_arguments"
+    assert "internship, new_grad, other, unknown" in outcome.data["detail"]

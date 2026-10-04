@@ -85,6 +85,13 @@ def _seed(store, n, run_id=RUN1, start=1):
     return source_id, ids
 
 
+def test_editor_is_asked_only_for_summaries_the_report_shows(store):
+    # 6 new: the report shows the first K in full and lists the others on one line.
+    _seed(store, 6)
+    ranked = [o["id"] for o in rank_open(store, RUN1, RankingSettings(), 2, NOW)]
+    assert [o["id"] for o in wanted(store, RUN1, 2)] == ranked[:2]
+
+
 def test_ranking_is_deterministic(store):
     _seed(store, 4)
     first = [o["id"] for o in rank_open(store, RUN1, RankingSettings(), 2, NOW)]
@@ -117,7 +124,7 @@ def test_summary_checks(store):
 def test_finish_summaries(store):
     _, [a, b] = _seed(store, 2)
     rank_open(store, RUN1, RankingSettings(), 5, NOW)
-    allowed = {o["id"] for o in wanted(store, RUN1)}
+    allowed = {o["id"] for o in wanted(store, RUN1, 3)}
     outcome = finish_summaries(
         store,
         RUN1,
@@ -141,7 +148,7 @@ def test_finish_summaries(store):
 def test_get_opportunities_is_untrusted(store):
     _seed(store, 2)
     rank_open(store, RUN1, RankingSettings(), 1, NOW)
-    outcome = get_opportunities(store, RUN1)
+    outcome = get_opportunities(store, RUN1, 3)
     assert outcome.data["count"] == 2  # both are new in RUN1, one is the top K
     assert '"company": "Acme"' in outcome.untrusted
 

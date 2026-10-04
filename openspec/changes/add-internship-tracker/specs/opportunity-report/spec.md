@@ -18,7 +18,7 @@ Code SHALL score every open opportunity from config weights over role type, term
 - **THEN** the software internship ranks higher
 
 ### Requirement: Editor agent
-The Editor agent SHALL write, for each new opportunity and each current top-K opportunity, a summary of at most 3 sentences on what the role is and why it matches the configured criteria. Its tools SHALL be `get_opportunities` and `finish(summaries)`. It SHALL NOT change ranks, statuses, sources or records. A summary SHALL be accepted only when it cites the opportunity's id. If the Editor stage is skipped or runs out of budget, the report SHALL show the record's fields without a summary.
+The Editor agent SHALL write, for each opportunity whose summary the report shows (the first K new opportunities by rank, and the current top K), a summary of at most 3 sentences on what the role is and why it matches the configured criteria. Its tools SHALL be `get_opportunities` and `finish(summaries)`. It SHALL NOT change ranks, statuses, sources or records. A summary SHALL be accepted only when it cites the opportunity's id. If the Editor stage is skipped or runs out of budget, the report SHALL show the record's fields without a summary.
 
 #### Scenario: Editor skipped
 - **WHEN** the Editor stage is skipped because of a terminal model failure

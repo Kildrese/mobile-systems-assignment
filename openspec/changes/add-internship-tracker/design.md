@@ -153,7 +153,7 @@ They never import `tracker.conductor`, `tracker.agents`, or registry symbols. HT
 - [The 8B model makes malformed tool calls] → Strict argument validation already returns error results. The core's `ModelOutputError` handling re-prompts once. Small batches limit the damage, and a posting that fails twice is flagged `unclear` by code.
 - [Pre-filter keywords miss postings with unusual titles] → The keywords live in config, filtered counts are traced, and the Scout can also bring in page sources. Accepted for scope.
 - [A board API changes shape or blocks us] → Each collector validates the response with pydantic, a source that fails is `unreadable` without being closed, and fixtures in tests pin the expected shape.
-- [Cumulative "Still open" grows long] → Shown as a compact table. Only the new and top-K opportunities get summaries, so Editor cost does not grow with the list.
+- [Cumulative "Still open" grows long] → Shown as a compact table. Only the opportunities shown in full get summaries (the first K new ones and the top K, at most 2K), so the Editor's cost does not grow with the list and its summaries fit in one reply (its output cap is 2,048 tokens, since gpt-oss reasoning counts against it).
 - [Grader expects "Still in top K" and "Dropped"] → Still open marks the top K, Closed is the dropped list, and AGENT.md explains the mapping.
 - [The orchestration layer isn't implemented yet] → Implement `add-agent-orchestration` first. This change only adds use-case modules, so merges from below should be clean.
 
