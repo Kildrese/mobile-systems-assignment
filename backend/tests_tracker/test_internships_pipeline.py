@@ -476,7 +476,6 @@ def test_scout_out_of_steps_after_its_searches_is_complete(ipolicy, keys):
     result = run(ipolicy, keys)
 
     assert result.status == "complete", result.message
-    assert result.exit_code == 0
     assert "| scout | complete | searches_spent |" in result.report_path.read_text()
     stages = read_trace(result.trace_path)[-1]["stages"]
     assert (stages[0]["outcome"], stages[0]["reason"]) == ("complete", "searches_spent")

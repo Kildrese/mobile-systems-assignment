@@ -437,8 +437,7 @@ def scout_outcome(stop: Stop, searches: int, max_searches: int, agent: str) -> S
     left, on the run's budgets or the wall clock, or after a provider failure is partial."""
     if isinstance(stop.finish, dict) and (reason := stop.finish.get("reason")):
         return StageOutcome("complete", reason)
-    spent = searches >= max_searches
-    if spent and stop.reason in (f"{agent}.max_steps", f"{agent}.max_tokens"):
+    if searches >= max_searches and stop.reason in (f"{agent}.max_steps", f"{agent}.max_tokens"):
         return StageOutcome("complete", "searches_spent")
     return StageOutcome.from_stop(stop)
 
