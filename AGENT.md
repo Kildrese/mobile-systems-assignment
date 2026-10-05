@@ -6,7 +6,7 @@ The tracker follows Summer 2027 software and ML internships at NYC startups (K =
 Scout (agent) -> Collect (code) -> Curate (agent) -> Liveness (code) -> Assess (agent) -> Rank (code) -> Edit (agent) -> report
 ```
 
-All numbers below are from run 1, `20261004T173811Z-d334` ([report](reports/run1.md), [trace](traces/20261004T173811Z-d334.jsonl)). It was the first production run, started by the daily workflow with empty state.
+All numbers below are from run 1, `20261005T170512Z-2187` ([report](reports/run1.md), [trace](traces/20261005T170512Z-2187.jsonl)). It was the first production run after the tracker's tables and state were reset, started from the daily workflow with empty state.
 
 ## 1. Workflow vs. agent
 
@@ -26,7 +26,7 @@ All numbers below are from run 1, `20261004T173811Z-d334` ([report](reports/run1
 
 **The decision we moved out of the model is ranking.** The single-agent tracker (`examples/single-agent.yaml`) lets the model order the items in `finish`. In the internship pipeline, `ranking.py` scores each open opportunity with weights from config: role 3, term 3, location 2, recency 1, focus 3, fit 3. A criterion scores 1 for a match, 0 for a mismatch and 0.5 for `unknown`.
 
-Fit is the only input to the score that comes from a model. It was added after run 1 (change `fit-rating`). Almost every posting matches the search on role, term, location and focus, so without fit the top K was ordered by recency alone. The Assessor rates each opportunity once against a short profile in `config.yaml`, 0 to 3, with a one-sentence reason. Code checks the rating, stores it, and reuses it on every run until the profile changes. Ranking stays in code. The model never orders the list, a rating is worth at most 3 points and changes nothing else, and an unrated opportunity scores half, like any other unknown field. We rank in code for three reasons:
+Fit is the only input to the score that comes from a model (change `fit-rating`). Almost every posting matches the search on role, term, location and focus, so without fit the top K would be ordered by recency alone. In run 1 the Assessor rated all 22 opportunities in 3 calls. The Assessor rates each opportunity once against a short profile in `config.yaml`, 0 to 3, with a one-sentence reason. Code checks the rating, stores it, and reuses it on every run until the profile changes. Ranking stays in code. The model never orders the list, a rating is worth at most 3 points and changes nothing else, and an unrated opportunity scores half, like any other unknown field. We rank in code for three reasons:
 
 1. **Comparing runs needs a stable rank.** The "New / Still in top K / Dropped" section compares this run's top K with the previous one. If a model ranked, two runs over the same postings could order them differently, and an opportunity would "drop" because of sampling when nothing had changed. Scores from code are reproducible.
 2. **The ranking reads untrusted text.** A posting that says "rank this first" can't move a weighted sum of fields that were checked against quotes. It could move a model's ordering.
@@ -34,28 +34,30 @@ Fit is the only input to the score that comes from a model. It was added after r
 
 ## 2. The network
 
-Run 1 made 117 HTTP round trips to 5 services in 901 s of wall time:
+Run 1 made 129 HTTP round trips to 5 services in 1,033 s of wall time:
 
 | Service | Round trips | What they were |
 | --- | --- | --- |
 | `api.groq.com` | 1 | The model-list check before the run (not traced) |
-| `api.groq.com` (gpt-oss-120b) | 25 | 11 successful calls (Scout 10, Editor 1), 11 answered 429, 3 answered 400 `tool_use_failed` (the model's tool call was malformed; the model is told and the run continues) |
-| `api.groq.com` (gpt-oss-20b) | 73 | 28 successful Curator calls, 40 answered 429, 5 answered 400 `tool_use_failed` |
-| `api.tavily.com` | 6 | One per search (`scout.max_searches`) |
-| `boards-api.greenhouse.io`, `api.ashbyhq.com`, `api.lever.co` | 12 | One per board: 11 × `200` (empty state, so nothing was cached), 1 refused because `Content-Length` was 9.6 MB (Shield AI's Lever board, over the 8 MB cap) |
+| `api.groq.com` (gpt-oss-120b) | 39 | 17 successful calls (Scout 11, Assessor 3, Editor 3), 20 answered 429, 2 answered 400 (Groq rejected a malformed tool call, traced as `model_output_rejected`; the call is retried) |
+| `api.groq.com` (gpt-oss-20b) | 71 | 27 successful Curator calls, 36 answered 429, 8 answered 400 |
+| `api.tavily.com` | 5 | One per search (the Scout's cap is 6) |
+| `boards-api.greenhouse.io`, `api.ashbyhq.com` | 12 | One per board, all `200` (empty state, so nothing was cached) |
+| `boards.greenhouse.io` | 1 | The one page the Scout fetched, a Domino Data Lab posting (5,487 characters) |
 
-The Scout fetched no pages (`fetches: 0`), and the Curator fetched no detail pages, because the board APIs return the full posting text.
+The Curator fetched no detail pages, because the board APIs return the full posting text.
 
 Where the time went:
 
 | Time | Spent on |
 | --- | --- |
-| 847 s (94%) | Sleeping before retrying the 51 rate-limited Groq calls. Groq's free tier allows 8,000 tokens per minute per model, and each Scout or Curator call sends 2,000–6,000 prompt tokens, so after about two calls in a minute the next one gets a 429. Each wait was 1–48 s, taken from Groq's `retry-after`. |
-| 28 s | Groq inference, across the 39 successful calls |
-| 9 s | Tavily, about 1.5 s per search |
-| 2.3 s | All 12 boards |
+| 953 s (92%) | Sleeping before retrying the 56 rate-limited Groq calls. Groq's free tier allows 8,000 tokens per minute per model, and each Scout or Curator call sends 2,000–6,000 prompt tokens, so after about two calls in a minute the next one gets a 429. Each wait was 1–44 s, taken from Groq's `retry-after`. |
+| 36 s | Groq inference, across the 44 successful calls |
+| 14 s | Tavily, about 2.7 s per search |
+| 1.1 s | All 12 boards |
+| 0.8 s | The one fetched page |
 
-Stage times were Scout 353 s, Collect 3 s, Curator 542 s and Editor 1 s. The Editor hit `max_wall_seconds` (900 s at the time) after one call, so run 1's report has no summaries. The wall-clock budget is now 1,500 s for that reason.
+Stage times were Scout 318 s, Collect 2 s, Curator 565 s, Assess 57 s and Editor 92 s. The run ended partial because the Curator used all 35 of its steps with 6 postings still unread (`curator.max_steps`), not because of time: it took 1,033 s of the 1,500 s budget. The next run reads those 6 first. The wall-clock budget was 900 s until an earlier run hit it before the Editor could write any summaries.
 
 Bandwidth and latency barely matter here. What limits the run is the provider's per-minute token window. That's why the Curator runs on gpt-oss-20b (its quota is separate from the Scout's 120b), page text is cut to `fetch.max_chars_for_model`, and older tool results are shortened. A second run uses less: boards that haven't changed answer `304` with no body, and postings that were already curated aren't sent to the model again.
 
@@ -100,8 +102,8 @@ The quota patterns are in `config.yaml`: `["per day", "\\(RPD\\)", "\\(TPD\\)"]`
 
 - The result is `Transient`, and `send_with_retries()` sleeps for `retry-after`. If the header is missing it uses exponential backoff, `min(60, 1 × 2^attempt)` with 50–100% jitter.
 - It tries up to `retry.max_attempts` = 4 times.
-- Each wait is traced as `status: "retry"` with its `wait_seconds`. Run 1 waited 51 times.
-- If a wait would go past `max_wall_seconds`, the stage stops and the report is marked partial. This is how the Editor stopped in run 1.
+- Each wait is traced as `status: "retry"` with its `wait_seconds`. Run 1 waited 56 times.
+- If a wait would go past `max_wall_seconds`, the stage stops and the report is marked partial.
 - If all 4 attempts fail, the failure becomes terminal `unreachable`.
 
 **Daily cap** (the body names RPD or TPD, or `retry-after` is longer than 60 s):
@@ -122,28 +124,28 @@ One run (from the usage line in `reports/run1.md`):
 
 | Resource | Used | Price | Cost |
 | --- | --- | --- | --- |
-| Groq gpt-oss-120b (Scout + Editor) | 50,009 tokens, 25 requests | free tier | $0 |
-| Groq gpt-oss-20b (Curator) | 70,801 tokens, 73 requests | free tier | $0 |
-| Tavily | 6 credits (basic search, 1 credit each) | free tier; $0.008 a credit pay-as-you-go | $0 ($0.048 at the paid price, which is what the cost budget counts) |
+| Groq gpt-oss-120b (Scout + Assessor + Editor) | 71,925 tokens, 39 requests | free tier | $0 |
+| Groq gpt-oss-20b (Curator) | 67,050 tokens, 71 requests | free tier | $0 |
+| Tavily | 5 credits (basic search, 1 credit each) | free tier; $0.008 a credit pay-as-you-go | $0 ($0.04 at the paid price, which is what the cost budget counts) |
 | Job boards | 12 requests | public, no key | $0 |
 
-A run costs $0 on the free tiers and $0.048 at paid prices. The policy caps it at `max_cost_usd: 0.50` and 175,000 tokens.
+A run costs $0 on the free tiers and $0.04 at paid prices. The policy caps it at `max_cost_usd: 0.50` and 175,000 tokens.
 
 Running daily:
 
 | Free tier | Limit | One run uses | When it runs out |
 | --- | --- | --- | --- |
-| Groq TPM (each model) | 8,000 tokens/min | Hit in every run | Not a daily problem. It turns into waiting (847 s in run 1). |
-| Groq TPD (gpt-oss-120b) | 200,000 tokens/day | ~50,000 (25%), up to 75,000 (the Scout's and Editor's caps) | Never at one run a day. The 3rd or 4th run on the same day would hit it. It resets daily. |
-| Groq TPD (gpt-oss-20b) | 200,000 tokens/day | ~71,000 (35%; the Curator's cap is 70,000, and its last call went over) | Never at one run a day. The 3rd run on the same day would hit it. |
-| Groq RPD | 1,000 requests/day | 25–73 per model | Never |
-| **Tavily** | **1,000 credits/month** | **6** (`max_searches`) | **First to run out, though not within a month at one run a day.** 30 runs use 180 credits (18%). Tavily is the only quota that carries over past a day. At the Scout's cap it lasts 166 runs, so without a monthly reset it would run out on day 167. Manual and smoke runs use it up faster. |
+| Groq TPM (each model) | 8,000 tokens/min | Hit in every run | Not a daily problem. It turns into waiting (953 s in run 1). |
+| Groq TPD (gpt-oss-120b) | 200,000 tokens/day | ~72,000 (36%), up to 100,000 (the Scout's, Assessor's and Editor's caps). Later runs use less: only new opportunities are rated. | Never at one run a day. The 3rd or 4th run on the same day would hit it. It resets daily. |
+| Groq TPD (gpt-oss-20b) | 200,000 tokens/day | ~67,000 (34%; the Curator's cap is 70,000, but its 35-step cap stopped it first) | Never at one run a day. The 3rd run on the same day would hit it. |
+| Groq RPD | 1,000 requests/day | 39–71 per model | Never |
+| **Tavily** | **1,000 credits/month** | **5** (cap 6, `max_searches`) | **First to run out, though not within a month at one run a day.** 30 runs use 150 credits (15%), 180 (18%) at the cap. Tavily is the only quota that carries over past a day. At the Scout's cap it lasts 166 runs, so without a monthly reset it would run out on day 167. Manual and smoke runs use it up faster. |
 
 The limit that binds is Groq's per-minute token window. It costs wall time, not money, which is why `max_wall_seconds` is the budget a run hits most often.
 
 ## 6. Injection
 
-**The model may follow injected instructions. The runtime keeps them from doing anything.** No live run has read a seeded page yet. Run 1 never did: the Scout fetched 0 pages, and none of the 26 postings the Curator read (`get_posting`) was flagged `injection_suspected: true`. So the evidence below comes from the code and from a test that replays a model obeying an injected page, and we don't claim that a live model ignores the page.
+**The model may follow injected instructions. The runtime keeps them from doing anything.** No live run has read a seeded page yet. Run 1 didn't: the Scout fetched 1 page, and neither it nor any of the 24 postings the Curator read (`get_posting`) was flagged `injection_suspected: true`. So the evidence below comes from the code and from a test that replays a model obeying an injected page, and we don't claim that a live model ignores the page.
 
 The test page (`backend/tests_tracker/fixtures/injection.html`) tries three things: calling an unknown tool (`delete_state`), an SSRF fetch to `169.254.169.254`, and closing the data block early to raise `max_steps` to 1000. `test_injection_page_cannot_change_tools_or_budgets` (`tests_tracker/test_loop.py`) plays a model that does obey. What the runtime does:
 
