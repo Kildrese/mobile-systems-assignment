@@ -1,7 +1,7 @@
 // A daily internship report: the latest, or one run's. Read-only: the tracker runs
 // on a schedule (.github/workflows/tracker.yml), never from the app.
 import { useQuery } from "@tanstack/react-query";
-import { Download, ExternalLink } from "lucide-react";
+import { Download, ExternalLink, FileSearch } from "lucide-react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 import {
@@ -9,8 +9,9 @@ import {
   getLatestInternshipReportOptions,
 } from "@/api/@tanstack/react-query.gen";
 import { exportInternshipReport } from "@/api/sdk.gen";
-import type { InternshipOffer } from "@/api/types.gen";
+import type { InternshipOffer, TrackerRun } from "@/api/types.gen";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,6 +21,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { formatRunTime } from "@/lib/run-id";
 import { webUrl } from "@/lib/web-url";
 
 const NO_PREVIOUS = "No earlier run to compare with yet.";
@@ -81,9 +83,7 @@ function Offer({ offer }: { offer: InternshipOffer }) {
           )}
           {offer.title}
           {offer.topK && (
-            <span className="ml-2 rounded-md bg-primary px-1.5 py-0.5 text-xs text-primary-foreground">
-              Top pick
-            </span>
+            <Badge className="ml-2 align-middle">Top pick</Badge>
           )}
           {offer.section === "top_k" && (
             <span className="ml-2 text-xs font-normal text-muted-foreground">
@@ -98,9 +98,7 @@ function Offer({ offer }: { offer: InternshipOffer }) {
         </CardDescription>
         <CardAction>
           {closed ? (
-            <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
-              Closed
-            </span>
+            <Badge variant="secondary">Closed</Badge>
           ) : (
             href && (
               <Button asChild size="sm">
@@ -180,6 +178,24 @@ async function downloadReport(runId: string) {
   URL.revokeObjectURL(url);
 }
 
+const STATUS_VARIANTS = {
+  complete: "secondary",
+  partial: "outline",
+  failed: "destructive",
+} as const;
+
+// "Partial", with why the run stopped as a tooltip.
+export function RunStatus({ run }: { run: Pick<TrackerRun, "status" | "stopReason"> }) {
+  return (
+    <Badge
+      variant={STATUS_VARIANTS[run.status]}
+      title={run.stopReason ? `Stopped: ${run.stopReason}` : undefined}
+    >
+      {run.status[0].toUpperCase() + run.status.slice(1)}
+    </Badge>
+  );
+}
+
 // The latest report, or the report of run `runId`.
 export function InternshipReport({ runId }: { runId?: string }) {
   const latest = useQuery({
@@ -223,23 +239,24 @@ export function InternshipReport({ runId }: { runId?: string }) {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          {run.topic} · updated {new Date(run.startedAt).toLocaleString()}
-          {run.status !== "complete" && ` · ${run.status} run`}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-medium">
+            {runId ? "Started" : "Updated"} {formatRunTime(new Date(run.startedAt))}
+          </span>
+          <RunStatus run={run} />
+          {run.stopReason && (
+            <span className="text-muted-foreground">stopped at {run.stopReason}</span>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           {!runId && (
-            <>
-              <Button asChild variant="link" size="sm">
-                <Link to={`/internships/runs/${encodeURIComponent(run.id)}`}>
-                  Articles in this run
-                </Link>
-              </Button>
-              <Button asChild variant="link" size="sm">
-                <Link to="/internships/history">Run history</Link>
-              </Button>
-            </>
+            <Button asChild variant="ghost" size="sm">
+              <Link to={`/internships/runs/${encodeURIComponent(run.id)}?tab=articles`}>
+                <FileSearch data-icon="inline-start" />
+                Articles
+              </Link>
+            </Button>
           )}
           <Button
             variant="outline"
@@ -256,8 +273,9 @@ export function InternshipReport({ runId }: { runId?: string }) {
         const list = offers.filter((o) => o.section === key);
         return (
           <section key={key} className="flex flex-col gap-3">
-            <h2 className="text-lg font-semibold">
-              {title} ({list.length})
+            <h2 className="flex items-center gap-2 text-lg font-semibold">
+              {title}
+              <Badge variant="secondary">{list.length}</Badge>
             </h2>
             {list.length === 0 ? (
               <p className="text-muted-foreground">
