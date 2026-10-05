@@ -23,7 +23,7 @@ Order matters. When a migration drops something the running code still reads (su
 
 ## Daily internship tracker
 
-`.github/workflows/tracker.yml` runs the tracker every day at 09:00 UTC (5:00 in New York in summer, 4:00 in winter), then `python -m app.publish_report` copies the latest finished run into Neon: one `tracker_runs` row (status, times, the Markdown report) and one `internship_offers` row per offer in the report, with its section (`new`, `open`, `closed`), rank and fields. The API serves them read-only at `GET /api/internships/latest`; no route starts a run. A manual run is "Run workflow" on the Actions tab.
+`.github/workflows/tracker.yml` runs the tracker every day at 09:17 UTC (5:17 in New York in summer, 4:17 in winter; off the hour, since GitHub may delay or drop scheduled runs at the start of an hour), then `python -m app.publish_report` copies the latest finished run into Neon: one `tracker_runs` row (status, times, the Markdown report) and one `internship_offers` row per offer in the report, with its section (`new`, `open`, `closed`), rank and fields. The API serves them read-only at `GET /api/internships/latest`; no route starts a run. A manual run is "Run workflow" on the Actions tab.
 
 It needs the repository secrets `GROQ_API_KEY`, `TAVILY_API_KEY` and `DATABASE_URL` (Neon, pooled), and the `tracker_runs` migration applied to production first (`./scripts/db-migrate-neon.sh`). The tracker's SQLite state is carried between days in the Actions cache; if the cache is evicted, the next run starts fresh and lists every open offer as new once. Reports and traces are kept as run artifacts for 14 days.
 
