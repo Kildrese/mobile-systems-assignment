@@ -19,7 +19,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from tracker.fetch import extract
-from tracker.state import canonicalize
+from tracker.state import canonicalize, fetch_status, log_fetch
 from tracker.tools import ToolOutcome
 from tracker.trace import Trace
 from tracker.usecases.internships.http import GuardedHttp, HttpFailure
@@ -289,6 +289,11 @@ def collect_source(
     url = board_url(source["kind"], source["board"])
     cached = store.http_cache(url)
     event: dict[str, Any] = {"source": source["key"], "url": url}
+    title = f"{source['company']} ({source['kind'].capitalize()} board)"
+
+    def log(status: str, reason: str | None = None) -> None:
+        log_fetch(store.db, run_id, "collect", "board", url, title, status, reason)
+
     try:
         result = http.get(
             url,
@@ -307,6 +312,7 @@ def collect_source(
             attempt=err.attempts,
             deactivated=_unreadable(store, source, run_id, err.reason, err.status),
         )
+        log(fetch_status("error", err.reason), err.reason)
         return CollectResult(source["id"], "unreadable", reason=err.reason)
 
     not_modified = result.status == 304 and cached is not None
@@ -323,12 +329,14 @@ def collect_source(
             detail=str(err)[:300],
             deactivated=_unreadable(store, source, run_id, "bad_response", None),
         )
+        log("failed", "bad_response")
         return CollectResult(source["id"], "unreadable", reason="bad_response")
 
     if not not_modified:
         store.put_http_cache(url, result.etag, result.last_modified, body)
     status = "not_modified" if not_modified else "ok"
     store.mark_source_read(source["id"], run_id, status)
+    log(fetch_status(status))
     trace.event(
         "tool",
         tool="collect",
@@ -384,7 +392,11 @@ def collect_all(
         result = collect_source(store, source, http, trace, run_id)
         if result.readable:
             kept, dropped = prefilter(result.postings, filters)
-            store.upsert_postings(source["id"], kept, run_id)
+            for posting_id in store.upsert_postings(source["id"], kept, run_id):
+                p = store.posting(posting_id)
+                assert p is not None
+                status = "fetched" if p["first_seen_run"] == run_id else "skipped"
+                log_fetch(store.db, run_id, "collect", "posting", p["url"], p["title"], status)
             trace.event(
                 "tool",
                 tool="prefilter",

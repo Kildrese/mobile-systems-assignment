@@ -48,6 +48,11 @@ class Trace:
             self._file.flush()
         return record
 
+    @property
+    def fields(self) -> dict[str, Any]:
+        """The fields `bind` adds to every event (none on the run's own trace)."""
+        return {}
+
     def bind(self, **fields: Any) -> "BoundTrace":
         """A view that adds `fields` (such as `stage` and `agent`) to every event."""
         return BoundTrace(self, fields)
@@ -64,6 +69,10 @@ class BoundTrace(Trace):
         self._fields = fields
         self.path = trace.path
         self.run_id = trace.run_id
+
+    @property
+    def fields(self) -> dict[str, Any]:
+        return self._fields
 
     def event(self, kind: str, **fields: Any) -> dict[str, Any]:
         return self._trace.event(kind, **{**self._fields, **fields})

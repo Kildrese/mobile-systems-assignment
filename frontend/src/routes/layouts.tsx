@@ -13,6 +13,7 @@ import { Toaster } from "@/components/ui/sonner";
 
 const PAGE_NAMES: Record<string, string> = {
   "/internships": "Internships",
+  "/internships/history": "Run history",
   "/account": "Account",
 };
 

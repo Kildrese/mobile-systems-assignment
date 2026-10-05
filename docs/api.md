@@ -19,6 +19,9 @@ Protected endpoints take `Authorization: Bearer <token>`, where the token comes 
 | POST | `/api/auth/change-password` | yes | Needs the current password. Revokes every session and returns a new `token` |
 | GET / PATCH / DELETE | `/api/users/:id` | yes | Read, update (username, first and last name) or delete your own account |
 | GET | `/api/internships/latest` | yes | The latest published tracker run and its offers (`run` is `null` before the first). Read-only: nothing in the API starts the tracker |
+| GET | `/api/internships/runs` | yes | Run history, newest first: each run's times, status, offers per report section and articles per status. `limit` (1–100, default 30) caps how many |
+| GET | `/api/internships/runs/:id` | yes | One run's report, the same shape as `/latest` (`404` if unknown) |
+| GET | `/api/internships/runs/:id/articles` | yes | The documents the run tried to read (pages, job boards, postings), in fetch order, with title, URL, fetch time and status: `fetched`, `skipped` (already seen), `rejected` (by a fetch guardrail) or `failed` (`404` if unknown) |
 | GET | `/api/internships/runs/:id/report.md` | yes | Download a run's Markdown report, exactly as the tracker wrote it (`404` if the run is unknown or has no report) |
 
 ## Conventions
@@ -53,6 +56,22 @@ Open <http://localhost:5173>. Signed-out visitors are sent to the login page and
 | `/register` | Create an account (you're signed in straight away) |
 | `/` | Home (signed in), with a link to the API reference |
 | `/account` | Change your username, name or password, or delete your account (signed in) |
-| `/internships` | The latest daily internship report: new since last run, still in top K, dropped (closed or outranked) and also open, with an "Export" button and an "Apply" link on every open offer (signed in) |
+| `/internships` | The latest daily internship report: new since last run, still in top K, dropped (closed or outranked) and also open, with an "Export" button, an "Apply" link on every open offer, and links to the run history and this run's articles (signed in) |
+| `/internships/history` | Every published run: when, its status, what changed (offers per section) and its articles per status (signed in) |
+| `/internships/runs/:id` | One run's report and the articles it tried to read, each with its status and reason (signed in) |
+
+Titles, URLs and reasons from the tracker came from the web. They are rendered as text, never HTML, and a URL is a link only when it is `http` or `https`, so a rejected `javascript:` URL shows as text.
+
+## Tracker tables
+
+The daily workflow writes these; the API only reads them. One user's view is everyone's: the tracker is one shared run, not per-user data.
+
+| Table | One row per | Columns |
+| --- | --- | --- |
+| `tracker_runs` | Published run | `id` (the tracker's run id), `topic`, `status`, `stop_reason`, `started_at`, `ended_at`, `report_markdown`, `published_at` |
+| `internship_offers` | Opportunity in a run's report | `run_id` → `tracker_runs`, `opportunity_id` (stable across runs), `section` (`new`, `top_k`, `dropped`, `open`), `rank`, `previous_rank`, `top_k`, `drop_reason`, the record's fields, `summary`, `status`, `status_evidence`, `verified`, `first_seen_at` |
+| `tracker_articles` | Document a run tried to read | `run_id` → `tracker_runs`, `stage`, `kind` (`page`, `board`, `posting`), `url`, `title`, `status`, `reason`, `fetched_at` |
+
+Deleting a run deletes its offers and articles (`ON DELETE CASCADE`); publishing a run again replaces them.
 
 **Known limitations:** there's no password reset and no login rate limiting.

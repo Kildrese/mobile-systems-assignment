@@ -21,6 +21,7 @@ from tracker.config import Policy
 from tracker.errors import PolicyError
 from tracker.guard import host_allowed
 from tracker.report import ReportMeta
+from tracker.state import fetch_status, log_fetch
 from tracker.tools import Toolbox, ToolOutcome, ToolSpec, register, validation_message
 from tracker.trace import Trace
 from tracker.untrusted import injection_suspected, wrap
@@ -224,13 +225,27 @@ def _get_posting(store: OpportunityStore, toolbox: Toolbox, args: PostingArgs):
 
 
 def _fetch_posting_detail(store: OpportunityStore, toolbox: Toolbox, args: DetailArgs):
-    return curation.fetch_posting_detail(
+    outcome = curation.fetch_posting_detail(
         store,
         args.posting_id,
         args.url,
         http=_toolbox_http(toolbox),
         max_chars=toolbox.policy.fetch.max_chars_for_model,
     )
+    # Only a request that went out, or one a guardrail refused, is in the fetch log.
+    if outcome.requested or outcome.status == "blocked":
+        posting = store.posting(args.posting_id)
+        log_fetch(
+            store.db,
+            toolbox.run_id,
+            "curate",
+            "page",
+            args.url,
+            posting["title"] if outcome.ok else "",
+            fetch_status(outcome.status, outcome.reason),
+            outcome.reason,
+        )
+    return outcome
 
 
 # Quote misses per (run, posting). ponytail: process-wide, fine for one run per process.

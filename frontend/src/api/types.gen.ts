@@ -153,6 +153,44 @@ export type RegisterBody = {
 };
 
 /**
+ * TrackerArticle
+ *
+ * One document a run tried to read. Title and URL came from the web: show them as
+ * text, and link the URL only when it is http(s).
+ */
+export type TrackerArticle = {
+    /**
+     * `scout`, `collect`, `curate`, or `agent`.
+     */
+    stage: string;
+    kind: 'page' | 'board' | 'posting';
+    url: string;
+    /**
+     * Empty when the document was not fetched.
+     */
+    title: string;
+    /**
+     * `skipped`: already seen. `rejected`: refused by a fetch guardrail.
+     */
+    status: 'fetched' | 'skipped' | 'rejected' | 'failed';
+    /**
+     * Why it was rejected or failed.
+     */
+    reason: string | null;
+    fetchedAt: string;
+};
+
+/**
+ * TrackerArticleList
+ */
+export type TrackerArticleList = {
+    /**
+     * In fetch order.
+     */
+    articles: Array<TrackerArticle>;
+};
+
+/**
  * TrackerRun
  *
  * One daily internship tracker run.
@@ -168,6 +206,42 @@ export type TrackerRun = {
      * The run's full Markdown report.
      */
     reportMarkdown: string;
+};
+
+/**
+ * TrackerRunList
+ */
+export type TrackerRunList = {
+    /**
+     * Newest first.
+     */
+    runs: Array<TrackerRunSummary>;
+};
+
+/**
+ * TrackerRunSummary
+ *
+ * One published run and what changed in it, for the run history.
+ */
+export type TrackerRunSummary = {
+    id: string;
+    topic: string;
+    status: 'complete' | 'partial' | 'failed';
+    stopReason: string | null;
+    startedAt: string;
+    endedAt: string | null;
+    /**
+     * How many offers the run reported in each section, e.g. `new`.
+     */
+    sections: {
+        [key: string]: number;
+    };
+    /**
+     * How many documents the run tried to read, by status, e.g. `fetched`.
+     */
+    articles: {
+        [key: string]: number;
+    };
 };
 
 /**
@@ -547,6 +621,122 @@ export type GetLatestInternshipReportResponses = {
 };
 
 export type GetLatestInternshipReportResponse = GetLatestInternshipReportResponses[keyof GetLatestInternshipReportResponses];
+
+export type ListInternshipRunsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Limit
+         *
+         * At most this many runs.
+         */
+        limit?: number;
+    };
+    url: '/api/internships/runs';
+};
+
+export type ListInternshipRunsErrors = {
+    /**
+     * The body is not valid JSON or fails validation.
+     */
+    400: Error;
+    /**
+     * Missing, malformed, unknown or expired token.
+     */
+    401: Error;
+    /**
+     * Unexpected server error.
+     */
+    500: Error;
+};
+
+export type ListInternshipRunsError = ListInternshipRunsErrors[keyof ListInternshipRunsErrors];
+
+export type ListInternshipRunsResponses = {
+    /**
+     * Published runs, newest first, with what changed in each.
+     */
+    200: TrackerRunList;
+};
+
+export type ListInternshipRunsResponse = ListInternshipRunsResponses[keyof ListInternshipRunsResponses];
+
+export type GetInternshipRunData = {
+    body?: never;
+    path: {
+        /**
+         * Id
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/internships/runs/{id}';
+};
+
+export type GetInternshipRunErrors = {
+    /**
+     * Missing, malformed, unknown or expired token.
+     */
+    401: Error;
+    /**
+     * No published run with this id.
+     */
+    404: Error;
+    /**
+     * Unexpected server error.
+     */
+    500: Error;
+};
+
+export type GetInternshipRunError = GetInternshipRunErrors[keyof GetInternshipRunErrors];
+
+export type GetInternshipRunResponses = {
+    /**
+     * The run and its offers, best rank first.
+     */
+    200: InternshipReport;
+};
+
+export type GetInternshipRunResponse = GetInternshipRunResponses[keyof GetInternshipRunResponses];
+
+export type ListInternshipRunArticlesData = {
+    body?: never;
+    path: {
+        /**
+         * Id
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/internships/runs/{id}/articles';
+};
+
+export type ListInternshipRunArticlesErrors = {
+    /**
+     * Missing, malformed, unknown or expired token.
+     */
+    401: Error;
+    /**
+     * No published run with this id.
+     */
+    404: Error;
+    /**
+     * Unexpected server error.
+     */
+    500: Error;
+};
+
+export type ListInternshipRunArticlesError = ListInternshipRunArticlesErrors[keyof ListInternshipRunArticlesErrors];
+
+export type ListInternshipRunArticlesResponses = {
+    /**
+     * Pages, job boards and postings, in fetch order, with their status.
+     */
+    200: TrackerArticleList;
+};
+
+export type ListInternshipRunArticlesResponse = ListInternshipRunArticlesResponses[keyof ListInternshipRunArticlesResponses];
 
 export type ExportInternshipReportData = {
     body?: never;

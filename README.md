@@ -63,7 +63,7 @@ uv run python -m tracker.tools fetch_article https://example.com/
 uv run python -m tracker.tools finish report.json
 ```
 
-The topic, agents, models, tools, budgets, watchlist and allowed hosts are all in [`config.yaml`](config.yaml). See [docs/tracker.md](docs/tracker.md) for the policy fields, budgets, failure handling, fetch guardrails, state and trace format.
+The topic, agents, models, tools, budgets, watchlist and allowed hosts are all in [`config.yaml`](config.yaml). The app shows each run's report, the run history and the articles each run fetched at `/internships`; the endpoints and tables behind it are in [docs/api.md](docs/api.md#tracker-tables). See [docs/tracker.md](docs/tracker.md) for the policy fields, budgets, failure handling, fetch guardrails, state and trace format.
 
 ## Documentation
 

@@ -3,12 +3,14 @@
     uv run python -m app.publish_report
 
 The daily tracker workflow (`.github/workflows/tracker.yml`) runs this right after
-`python -m tracker run`. It is the only writer of `tracker_runs` and `internship_offers`:
+`python -m tracker run`. It is the only writer of `tracker_runs`, `internship_offers` and
+`tracker_articles`:
 the API only reads them and can never start the tracker. Publishing a run again replaces
 its rows, so a retried job is safe.
 """
 
 import sys
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
@@ -77,7 +79,26 @@ def offers(store: OpportunityStore, run_id: str) -> list[dict[str, Any]]:
     ]
 
 
-def publish(db: Session, run: dict[str, Any], rows: list[dict[str, Any]], markdown: str) -> None:
+def articles(state: StateStore, run_id: str) -> list[dict[str, Any]]:
+    """The run's fetch log, in fetch order."""
+    return [
+        {**dict(r), "fetched_at": datetime.fromisoformat(r["fetched_at"])}
+        for r in state.db.execute(
+            "SELECT stage, kind, url, title, status, reason, at AS fetched_at FROM fetch_log "
+            "WHERE run_id = ? ORDER BY id",
+            (run_id,),
+        )
+    ]
+
+
+def publish(
+    db: Session,
+    run: dict[str, Any],
+    rows: list[dict[str, Any]],
+    markdown: str,
+    fetched: Sequence[dict[str, Any]] = (),
+) -> None:
+    """Replace the run and everything under it (offers, articles) in one transaction."""
     db.execute(delete(models.TrackerRun).where(models.TrackerRun.id == run["id"]))
     db.add(
         models.TrackerRun(
@@ -92,6 +113,7 @@ def publish(db: Session, run: dict[str, Any], rows: list[dict[str, Any]], markdo
     )
     db.flush()
     db.add_all(models.InternshipOffer(run_id=run["id"], **row) for row in rows)
+    db.add_all(models.TrackerArticle(run_id=run["id"], **article) for article in fetched)
     db.commit()
 
 
@@ -112,12 +134,16 @@ def main() -> int:
             return 1
         run = dict(run)
         rows = offers(OpportunityStore(state), run["id"])
+        fetched = articles(state, run["id"])
 
     report = policy.reports_path / f"{run['id']}.md"
     markdown = report.read_text() if report.exists() else ""
     with get_sessionmaker()() as db:
-        publish(db, run, rows, markdown)
-    print(f"Published run {run['id']} ({run['status']}) with {len(rows)} offers.")
+        publish(db, run, rows, markdown, fetched)
+    print(
+        f"Published run {run['id']} ({run['status']}) with {len(rows)} offers "
+        f"and {len(fetched)} articles."
+    )
     return 0
 
 

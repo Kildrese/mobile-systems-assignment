@@ -730,6 +730,12 @@ def test_detail_fetches_draw_on_the_fetch_budget(ipolicy, keys):
     assert [e["status"] for e in detail_events] == ["error", "ok", "ok", "budget"]
     assert detail_events[0]["reason"] == "url_mismatch"
     assert page.call_count == 2
+    # Only the two requests that went out are in the fetch log, not the refusals.
+    with StateStore(ipolicy.state_file) as state:
+        rows = state.db.execute(
+            "SELECT stage, kind, url, status FROM fetch_log WHERE kind = 'page'"
+        ).fetchall()
+    assert [tuple(r) for r in rows] == [("curate", "page", detail["url"], "fetched")] * 2
 
 
 def test_committed_configs_load():

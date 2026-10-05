@@ -29,7 +29,7 @@ from tracker.errors import PolicyError, StateLocked, TerminalError
 from tracker.fetch import FetchError, fetch_page
 from tracker.guard import Blocked, Resolver, check
 from tracker.search import SearchClient, SearchResult
-from tracker.state import StateStore, canonicalize
+from tracker.state import StateStore, canonicalize, fetch_status, log_fetch
 from tracker.trace import Trace
 from tracker.untrusted import injection_suspected
 
@@ -328,8 +328,15 @@ class Toolbox:
             return self._article_outcome(
                 step, traced, started, page.title, canonical, page.text, cached=False
             )
+        self._log_fetch(url, "", outcome)
         self._trace(step, "fetch_article", traced, outcome, started)
         return outcome
+
+    def _log_fetch(self, url: str, title: str, outcome: ToolOutcome) -> None:
+        if self.state is not None:
+            stage = self.trace.fields.get("stage") or "agent"
+            status = fetch_status(outcome.status, outcome.reason)
+            log_fetch(self.state.db, self.run_id, stage, "page", url, title, status, outcome.reason)
 
     def _article_outcome(
         self,
@@ -362,6 +369,7 @@ class Toolbox:
             attributes={"url": canonical},
             requested=not cached,
         )
+        self._log_fetch(str(traced["url"]), title, outcome)
         self._trace(
             step,
             "fetch_article",

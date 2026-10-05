@@ -4,9 +4,10 @@ from alembic import command
 from alembic.config import Config
 
 from app.db import get_sessionmaker
-from app.publish_report import offers, publish
+from app.publish_report import articles, offers, publish
 from tests.conftest import BACKEND
 from tests_tracker.internships_helpers import RUN1, RUN2, add_board, open_store, posting, record
+from tracker.state import log_fetch
 
 
 def _state(tmp_path):
@@ -97,11 +98,17 @@ def test_requires_login(client):
 
 
 def test_cannot_start_the_tracker(client, ada):
-    paths = [p for p in client.get("/api/openapi.json").json()["paths"] if "internship" in p]
     document = client.get("/api/openapi.json").json()["paths"]
-    assert paths == ["/api/internships/latest", "/api/internships/runs/{id}/report.md"]
+    paths = [p for p in document if "internship" in p]
+    assert sorted(paths) == [
+        "/api/internships/latest",
+        "/api/internships/runs",
+        "/api/internships/runs/{id}",
+        "/api/internships/runs/{id}/articles",
+        "/api/internships/runs/{id}/report.md",
+    ]
     assert all(list(document[p]) == ["get"] for p in paths)
-    for path in ("/api/internships/latest", f"/api/internships/runs/{RUN2}/report.md"):
+    for path in [p.replace("{id}", RUN2) for p in paths]:
         for method in ("post", "put", "patch", "delete"):
             assert getattr(client, method)(path, headers=ada.headers).status_code == 405
 
@@ -156,3 +163,83 @@ def test_migration_maps_closed_rows_to_dropped(sql):
         assert [r[0] for r in rows] == ["closed", "open"]
     finally:
         command.upgrade(alembic, "head")
+
+
+def _publish_both(tmp_path):
+    """RUN1 and RUN2 published, each with its own fetch log."""
+    state, store = _state(tmp_path)
+    log = [
+        (RUN1, "collect", "board", "https://boards-api.greenhouse.io/v1/boards/acme/jobs",
+         "Acme (Greenhouse board)", "fetched", None),
+        (RUN2, "collect", "board", "https://boards-api.greenhouse.io/v1/boards/acme/jobs",
+         "Acme (Greenhouse board)", "skipped", None),
+        (RUN2, "scout", "page", "https://news.example.com/1", "<img src=x onerror=alert(1)>",
+         "fetched", None),
+        (RUN2, "scout", "page", "javascript:alert(1)", "", "rejected", "scheme_not_allowed"),
+    ]  # fmt: skip
+    for row in log:
+        log_fetch(state.db, *row)
+    with get_sessionmaker()() as db:
+        for run_id in (RUN1, RUN2):
+            run = dict(state.db.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone())
+            rows = offers(store, run_id)
+            if run_id == RUN1:  # as published right after RUN1, before Beta existed
+                rows = [r for r in rows if r["company"] == "Acme"]
+            publish(db, run, rows, "# report", articles(state, run_id))
+        # A retried publish replaces the run's articles, never duplicates them.
+        publish(db, run, offers(store, RUN2), "# report", articles(state, RUN2))
+    state.close()
+
+
+def test_run_history(tmp_path, client, ada):
+    _publish_both(tmp_path)
+    body = client.get("/api/internships/runs", headers=ada.headers).json()
+    assert [r["id"] for r in body["runs"]] == [RUN2, RUN1]
+    newest = body["runs"][0]
+    assert newest["sections"] == {"new": 1, "dropped": 1}
+    assert newest["articles"] == {"fetched": 1, "skipped": 1, "rejected": 1}
+    assert "reportMarkdown" not in newest
+
+    page = client.get("/api/internships/runs?limit=1", headers=ada.headers)
+    assert [r["id"] for r in page.json()["runs"]] == [RUN2]
+    assert client.get("/api/internships/runs?limit=0", headers=ada.headers).status_code == 400
+    assert client.get("/api/internships/runs").status_code == 401
+
+
+def test_read_an_earlier_run(tmp_path, client, ada):
+    _publish_both(tmp_path)
+    body = client.get(f"/api/internships/runs/{RUN1}", headers=ada.headers).json()
+    assert body["run"]["id"] == RUN1
+    assert [(o["company"], o["section"]) for o in body["offers"]] == [("Acme", "new")]
+    assert client.get("/api/internships/runs/nope", headers=ada.headers).status_code == 404
+    assert client.get(f"/api/internships/runs/{RUN1}").status_code == 401
+
+
+def test_run_articles(tmp_path, client, ada):
+    _publish_both(tmp_path)
+    url = f"/api/internships/runs/{RUN2}/articles"
+    rows = client.get(url, headers=ada.headers).json()["articles"]
+    # Stored and served exactly as fetched: escaping is the page's job.
+    assert [(a["kind"], a["title"], a["url"], a["status"], a["reason"]) for a in rows] == [
+        ("board", "Acme (Greenhouse board)", "https://boards-api.greenhouse.io/v1/boards/acme/jobs",
+         "skipped", None),
+        ("page", "<img src=x onerror=alert(1)>", "https://news.example.com/1", "fetched", None),
+        ("page", "", "javascript:alert(1)", "rejected", "scheme_not_allowed"),
+    ]  # fmt: skip
+    assert all(a["fetchedAt"] for a in rows)
+    assert client.get(url).status_code == 401
+    unknown = client.get("/api/internships/runs/nope/articles", headers=ada.headers)
+    assert unknown.status_code == 404
+
+
+def test_run_without_a_log(tmp_path, client, ada):
+    state, store = _state(tmp_path)
+    run = dict(state.db.execute("SELECT * FROM runs WHERE id = ?", (RUN2,)).fetchone())
+    with get_sessionmaker()() as db:
+        publish(db, run, offers(store, RUN2), "# report")  # published before articles existed
+    state.close()
+    response = client.get(f"/api/internships/runs/{RUN2}/articles", headers=ada.headers)
+    assert response.status_code == 200
+    assert response.json() == {"articles": []}
+    runs = client.get("/api/internships/runs", headers=ada.headers).json()["runs"]
+    assert runs[0]["articles"] == {}

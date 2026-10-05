@@ -142,9 +142,20 @@ Search results and page text reach the model only inside `<untrusted_data>` bloc
 
 | Path | Contents | In git |
 | --- | --- | --- |
-| `.tracker/state.sqlite` | Runs (status, stop reason, usage), fetched articles by canonical URL with their text, searches, reported items | No |
+| `.tracker/state.sqlite` | Runs (status, stop reason, usage), fetched articles by canonical URL with their text, searches, reported items, and the fetch log | No |
 | `reports/<run_id>.md` | The report: topic, run id, time, status, budget used, ranked items with sources | No |
 | `traces/<run_id>.jsonl` | One JSON event per model call attempt and tool call, then a summary event | No |
+
+**Fetch log.** `fetch_log` has one row for every document a run tried to read: a page (`fetch_article`, `fetch_posting_detail`), a job board read by Collect, or a posting Collect's prefilter kept. Each row has the stage, kind, URL (cut to 2,048 characters), title (cut to 300, empty when not fetched), time, status and reason:
+
+| Status | Means |
+| --- | --- |
+| `fetched` | Downloaded in this run (a posting: first seen in this run) |
+| `skipped` | Already seen: served from state, a `304`, or a posting first seen in an earlier run |
+| `rejected` | Refused by a guardrail: scheme, credentials, host, address, DNS, size, content type or redirects |
+| `failed` | Tried and failed: timeout, connection error, HTTP error, unparseable board |
+
+A fetch refused by a budget made no request and is not logged; it is in the trace. The log is published to `tracker_articles` and shown on `/internships/runs/:id`.
 
 Canonical URLs lowercase the scheme and host and drop the fragment, default ports and tracking parameters (`utm_*`, `gclid`, `fbclid`, `ref`), so a known article is served from state without a request. Only one run may use the state file at a time; a second one exits with a message.
 

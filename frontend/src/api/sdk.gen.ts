@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, ExportInternshipReportData, ExportInternshipReportErrors, ExportInternshipReportResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetLatestInternshipReportData, GetLatestInternshipReportErrors, GetLatestInternshipReportResponses, GetUserData, GetUserErrors, GetUserResponses, HealthCheckData, HealthCheckErrors, HealthCheckResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, RegisterData, RegisterErrors, RegisterResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses } from './types.gen';
+import type { ChangePasswordData, ChangePasswordErrors, ChangePasswordResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, ExportInternshipReportData, ExportInternshipReportErrors, ExportInternshipReportResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetInternshipRunData, GetInternshipRunErrors, GetInternshipRunResponses, GetLatestInternshipReportData, GetLatestInternshipReportErrors, GetLatestInternshipReportResponses, GetUserData, GetUserErrors, GetUserResponses, HealthCheckData, HealthCheckErrors, HealthCheckResponses, ListInternshipRunArticlesData, ListInternshipRunArticlesErrors, ListInternshipRunArticlesResponses, ListInternshipRunsData, ListInternshipRunsErrors, ListInternshipRunsResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutErrors, LogoutResponses, RegisterData, RegisterErrors, RegisterResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -115,6 +115,33 @@ export const updateUser = <ThrowOnError extends boolean = false>(options: Option
 export const getLatestInternshipReport = <ThrowOnError extends boolean = false>(options?: Options<GetLatestInternshipReportData, ThrowOnError>): RequestResult<GetLatestInternshipReportResponses, GetLatestInternshipReportErrors, ThrowOnError> => (options?.client ?? client).get<GetLatestInternshipReportResponses, GetLatestInternshipReportErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/internships/latest',
+    ...options
+});
+
+/**
+ * Run history
+ */
+export const listInternshipRuns = <ThrowOnError extends boolean = false>(options?: Options<ListInternshipRunsData, ThrowOnError>): RequestResult<ListInternshipRunsResponses, ListInternshipRunsErrors, ThrowOnError> => (options?.client ?? client).get<ListInternshipRunsResponses, ListInternshipRunsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/internships/runs',
+    ...options
+});
+
+/**
+ * A run's report
+ */
+export const getInternshipRun = <ThrowOnError extends boolean = false>(options: Options<GetInternshipRunData, ThrowOnError>): RequestResult<GetInternshipRunResponses, GetInternshipRunErrors, ThrowOnError> => (options.client ?? client).get<GetInternshipRunResponses, GetInternshipRunErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/internships/runs/{id}',
+    ...options
+});
+
+/**
+ * The documents a run tried to read
+ */
+export const listInternshipRunArticles = <ThrowOnError extends boolean = false>(options: Options<ListInternshipRunArticlesData, ThrowOnError>): RequestResult<ListInternshipRunArticlesResponses, ListInternshipRunArticlesErrors, ThrowOnError> => (options.client ?? client).get<ListInternshipRunArticlesResponses, ListInternshipRunArticlesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/internships/runs/{id}/articles',
     ...options
 });
 
