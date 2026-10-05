@@ -101,10 +101,15 @@ class InternshipOffer(Base):
     run_id: Mapped[str] = mapped_column(ForeignKey(TrackerRun.id, ondelete="CASCADE"))
     # The opportunity's id in the tracker's state file; stable across runs.
     opportunity_id: Mapped[int] = mapped_column(Integer)
-    # The report section: new, open (still open) or closed (closed since last run).
+    # The report section: new (since last run), top_k (still in top K), dropped or open
+    # (also open).
     section: Mapped[str] = mapped_column(String)
     rank: Mapped[int | None] = mapped_column(Integer)
     top_k: Mapped[bool] = mapped_column(Boolean)
+    # The rank in the last run, if it had one.
+    previous_rank: Mapped[int | None] = mapped_column(Integer)
+    # Dropped rows only: closed or outranked.
+    drop_reason: Mapped[str | None] = mapped_column(String)
     company: Mapped[str] = mapped_column(String)
     title: Mapped[str] = mapped_column(String)
     role_type: Mapped[str] = mapped_column(String)

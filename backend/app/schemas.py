@@ -137,11 +137,16 @@ class InternshipOffer(ResponseModel):
     `unknown` (or null for pay, deadline and the work-authorization quote)."""
 
     opportunity_id: int = Field(description="Stable across runs.")
-    section: Literal["new", "open", "closed"] = Field(
-        description="`new` since the last run, still `open`, or `closed` since the last run."
+    section: Literal["new", "top_k", "dropped", "open"] = Field(
+        description="`new` since the last run, still in the `top_k`, `dropped` from the last "
+        "run's top K or closed this run, or also `open`."
     )
     rank: int | None
     top_k: bool
+    previous_rank: int | None = Field(description="The rank in the last run, if it had one.")
+    drop_reason: Literal["closed", "outranked"] | None = Field(
+        description="Why a `dropped` offer left the report's top K. Null in other sections."
+    )
     company: str
     title: str
     role_type: str

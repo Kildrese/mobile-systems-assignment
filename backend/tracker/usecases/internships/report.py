@@ -1,9 +1,10 @@
-"""The cumulative internship report: New since last run, Still open, Closed since last run.
+"""The internship report: New since last run, Still in top K, Dropped, Also open.
 
-Every opportunity appears in exactly one section. "Still open" accumulates across runs:
-an opportunity is new once, then stays listed until it closes. The current top K are
-marked wherever they appear. Fields come from verified records; a summary appears only
-if the Editor's summary passed its checks.
+The report compares this run's top K with the last run's (the newest earlier finished
+run that has ranks). Every opportunity appears in at most one section, the first that
+applies. "Also open" accumulates across runs: an opportunity is new once, then stays
+listed until it closes. Fields come from verified records; a summary appears only if the
+Editor's summary passed its checks.
 """
 
 from dataclasses import dataclass, field
@@ -15,36 +16,52 @@ from tracker.usecases.internships.store import OpportunityStore
 
 @dataclass
 class Sections:
+    previous_run: str | None = None
     new: list[dict[str, Any]] = field(default_factory=list)
-    still_open: list[dict[str, Any]] = field(default_factory=list)
-    closed: list[dict[str, Any]] = field(default_factory=list)
+    top_k: list[dict[str, Any]] = field(default_factory=list)
+    dropped: list[dict[str, Any]] = field(default_factory=list)
+    also_open: list[dict[str, Any]] = field(default_factory=list)
 
 
 def sections(store: OpportunityStore, run_id: str) -> Sections:
     ranks = store.ranks(run_id)
+    out = Sections(previous_run=store.previous_ranked_run(run_id))
+    before = store.ranks(out.previous_run) if out.previous_run else {}
 
     def rank_of(opp: dict[str, Any]) -> tuple[int, int]:
-        r = ranks.get(opp["id"])
-        return (r["rank"] if r else 10**9, opp["id"])
+        return (opp["rank"] or 10**9, opp["id"])
 
-    out = Sections()
     for opp in store.opportunities():
-        r = ranks.get(opp["id"])
+        r, p = ranks.get(opp["id"]), before.get(opp["id"])
         opp = {
             **opp,
             "rank": r["rank"] if r else None,
             "top_k": bool(r and r["top_k"]),
+            "previous_rank": p["rank"] if p else None,
+            "was_top_k": bool(p and p["top_k"]),
+            "drop_reason": None,
             "verified": opp["checked_run"] == run_id and opp["status"] == "open",
         }
-        if opp["status"] == "open" and opp["first_seen_run"] == run_id:
+        is_open = opp["status"] == "open"
+        # With nothing to compare with, every open opportunity is new to the reader.
+        if is_open and (opp["first_seen_run"] == run_id or out.previous_run is None):
             out.new.append(opp)
-        elif opp["status"] == "open":
-            out.still_open.append(opp)
+        elif out.previous_run is None:
+            continue
+        elif opp["top_k"]:
+            out.top_k.append(opp)
+        elif opp["was_top_k"]:
+            opp["drop_reason"] = "closed" if opp["status"] == "closed" else "outranked"
+            out.dropped.append(opp)
         elif opp["status"] == "closed" and opp["closed_run"] == run_id:
-            out.closed.append(opp)
-    out.new.sort(key=rank_of)
-    out.still_open.sort(key=rank_of)
-    out.closed.sort(key=lambda o: (o["company"], o["id"]))
+            opp["drop_reason"] = "closed"
+            out.dropped.append(opp)
+        elif is_open:
+            out.also_open.append(opp)
+    for section in (out.new, out.top_k, out.also_open):
+        section.sort(key=rank_of)
+    # Dropped from the last top K first, in their old order, then the other closings.
+    out.dropped.sort(key=lambda o: (o["previous_rank"] or 10**9, o["company"], o["id"]))
     return out
 
 
@@ -100,6 +117,13 @@ def _header(meta: ReportMeta, stages: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def _was(opp: dict[str, Any]) -> str:
+    """Where a Still-in-top-K opportunity stood in the last run."""
+    if opp["was_top_k"]:
+        return str(opp["previous_rank"])
+    return "entered the top K"
+
+
 def _full_entry(opp: dict[str, Any], summary: str | None, number: int) -> list[str]:
     star = " **(top K)**" if opp["top_k"] else ""
     lines = [f"### {number}. {_one_line(opp['title'])}, {_one_line(opp['company'])}{star}", ""]
@@ -152,41 +176,66 @@ def render(
         ]
         lines.append("")
 
-    lines += [f"## Still open ({len(s.still_open)})", ""]
-    if not s.still_open:
-        lines += ["No earlier opportunities are still open.", ""]
+    no_previous = "No earlier run to compare with."
+    lines += [f"## Still in top K ({len(s.top_k)})", ""]
+    if s.previous_run is None:
+        lines += [no_previous, ""]
+    elif not s.top_k:
+        lines += ["No earlier opportunity is in the top K.", ""]
     else:
         lines += [
-            "| Rank | Opportunity | Company | Location | Term | First seen | Link |",
+            "| Rank | Last run | Opportunity | Company | Location | Term | Link |",
             "| --- | --- | --- | --- | --- | --- | --- |",
         ]
-        for opp in s.still_open:
-            rank = f"{opp['rank']}" if opp["rank"] else "-"
-            if opp["top_k"]:
-                rank += " (top K)"
+        for opp in s.top_k:
             title = _cell(opp["title"])
             if not opp["verified"]:
                 title += " (not checked this run)"
             lines.append(
-                f"| {rank} | {title} | {_cell(opp['company'])} | {_cell(_locations(opp))} | "
-                f"{_cell(opp['term'])} | `{opp['first_seen_run']}` | <{opp['url']}> |"
+                f"| {opp['rank']} | {_was(opp)} | {title} | {_cell(opp['company'])} | "
+                f"{_cell(_locations(opp))} | {_cell(opp['term'])} | <{opp['url']}> |"
             )
         lines.append("")
-        top = [o for o in s.still_open if o["top_k"] and summaries.get(o["id"])]
+        top = [o for o in s.top_k if summaries.get(o["id"])]
         for opp in top:
             lines += [f"- **{_one_line(opp['title'])}:** {_one_line(summaries[opp['id']])}"]
         if top:
             lines.append("")
 
-    lines += [f"## Closed since last run ({len(s.closed)})", ""]
-    if not s.closed:
-        lines += ["Nothing closed in this run.", ""]
-    for opp in s.closed:
+    lines += [f"## Dropped ({len(s.dropped)})", ""]
+    if s.previous_run is None:
+        lines += [no_previous, ""]
+    elif not s.dropped:
+        lines += ["Nothing dropped out of the top K or closed in this run.", ""]
+    for opp in s.dropped:
+        if opp["drop_reason"] == "closed":
+            why = f"closed: {_one_line(opp['status_evidence'] or 'no longer listed')}"
+        else:
+            why = f"outranked, now #{opp['rank']}"
+        was = f" (was #{opp['previous_rank']})" if opp["was_top_k"] else ""
         lines.append(
-            f"- {_one_line(opp['title'])}, {_one_line(opp['company'])}: "
-            f"{_one_line(opp['status_evidence'] or 'closed')} (<{opp['url']}>)"
+            f"- {_one_line(opp['title'])}, {_one_line(opp['company'])}{was}: {why} (<{opp['url']}>)"
         )
-    if s.closed:
+    if s.dropped:
+        lines.append("")
+
+    lines += [f"## Also open ({len(s.also_open)})", ""]
+    if not s.also_open:
+        lines += ["No other earlier opportunities are still open.", ""]
+    else:
+        lines += [
+            "| Rank | Opportunity | Company | Location | Term | First seen | Link |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+        for opp in s.also_open:
+            title = _cell(opp["title"])
+            if not opp["verified"]:
+                title += " (not checked this run)"
+            lines.append(
+                f"| {opp['rank'] or '-'} | {title} | {_cell(opp['company'])} | "
+                f"{_cell(_locations(opp))} | {_cell(opp['term'])} | `{opp['first_seen_run']}` | "
+                f"<{opp['url']}> |"
+            )
         lines.append("")
 
     if note:

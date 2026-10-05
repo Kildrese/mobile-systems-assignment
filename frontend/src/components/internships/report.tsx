@@ -17,20 +17,49 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-const SECTIONS: { key: InternshipOffer["section"]; title: string; empty: string }[] = [
-  { key: "new", title: "New since last run", empty: "Nothing new in this run." },
-  { key: "open", title: "Still open", empty: "No earlier offers are still open." },
-  { key: "closed", title: "Closed since last run", empty: "Nothing closed in this run." },
+const NO_PREVIOUS = "No earlier run to compare with yet.";
+
+const SECTIONS: {
+  key: InternshipOffer["section"];
+  title: string;
+  empty: string;
+  comparesRuns?: boolean;
+}[] = [
+  {
+    key: "new",
+    title: "New since last run",
+    empty: "Nothing new in this run.",
+  },
+  {
+    key: "top_k",
+    title: "Still in top K",
+    empty: "No earlier offer is in the top K.",
+    comparesRuns: true,
+  },
+  {
+    key: "dropped",
+    title: "Dropped",
+    empty: "Nothing dropped out of the top K or closed in this run.",
+    comparesRuns: true,
+  },
+  {
+    key: "open",
+    title: "Also open",
+    empty: "No other earlier offers are still open.",
+  },
 ];
 
 function where(offer: InternshipOffer): string {
-  const places = offer.locations.length ? offer.locations.join(", ") : "Location unknown";
+  const places = offer.locations.length
+    ? offer.locations.join(", ")
+    : "Location unknown";
   return offer.remote === "unknown" || offer.remote === "onsite"
     ? places
     : `${places} (${offer.remote})`;
 }
 
 function Offer({ offer }: { offer: InternshipOffer }) {
+  const closed = offer.status === "closed";
   const facts = [
     where(offer),
     offer.term !== "unknown" && offer.term,
@@ -41,11 +70,20 @@ function Offer({ offer }: { offer: InternshipOffer }) {
     <Card size="sm">
       <CardHeader>
         <CardTitle>
-          {offer.rank && <span className="text-muted-foreground">#{offer.rank} </span>}
+          {offer.rank && (
+            <span className="text-muted-foreground">#{offer.rank} </span>
+          )}
           {offer.title}
           {offer.topK && (
             <span className="ml-2 rounded-md bg-primary px-1.5 py-0.5 text-xs text-primary-foreground">
               Top pick
+            </span>
+          )}
+          {offer.section === "top_k" && (
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              {offer.previousRank === null
+                ? "entered the top K"
+                : `was #${offer.previousRank}`}
             </span>
           )}
         </CardTitle>
@@ -53,7 +91,7 @@ function Offer({ offer }: { offer: InternshipOffer }) {
           {offer.company} · {facts.join(" · ")}
         </CardDescription>
         <CardAction>
-          {offer.section === "closed" ? (
+          {closed ? (
             <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
               Closed
             </span>
@@ -74,7 +112,7 @@ function Offer({ offer }: { offer: InternshipOffer }) {
       </CardHeader>
       {(offer.summary ||
         offer.workAuthorizationQuote ||
-        offer.section === "closed" ||
+        offer.dropReason ||
         !offer.verified) && (
         <CardContent className="flex flex-col gap-2">
           {offer.summary && <p>{offer.summary}</p>}
@@ -83,11 +121,20 @@ function Offer({ offer }: { offer: InternshipOffer }) {
               Work authorization (quoted): “{offer.workAuthorizationQuote}”
             </p>
           )}
-          {offer.section === "closed" && offer.statusEvidence && (
-            <p className="text-muted-foreground">Closed: {offer.statusEvidence}</p>
+          {offer.dropReason === "closed" && (
+            <p className="text-muted-foreground">
+              Closed{offer.statusEvidence && `: ${offer.statusEvidence}`}
+            </p>
           )}
-          {offer.section !== "closed" && !offer.verified && (
-            <p className="text-muted-foreground">Could not be checked in this run.</p>
+          {offer.dropReason === "outranked" && (
+            <p className="text-muted-foreground">
+              Outranked, now #{offer.rank}
+            </p>
+          )}
+          {!closed && !offer.verified && (
+            <p className="text-muted-foreground">
+              Could not be checked in this run.
+            </p>
           )}
         </CardContent>
       )}
@@ -122,7 +169,11 @@ export function InternshipReport() {
       <Alert variant="destructive">
         <AlertTitle>The report couldn&apos;t be loaded.</AlertTitle>
         <AlertDescription>
-          <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void query.refetch()}
+          >
             Try again
           </Button>
         </AlertDescription>
@@ -136,6 +187,10 @@ export function InternshipReport() {
         No report yet. The tracker runs every morning; check back tomorrow.
       </p>
     );
+
+  // ponytail: inferred, the API has no "last run" field. Every offer listed after a first
+  // run but a new one was ranked last run; add the field if this misleads.
+  const firstRun = offers.every((o) => o.previousRank === null);
 
   return (
     <div className="flex flex-col gap-8">
@@ -154,7 +209,7 @@ export function InternshipReport() {
           Export
         </Button>
       </div>
-      {SECTIONS.map(({ key, title, empty }) => {
+      {SECTIONS.map(({ key, title, empty, comparesRuns }) => {
         const list = offers.filter((o) => o.section === key);
         return (
           <section key={key} className="flex flex-col gap-3">
@@ -162,7 +217,9 @@ export function InternshipReport() {
               {title} ({list.length})
             </h2>
             {list.length === 0 ? (
-              <p className="text-muted-foreground">{empty}</p>
+              <p className="text-muted-foreground">
+                {comparesRuns && firstRun ? NO_PREVIOUS : empty}
+              </p>
             ) : (
               list.map((o) => <Offer key={o.opportunityId} offer={o} />)
             )}

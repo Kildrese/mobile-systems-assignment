@@ -341,9 +341,10 @@ def test_second_run_accumulates(ipolicy, keys):
 
     report = result.report_path.read_text()
     assert "## New since last run (0)" in report
-    assert "## Still open (1)" in report
-    assert "## Closed since last run (1)" in report
-    assert "Product Engineering Intern, Gamma" in report
+    assert "## Still in top K (1)" in report
+    assert "## Dropped (1)" in report
+    assert "## Also open (0)" in report
+    assert "Product Engineering Intern, Gamma (was #2): closed:" in report
 
 
 @respx.mock
@@ -406,8 +407,8 @@ def test_network_cut_after_a_good_run(ipolicy, keys):
     assert stages["collect"]["outcome"] == "partial"
     assert stages["collect"]["reason"] == "no_source_readable"
     report = result.report_path.read_text()
-    assert "## Still open (2)" in report  # an unreadable board closes nothing
-    assert "## Closed since last run (0)" in report
+    assert "## Still in top K (2)" in report  # an unreadable board closes nothing
+    assert "## Dropped (0)" in report
 
 
 def test_detail_fetches_need_a_fetch_limit(tmp_path):

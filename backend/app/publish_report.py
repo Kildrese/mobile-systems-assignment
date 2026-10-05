@@ -47,6 +47,8 @@ def offers(store: OpportunityStore, run_id: str) -> list[dict[str, Any]]:
             "section": section,
             "rank": opp["rank"],
             "top_k": opp["top_k"],
+            "previous_rank": opp["previous_rank"],
+            "drop_reason": opp["drop_reason"],
             "company": opp["company"],
             "title": opp["title"],
             "role_type": opp["role_type"],
@@ -63,7 +65,12 @@ def offers(store: OpportunityStore, run_id: str) -> list[dict[str, Any]]:
             "verified": opp["verified"],
             "first_seen_at": datetime.fromisoformat(opp["first_seen_at"]),
         }
-        for section, opps in (("new", s.new), ("open", s.still_open), ("closed", s.closed))
+        for section, opps in (
+            ("new", s.new),
+            ("top_k", s.top_k),
+            ("dropped", s.dropped),
+            ("open", s.also_open),
+        )
         for opp in opps
     ]
 

@@ -452,6 +452,20 @@ class OpportunityStore:
             for r in self.db.execute("SELECT * FROM ranks WHERE run_id = ?", (run_id,))
         }
 
+    def previous_ranked_run(self, run_id: str) -> str | None:
+        """The newest finished run before `run_id` that has ranks: the report's "last run".
+
+        A run that failed before Rank has none and is skipped. Run ids start with their
+        UTC time, so they sort by age.
+        """
+        row = self.db.execute(
+            "SELECT id FROM runs WHERE id < ? AND ended_at IS NOT NULL "
+            "AND EXISTS (SELECT 1 FROM ranks WHERE ranks.run_id = runs.id) "
+            "ORDER BY id DESC LIMIT 1",
+            (run_id,),
+        ).fetchone()
+        return row[0] if row else None
+
     def put_summary(self, run_id: str, opportunity_id: int, text: str) -> None:
         with self.db:
             self.db.execute(

@@ -773,10 +773,11 @@
             "type": "string",
             "enum": [
               "new",
-              "open",
-              "closed"
+              "top_k",
+              "dropped",
+              "open"
             ],
-            "description": "`new` since the last run, still `open`, or `closed` since the last run."
+            "description": "`new` since the last run, still in the `top_k`, `dropped` from the last run's top K or closed this run, or also `open`."
           },
           "rank": {
             "anyOf": [
@@ -790,6 +791,32 @@
           },
           "topK": {
             "type": "boolean"
+          },
+          "previousRank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The rank in the last run, if it had one."
+          },
+          "dropReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "closed",
+                  "outranked"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why a `dropped` offer left the report's top K. Null in other sections."
           },
           "company": {
             "type": "string"
@@ -890,6 +917,8 @@
           "section",
           "rank",
           "topK",
+          "previousRank",
+          "dropReason",
           "company",
           "title",
           "roleType",
