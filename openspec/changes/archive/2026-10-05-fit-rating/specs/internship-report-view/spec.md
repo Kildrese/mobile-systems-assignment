@@ -7,8 +7,9 @@ The web app SHALL show the latest report at `/internships` to signed-in users. T
 - top-K offers are marked, and an offer under Still in top K shows its previous rank, or "entered the top K";
 - an offer under Dropped shows why: "Closed" with the evidence, or "Outranked, now #n";
 - a rated offer shows "Fit n/3" and the reason; an unrated one shows nothing about fit;
-- each open offer has an "Apply" button (external-link icon) that opens its posting in a new tab;
+- each open offer has an "Apply" button (external-link icon) that opens its posting in a new tab, only when the posting URL is `http` or `https`;
 - an "Export" button (download icon) downloads the run's Markdown export;
+- a "Run history" link goes to `/internships/history`, and an "Articles in this run" link to the latest run's page;
 - work-authorization wording appears only as a quote;
 - an offer not checked in the run says so.
 

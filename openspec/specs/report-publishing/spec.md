@@ -23,9 +23,10 @@ The tracker SHALL run once a day from a scheduled GitHub Actions workflow at 09:
 - the report section: `new`, `top_k`, `dropped` or `open`, for New since last run, Still in top K, Dropped and Also open;
 - the rank, the top-K mark, and the rank in the last run (`previous_rank`);
 - for a dropped row, the reason (`drop_reason`: `closed` or `outranked`);
-- the record's fields, the work-authorization quote, the summary, the status and the evidence.
+- the record's fields, the work-authorization quote, the summary, the status and the evidence;
+- the fit rating (`fit_score`, 0 to 3) and its reason (`fit_reason`).
 
-Unknown pay, deadline and quote, and a missing previous rank or drop reason, SHALL be null. Publishing a run again SHALL replace its rows.
+Unknown pay, deadline and quote, and a missing previous rank, drop reason or fit rating, SHALL be null. Publishing a run again SHALL replace its rows.
 
 #### Scenario: Sections match the report
 - **WHEN** a run's report lists one opportunity under each of New since last run, Still in top K, Dropped and Also open
@@ -50,4 +51,8 @@ Unknown pay, deadline and quote, and a missing previous rank or drop reason, SHA
 #### Scenario: Summary from an earlier run
 - **WHEN** an opportunity was summarized when it was new and is still in the top K in a later run
 - **THEN** its row in the later run carries that summary
+
+#### Scenario: Fit published
+- **WHEN** an opportunity in the report is rated 2 with a reason, and another is not rated
+- **THEN** the first row has `fit_score` 2 and that reason, and the second has both null
 
