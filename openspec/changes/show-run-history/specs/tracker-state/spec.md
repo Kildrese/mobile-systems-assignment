@@ -20,7 +20,7 @@ Each row SHALL hold:
 
 The status is:
 - `fetched`: the document was downloaded in this run;
-- `skipped`: it was already seen (served from state, a `304`, or a posting already curated);
+- `skipped`: it was already seen (served from state, a `304`, or a posting first seen in an earlier run);
 - `rejected`: a guardrail refused it (scheme, credentials, host, address, size, content type or redirects);
 - `failed`: the request was tried and failed (timeout, connection error, HTTP error).
 
@@ -39,7 +39,7 @@ A fetch refused by a budget SHALL NOT be logged.
 - **THEN** a `skipped` row of kind `board` is logged
 
 #### Scenario: Known posting
-- **WHEN** Collect keeps a posting that was curated in an earlier run
+- **WHEN** Collect keeps a posting that was first seen in an earlier run
 - **THEN** a `skipped` row of kind `posting` is logged, and a posting first seen in this run gets a `fetched` row
 
 #### Scenario: Budget refusal

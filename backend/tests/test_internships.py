@@ -187,7 +187,7 @@ def test_run_history(tmp_path, client, ada):
     body = client.get("/api/internships/runs", headers=ada.headers).json()
     assert [r["id"] for r in body["runs"]] == [RUN2, RUN1]
     newest = body["runs"][0]
-    assert newest["sections"] == {"new": 1, "open": 1}
+    assert newest["sections"] == {"new": 1, "dropped": 1}
     assert newest["articles"] == {"fetched": 1, "skipped": 1, "rejected": 1}
     assert "reportMarkdown" not in newest
 

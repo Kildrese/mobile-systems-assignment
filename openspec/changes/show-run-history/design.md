@@ -28,7 +28,7 @@ Every place that reads a document already ends with a known outcome, and each on
 ## Decisions
 
 ### D1. Record the log in the state, not from the trace
-Code that knows the outcome calls `StateStore.log_fetch(run_id, stage, kind, url, title, status, reason)` at the point it decides. The publisher reads `fetch_log` like any other state table.
+Code that knows the outcome calls `state.log_fetch(db, run_id, stage, kind, url, title, status, reason)` at the point it decides, with the status from `state.fetch_status()`. The publisher reads `fetch_log` like any other state table.
 
 *Alternative:* parse `traces/<run_id>.jsonl` at publish time, with no tracker change. Rejected for three reasons:
 - the trace is a diagnostic format, not a schema;
@@ -39,11 +39,13 @@ Code that knows the outcome calls `StateStore.log_fetch(run_id, stage, kind, url
 | Status | Means | Cases |
 | --- | --- | --- |
 | `fetched` | Read over the network this run | Page `ok`, board 200, a posting not seen before |
-| `skipped` | Already seen, no download | Page served from state (`cached`), board 304, a posting already curated |
+| `skipped` | Already seen, no download | Page served from state (`cached`), board 304, a posting first seen in an earlier run |
 | `rejected` | Refused by a guardrail before or during the request | `guard.Blocked` reasons (scheme, credentials, host, address, DNS), `too_large`, `unsupported_content_type`, `too_many_redirects` |
 | `failed` | Tried and did not get a usable answer | Timeout, connection error, HTTP 4xx/5xx |
 
 A fetch refused by a budget made no request and was never tried, so it is not logged. It stays in the trace.
+
+A posting counts as `skipped` when it was first seen in an earlier run, whether or not it has been curated yet: what the log records is whether the document is new to the tracker. A posting still waiting for the Curator shows in the report's "waiting for review" count.
 
 ### D3. Kinds and titles
 `kind` is `page`, `board` or `posting`, so a long run can be filtered down to the pages the Scout read. The title is:
@@ -59,7 +61,7 @@ All text is stored as it came: titles cut to 300 characters, URLs to 2,048 (the 
 The history is paged with `limit` (default 30, maximum 100) and `before` (a run id, since ids sort by start time).
 
 ### D5. Rendering web text
-Titles, URLs, reasons and summaries are React text children, never `dangerouslySetInnerHTML`. A URL is an `<a href>` only when `new URL(url).protocol` is `http:` or `https:`, and otherwise plain text, because a rejected URL can be `javascript:` or `data:`. One `SafeLink` component does this check, and the Apply button in the report uses it too.
+Titles, URLs, reasons and summaries are React text children, never `dangerouslySetInnerHTML`. A URL is an `<a href>` only when `new URL(url).protocol` is `http:` or `https:`, and otherwise plain text, because a rejected URL can be `javascript:` or `data:`. One helper, `webUrl()`, does this check; the articles table and the Apply button in the report both use it.
 
 ### D6. Pages
 There are no Tabs or Table components in the app. The pages use a plain `<table>` with Tailwind classes rather than adding new shadcn components.

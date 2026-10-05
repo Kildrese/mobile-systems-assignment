@@ -1,11 +1,12 @@
 import { BookOpen, Briefcase, UserRound, type LucideIcon } from "lucide-react";
 import { useEffect } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import { DeleteAccount } from "@/components/account/delete-account";
 import { PasswordForm } from "@/components/account/password-form";
 import { ProfileForm } from "@/components/account/profile-form";
 import { LoginForm } from "@/components/auth/login-form";
 import { SignupForm } from "@/components/auth/signup-form";
+import { RunArticles, RunHistory } from "@/components/internships/history";
 import { InternshipReport } from "@/components/internships/report";
 import {
   Card,
@@ -49,7 +50,7 @@ const TILES: {
     to: "/internships",
     icon: Briefcase,
     title: "Internship report",
-    description: "Today's NYC startup internships: new, still open and closed.",
+    description: "Today's NYC startup internships, the run history and what each run read.",
   },
   {
     to: "/account",
@@ -120,6 +121,39 @@ export function InternshipsPage() {
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">Internships</h1>
       <InternshipReport />
+    </div>
+  );
+}
+
+export function InternshipHistoryPage() {
+  useTitle("Run history");
+  return (
+    <div className="flex flex-col gap-4">
+      <h1 className="text-2xl font-semibold">Run history</h1>
+      <RunHistory />
+    </div>
+  );
+}
+
+export function InternshipRunPage() {
+  const { id = "" } = useParams();
+  useTitle("Run");
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold">Run {id}</h1>
+        <Link
+          to="/internships/history"
+          className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          Run history
+        </Link>
+      </div>
+      <InternshipReport runId={id} />
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">Articles</h2>
+        <RunArticles runId={id} />
+      </section>
     </div>
   );
 }
