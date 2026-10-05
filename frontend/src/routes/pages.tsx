@@ -1,5 +1,5 @@
-import { BookOpen, Briefcase, UserRound, type LucideIcon } from "lucide-react";
-import { useEffect } from "react";
+import { BookOpen, Briefcase, History, UserRound, type LucideIcon } from "lucide-react";
+import { useEffect, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { DeleteAccount } from "@/components/account/delete-account";
 import { PasswordForm } from "@/components/account/password-form";
@@ -8,13 +8,16 @@ import { LoginForm } from "@/components/auth/login-form";
 import { SignupForm } from "@/components/auth/signup-form";
 import { RunArticles, RunHistory } from "@/components/internships/history";
 import { InternshipReport } from "@/components/internships/report";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { API_URL, APP_NAME } from "@/lib/app";
+import { runLabel } from "@/lib/run-id";
 import { useUser } from "@/lib/use-auth";
 import { safeNext } from "@/lib/safe-next";
 
@@ -115,11 +118,42 @@ export function AccountPage() {
   );
 }
 
+function PageHeader({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        <p className="text-muted-foreground">{description}</p>
+      </div>
+      {action}
+    </div>
+  );
+}
+
 export function InternshipsPage() {
   useTitle("Internships");
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Internships</h1>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Internships"
+        description="The internship tracker's latest report, updated every morning."
+        action={
+          <Button asChild variant="outline" size="sm">
+            <Link to="/internships/history">
+              <History data-icon="inline-start" />
+              Run history
+            </Link>
+          </Button>
+        }
+      />
       <InternshipReport />
     </div>
   );
@@ -128,8 +162,11 @@ export function InternshipsPage() {
 export function InternshipHistoryPage() {
   useTitle("Run history");
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Run history</h1>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Run history"
+        description="Every published run, newest first: what changed and what it read."
+      />
       <RunHistory />
     </div>
   );
@@ -137,23 +174,33 @@ export function InternshipHistoryPage() {
 
 export function InternshipRunPage() {
   const { id = "" } = useParams();
-  useTitle("Run");
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") === "articles" ? "articles" : "report";
+  useTitle(`Run of ${runLabel(id)}`);
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">Run {id}</h1>
-        <Link
-          to="/internships/history"
-          className="text-sm text-muted-foreground underline-offset-4 hover:underline"
-        >
-          Run history
-        </Link>
-      </div>
-      <InternshipReport runId={id} />
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">Articles</h2>
-        <RunArticles runId={id} />
-      </section>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={`Run of ${runLabel(id)}`}
+        description="The report this run published, and every page, job board and posting it tried to read."
+      />
+      <Tabs
+        value={tab}
+        onValueChange={(value) =>
+          setParams(value === "articles" ? { tab: value } : {}, { replace: true })
+        }
+        className="gap-6"
+      >
+        <TabsList>
+          <TabsTrigger value="report">Report</TabsTrigger>
+          <TabsTrigger value="articles">Articles</TabsTrigger>
+        </TabsList>
+        <TabsContent value="report">
+          <InternshipReport runId={id} />
+        </TabsContent>
+        <TabsContent value="articles">
+          <RunArticles runId={id} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

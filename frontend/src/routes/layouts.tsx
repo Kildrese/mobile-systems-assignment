@@ -1,4 +1,5 @@
-import { Link, Outlet, useLocation } from "react-router";
+import { Fragment } from "react";
+import { Link, matchPath, Outlet, useLocation } from "react-router";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -10,17 +11,32 @@ import {
 import { Brand } from "@/components/layout/brand";
 import { UserMenu } from "@/components/layout/user-menu";
 import { Toaster } from "@/components/ui/sonner";
+import { runLabel } from "@/lib/run-id";
 
-const PAGE_NAMES: Record<string, string> = {
-  "/internships": "Internships",
-  "/internships/history": "Run history",
-  "/account": "Account",
-};
+type Crumb = { label: string; to?: string };
 
-// Home › current page. Not shown on home itself.
+// The trail after Home for a page, ending with the page itself (no link).
+// Null on home and unknown paths.
+function trail(pathname: string): Crumb[] | null {
+  const path = pathname.replace(/\/+$/, "");
+  if (path === "/account") return [{ label: "Account" }];
+  if (path === "/internships") return [{ label: "Internships" }];
+  if (path === "/internships/history")
+    return [{ label: "Internships", to: "/internships" }, { label: "Run history" }];
+  const run = matchPath("/internships/runs/:id", path);
+  if (run?.params.id)
+    return [
+      { label: "Internships", to: "/internships" },
+      { label: "Run history", to: "/internships/history" },
+      { label: runLabel(run.params.id) },
+    ];
+  return null;
+}
+
+// Home › … › current page. Not shown on home itself.
 function Breadcrumbs() {
-  const name = PAGE_NAMES[useLocation().pathname];
-  if (!name) return null;
+  const crumbs = trail(useLocation().pathname);
+  if (!crumbs) return null;
   return (
     <Breadcrumb className="mb-6">
       <BreadcrumbList>
@@ -29,10 +45,20 @@ function Breadcrumbs() {
             <Link to="/">Home</Link>
           </BreadcrumbLink>
         </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          <BreadcrumbPage>{name}</BreadcrumbPage>
-        </BreadcrumbItem>
+        {crumbs.map(({ label, to }) => (
+          <Fragment key={label}>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              {to ? (
+                <BreadcrumbLink asChild>
+                  <Link to={to}>{label}</Link>
+                </BreadcrumbLink>
+              ) : (
+                <BreadcrumbPage>{label}</BreadcrumbPage>
+              )}
+            </BreadcrumbItem>
+          </Fragment>
+        ))}
       </BreadcrumbList>
     </Breadcrumb>
   );
