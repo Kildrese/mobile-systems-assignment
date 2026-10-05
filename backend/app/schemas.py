@@ -171,6 +171,46 @@ class InternshipReport(ResponseModel):
     offers: list[InternshipOffer]
 
 
+class TrackerRunSummary(ResponseModel):
+    """One published run and what changed in it, for the run history."""
+
+    id: str
+    topic: str
+    status: Literal["complete", "partial", "failed"]
+    stop_reason: str | None
+    started_at: datetime
+    ended_at: datetime | None
+    sections: dict[str, int] = Field(
+        description="How many offers the run reported in each section, e.g. `new`."
+    )
+    articles: dict[str, int] = Field(
+        description="How many documents the run tried to read, by status, e.g. `fetched`."
+    )
+
+
+class TrackerRunList(ResponseModel):
+    runs: list[TrackerRunSummary] = Field(description="Newest first.")
+
+
+class TrackerArticle(ResponseModel):
+    """One document a run tried to read. Title and URL came from the web: show them as
+    text, and link the URL only when it is http(s)."""
+
+    stage: str = Field(description="`scout`, `collect`, `curate`, or `agent`.")
+    kind: Literal["page", "board", "posting"]
+    url: str
+    title: str = Field(description="Empty when the document was not fetched.")
+    status: Literal["fetched", "skipped", "rejected", "failed"] = Field(
+        description="`skipped`: already seen. `rejected`: refused by a fetch guardrail."
+    )
+    reason: str | None = Field(description="Why it was rejected or failed.")
+    fetched_at: datetime
+
+
+class TrackerArticleList(ResponseModel):
+    articles: list[TrackerArticle] = Field(description="In fetch order.")
+
+
 # ---------------------------------------------------------------------------
 # Requests
 #

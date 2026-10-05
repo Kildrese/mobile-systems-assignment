@@ -128,3 +128,23 @@ class InternshipOffer(Base):
     # Checked open in this run (false: its board could not be read).
     verified: Mapped[bool] = mapped_column(Boolean)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class TrackerArticle(Base):
+    """One document a run tried to read: a page, a job board or a posting. Published from
+    the tracker's fetch log; titles and URLs came from the web and are untrusted text."""
+
+    __tablename__ = "tracker_articles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey(TrackerRun.id, ondelete="CASCADE"), index=True)
+    # scout, collect, curate, or agent (the single-agent loop).
+    stage: Mapped[str] = mapped_column(String)
+    # page, board or posting.
+    kind: Mapped[str] = mapped_column(String)
+    url: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text)
+    # fetched, skipped (already seen), rejected (by a guardrail) or failed.
+    status: Mapped[str] = mapped_column(String)
+    reason: Mapped[str | None] = mapped_column(String)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

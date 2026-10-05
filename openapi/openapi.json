@@ -595,6 +595,230 @@
         ]
       }
     },
+    "/api/internships/runs": {
+      "get": {
+        "tags": [
+          "Internships"
+        ],
+        "summary": "Run history",
+        "operationId": "listInternshipRuns",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "At most this many runs.",
+              "default": 30,
+              "title": "Limit"
+            },
+            "description": "At most this many runs."
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A run id: only runs that started before it.",
+              "title": "Before"
+            },
+            "description": "A run id: only runs that started before it."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Published runs, newest first, with what changed in each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackerRunList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON or fails validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, unknown or expired token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/internships/runs/{id}": {
+      "get": {
+        "tags": [
+          "Internships"
+        ],
+        "summary": "A run's report",
+        "operationId": "getInternshipRun",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run and its offers, best rank first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternshipReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, unknown or expired token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No published run with this id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/internships/runs/{id}/articles": {
+      "get": {
+        "tags": [
+          "Internships"
+        ],
+        "summary": "The documents a run tried to read",
+        "operationId": "listInternshipRunArticles",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pages, job boards and postings, in fetch order, with their status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackerArticleList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, unknown or expired token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No published run with this id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/internships/runs/{id}/report.md": {
       "get": {
         "tags": [
@@ -1036,6 +1260,84 @@
         ],
         "title": "RegisterBody"
       },
+      "TrackerArticle": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "description": "`scout`, `collect`, `curate`, or `agent`."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "page",
+              "board",
+              "posting"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "Empty when the document was not fetched."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "fetched",
+              "skipped",
+              "rejected",
+              "failed"
+            ],
+            "description": "`skipped`: already seen. `rejected`: refused by a fetch guardrail."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it was rejected or failed."
+          },
+          "fetchedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stage",
+          "kind",
+          "url",
+          "title",
+          "status",
+          "reason",
+          "fetchedAt"
+        ],
+        "title": "TrackerArticle",
+        "description": "One document a run tried to read. Title and URL came from the web: show them as\ntext, and link the URL only when it is http(s)."
+      },
+      "TrackerArticleList": {
+        "properties": {
+          "articles": {
+            "items": {
+              "$ref": "#/components/schemas/TrackerArticle"
+            },
+            "type": "array",
+            "description": "In fetch order."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "articles"
+        ],
+        "title": "TrackerArticleList"
+      },
       "TrackerRun": {
         "properties": {
           "id": {
@@ -1095,6 +1397,94 @@
         ],
         "title": "TrackerRun",
         "description": "One daily internship tracker run."
+      },
+      "TrackerRunList": {
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/TrackerRunSummary"
+            },
+            "type": "array",
+            "description": "Newest first."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "runs"
+        ],
+        "title": "TrackerRunList"
+      },
+      "TrackerRunSummary": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "topic": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "failed"
+            ]
+          },
+          "stopReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sections": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "description": "How many offers the run reported in each section, e.g. `new`."
+          },
+          "articles": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "description": "How many documents the run tried to read, by status, e.g. `fetched`."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "topic",
+          "status",
+          "stopReason",
+          "startedAt",
+          "endedAt",
+          "sections",
+          "articles"
+        ],
+        "title": "TrackerRunSummary",
+        "description": "One published run and what changed in it, for the run history."
       },
       "UpdateUserBody": {
         "properties": {
