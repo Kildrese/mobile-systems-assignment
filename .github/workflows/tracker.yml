@@ -8,9 +8,10 @@ name: Internship tracker
 
 on:
   schedule:
-    # GitHub cron is UTC: 09:00 UTC is 5:00 in New York in summer, 4:00 in winter.
-    # Scheduled runs often start a few minutes late.
-    - cron: "0 9 * * *"
+    # GitHub cron is UTC: 09:17 UTC is 5:17 in New York in summer, 4:17 in winter.
+    # Off the hour on purpose: GitHub delays scheduled runs at the start of each hour,
+    # when load is highest, and may drop them (the first 09:00 run never started).
+    - cron: "17 9 * * *"
   workflow_dispatch:
 
 # Never two runs at once: they share the state file.

@@ -3,10 +3,10 @@
 ## MODIFIED Requirements
 
 ### Requirement: Daily scheduled run
-The tracker SHALL run once a day from a scheduled GitHub Actions workflow at 09:00 UTC, and MAY be started manually from the Actions tab by repository writers. At most one run SHALL be in progress at a time. The job's timeout SHALL exceed the policy's `limits.max_wall_seconds` by enough for setup, saving state and publishing (at least 5 minutes), so a run is never cut off by the job before its own wall-clock budget ends. The run's SQLite state SHALL be restored before the run and saved after it, so each run continues from the previous one.
+The tracker SHALL run once a day from a scheduled GitHub Actions workflow at 09:17 UTC (off the hour, when GitHub is less likely to delay or drop scheduled runs), and MAY be started manually from the Actions tab by repository writers. At most one run SHALL be in progress at a time. The job's timeout SHALL exceed the policy's `limits.max_wall_seconds` by enough for setup, saving state and publishing (at least 5 minutes), so a run is never cut off by the job before its own wall-clock budget ends. The run's SQLite state SHALL be restored before the run and saved after it, so each run continues from the previous one.
 
 #### Scenario: Scheduled run
-- **WHEN** 09:00 UTC passes
+- **WHEN** 09:17 UTC passes
 - **THEN** the workflow runs `python -m tracker run` with the state from the previous run, then publishes the result
 
 #### Scenario: Nothing ran
