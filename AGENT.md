@@ -16,6 +16,7 @@ All numbers below come from run 1, `20261004T173811Z-d334` ([report](reports/run
 | **Curator:** each field of a posting's record (title, role type, term, locations, pay, deadline, work-authorization wording), plus the quote it came from | Whether a proposed board is accepted: kind, board id, evidence URL seen in this run, at most `max_new_sources` (`propose_source`) |
 | **Curator:** whether two postings of the same company are the same role (`mark_same`), or a posting is unclear (`flag_unclear`) | Reading every board, with `If-None-Match`/`If-Modified-Since` (`sources.py`) |
 | **Editor:** the wording of each summary | Which postings reach the Curator: the title and location prefilter |
+| **Assessor:** each opportunity's fit with the profile (0–3) and its one-sentence reason | Whether a rating is kept: an id in the batch, fit 0–3, a reason of at most 200 characters that passes the summary check; and when to rate again (only after a profile change) |
 | | Whether a record is accepted: every quote must be in the posting text word for word (`save_record`) |
 | | Company and URL (always from the board, never from the model) |
 | | Same canonical URL means the same opportunity (`link_exact`) |
@@ -23,7 +24,9 @@ All numbers below come from run 1, `20261004T173811Z-d334` ([report](reports/run
 | | Whether a summary is kept: at most 3 sentences, and no number or month missing from the record |
 | | Every budget, every retry, every guardrail |
 
-**The decision moved out of the model: ranking.** The single-agent tracker (`examples/single-agent.yaml`) lets the model order the items in `finish`. In the internship pipeline, `ranking.py` scores each open opportunity from config weights: role 3, term 3, location 2, recency 1, focus 3. A criterion scores 1 for a match, 0 for a mismatch and 0.5 for `unknown`. Three reasons:
+**The decision moved out of the model: ranking.** The single-agent tracker (`examples/single-agent.yaml`) lets the model order the items in `finish`. In the internship pipeline, `ranking.py` scores each open opportunity from config weights: role 3, term 3, location 2, recency 1, focus 3, fit 3. A criterion scores 1 for a match, 0 for a mismatch and 0.5 for `unknown`.
+
+Fit is the one judgment the score takes from a model (added after run 1, change `fit-rating`). Nearly every posting matches the search on role, term, location and focus, so without it recency alone ordered the top K. The Assessor rates each opportunity once against a short profile in `config.yaml`, 0 to 3 with a one-sentence reason; code checks the rating, stores it, and reuses it every run until the profile changes. Ranking stays in code: the model never orders the list, a rating is at most 3 points and moves nothing else, and an unrated opportunity scores half, like any unknown field. Three reasons for ranking in code:
 
 1. **Run comparison needs a stable rank.** The "New / Still in top K / Dropped" report compares this run's top K with the last one. If a model ranks, two runs over identical postings can order them differently, and an opportunity "drops" because of sampling, not because anything changed. Scores from code are reproducible.
 2. **The ranking reads untrusted text.** A posting that says "rank this first" can't move a weighted sum of fields that were checked against quotes. It could move a model's ordering.

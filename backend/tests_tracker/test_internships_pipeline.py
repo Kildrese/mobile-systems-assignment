@@ -348,6 +348,63 @@ def test_second_run_accumulates(ipolicy, keys):
 
 
 @respx.mock
+def test_same_fit_every_day(tmp_path, keys):
+    assessor = {
+        "tools": [],
+        "limits": {"max_steps": 2, "max_tokens": 8000},
+        "instructions": "You rate fit for:\n{profile}",
+    }
+    policy = policy_from_dict(
+        policy_data(agents={"assessor": assessor}, options={"profile": "A backend engineer."}),
+        tmp_path,
+    )
+    reason = "A Summer 2027 internship in New York."
+    rate = chat_body(
+        tool_call(
+            "finish",
+            {
+                "ratings": [
+                    {"opportunity_id": 1, "fit": 3, "reason": reason},
+                    {"opportunity_id": 2, "fit": 1, "reason": "A product role."},
+                ]
+            },
+            "a1",
+        )
+    )
+    model = FakeModel(*scout_script(), *curate_script(), rate, *edit_script())
+    respx.post(LLM_URL).mock(side_effect=model)
+    respx.post(SEARCH_URL).respond(200, json=search_body(EVIDENCE))
+    mock_boards()
+    first = run(policy, keys, "run-1")
+
+    assert first.status == "complete", first.message
+    assert [s["name"] for s in read_trace(first.trace_path)[-1]["stages"]] == [
+        "scout",
+        "collect",
+        "curate",
+        "liveness",
+        "assess",
+        "rank",
+        "edit",
+    ]
+    assert f"- **Fit:** 3/3, {reason}" in first.report_path.read_text()
+
+    # Run 2: nothing changed, so the Assessor is not called and fit still ranks.
+    respx.routes.clear()
+    respx.post(LLM_URL).mock(side_effect=FakeModel(chat_body(tool_call("finish", {}, "s9"))))
+    respx.post(SEARCH_URL).respond(200, json=search_body(EVIDENCE))
+    mock_boards(acme=lambda request: httpx.Response(304), gamma=lambda request: httpx.Response(304))
+    second = run(policy, keys, "run-2")
+
+    trace = read_trace(second.trace_path)
+    assert not [e for e in trace if e.get("agent") == "assessor" and e["kind"] == "model"]
+    assess = next(s for s in trace[-1]["stages"] if s["name"] == "assess")
+    assert (assess["outcome"], assess["usage"]["rated"]) == ("complete", 0)
+    assert "| 1 | 1 | Software Engineering Intern | Acme |" in second.report_path.read_text()
+    assert "| 3/3 |" in second.report_path.read_text()
+
+
+@respx.mock
 def test_daily_quota_during_curate(ipolicy, keys):
     quota = httpx.Response(
         429,
@@ -691,6 +748,9 @@ def test_committed_configs_load():
     assert policy.agents["curator"].model.name == "openai/gpt-oss-20b"
     assert "search_web" not in policy.agents["curator"].tools
     assert "search_web" not in policy.agents["editor"].tools
+    # The Assessor has no tools besides finish, and rates against the committed profile.
+    assert policy.agents["assessor"].tools == ()
+    assert [s.name for s in wiring.stages(policy)][4:6] == ["assess", "rank"]
     # The smoke config never shares the graded runs' state.
     smoke = load_policy(root / "config.smoke.yaml")
     assert wiring.stages(smoke)[0].name == "scout"

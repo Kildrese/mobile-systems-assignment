@@ -3,13 +3,13 @@
 The only module of the use case that knows about agents, stages and the tool
 registry. It registers the use case's tools, validates its `options`, and builds the
 fixed pipeline: Scout (agent), Collect (code, required), Curate (agent), Liveness
-(code), Rank (code, required), Edit (agent). The conductor writes the report with
-`report_writer` once every stage has run.
+(code), Assess (agent, optional), Rank (code, required), Edit (agent). The conductor
+writes the report with `report_writer` once every stage has run.
 """
 
 import json
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -25,7 +25,14 @@ from tracker.state import fetch_status, log_fetch
 from tracker.tools import Toolbox, ToolOutcome, ToolSpec, register, validation_message
 from tracker.trace import Trace
 from tracker.untrusted import injection_suspected, wrap
-from tracker.usecases.internships import curation, editing, lifecycle, ranking, sources
+from tracker.usecases.internships import (
+    assessing,
+    curation,
+    editing,
+    lifecycle,
+    ranking,
+    sources,
+)
 from tracker.usecases.internships import report as internship_report
 from tracker.usecases.internships.http import GuardedHttp
 from tracker.usecases.internships.ranking import RankingSettings
@@ -49,6 +56,13 @@ class InternshipOptions(BaseModel):
     ranking: RankingSettings = RankingSettings()
     # Job boards can be large JSON documents; pages keep fetch.max_bytes.
     board_max_bytes: int = Field(default=8_000_000, gt=0)
+    # The candidate and the internship they want, for the Assessor. Empty: no Assess stage.
+    profile: str = ""
+
+
+def fit_enabled(policy: Policy) -> bool:
+    """Whether the run rates fit: an `assessor` profile and a profile text."""
+    return "assessor" in policy.agents and bool(options(policy).profile.strip())
 
 
 def options(policy: Policy) -> InternshipOptions:
@@ -442,6 +456,21 @@ SUMMARIES_SCHEMA = _schema(
     },
 )
 
+RATINGS_SCHEMA = _schema(
+    "finish",
+    "Submit your fit ratings and end. fit is 0 to 3; reason is one sentence from the record.",
+    {
+        "ratings": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"opportunity_id": _INT, "fit": _INT, "reason": _STR},
+                "required": ["opportunity_id", "fit", "reason"],
+            },
+        }
+    },
+)
+
 
 # Stages
 
@@ -641,6 +670,76 @@ class LivenessStage:
 
 
 @dataclass
+class AssessStage:
+    name: str = "assess"
+    agent: str = "assessor"
+    required: bool = False
+    kind: str = "agent"
+    providers: frozenset = field(default_factory=frozenset)
+
+    def run(self, ctx: StageContext) -> StageOutcome:
+        """One batch per fresh conversation, newest first, until none is left to rate."""
+        profile = options(ctx.policy).profile
+        assert ctx.profile is not None
+        instructions = ctx.profile.instructions.replace("{profile}", profile.strip())
+        ctx = replace(ctx, profile=ctx.profile.model_copy(update={"instructions": instructions}))
+        store = OpportunityStore(ctx.state)
+        digest = assessing.profile_hash(profile)
+        todo = store.needs_fit(digest)
+        for start in range(0, len(todo), assessing.BATCH_SIZE):
+            stop = self._assess(ctx, store, profile, todo[start : start + assessing.BATCH_SIZE])
+            if stop.finish is None:  # budget or provider stop: the rest waits
+                outcome = StageOutcome.from_stop(stop)
+                outcome.usage = {"rated": len(todo) - len(store.needs_fit(digest))}
+                return outcome
+        return StageOutcome("complete", usage={"rated": len(todo) - len(store.needs_fit(digest))})
+
+    def _assess(
+        self,
+        ctx: StageContext,
+        store: OpportunityStore,
+        profile: str,
+        batch: list[dict[str, Any]],
+    ) -> Stop:
+        ids = {o["id"] for o in batch}
+        done: set[int] = set()
+        finishes = 0
+
+        def finish(arguments: dict[str, Any], step: int, toolbox: Toolbox, trace: Trace):
+            nonlocal finishes
+            finishes += 1
+            outcome = assessing.finish_ratings(store, profile, arguments, ids)
+            trace.event(
+                "tool",
+                step=step,
+                tool="finish",
+                args=arguments,
+                status=outcome.status,
+                reason=outcome.reason,
+                accepted=outcome.data.get("accepted"),
+                rejected=outcome.data.get("rejected"),
+            )
+            done.update(outcome.data.get("accepted", []))
+            left = sorted(ids - done)
+            # Rejected ratings go back once for correction; then the batch ends.
+            if left and finishes < 2:
+                return json.dumps({**outcome.data, "unrated": left}), None
+            return "", {"unrated": left}
+
+        data = assessing.batch_data(store, batch)
+        ctx.trace.event(
+            "tool",
+            tool="assess_batch",
+            args={"opportunity_ids": sorted(ids)},
+            status="ok",
+            given_with_task=True,
+            injection_suspected=injection_suspected(data),
+        )
+        stop, _ = ctx.run_agent(assessing.task(data), finish=finish, finish_schema=RATINGS_SCHEMA)
+        return stop
+
+
+@dataclass
 class RankStage:
     name: str = "rank"
     agent: None = None
@@ -650,7 +749,11 @@ class RankStage:
 
     def run(self, ctx: StageContext) -> StageOutcome:
         ranked = ranking.rank_open(
-            OpportunityStore(ctx.state), ctx.run_id, options(ctx.policy).ranking, ctx.policy.k
+            OpportunityStore(ctx.state),
+            ctx.run_id,
+            options(ctx.policy).ranking,
+            ctx.policy.k,
+            use_fit=fit_enabled(ctx.policy),
         )
         return StageOutcome("complete", usage={"ranked": len(ranked)})
 
@@ -698,7 +801,16 @@ class EditStage:
 def stages(policy: Policy) -> list[conductor.Stage]:
     """The fixed pipeline. Raises `PolicyError` when the policy does not fit it."""
     validate(policy)
-    return [ScoutStage(), CollectStage(), CurateStage(), LivenessStage(), RankStage(), EditStage()]
+    assess = [AssessStage()] if fit_enabled(policy) else []
+    return [
+        ScoutStage(),
+        CollectStage(),
+        CurateStage(),
+        LivenessStage(),
+        *assess,
+        RankStage(),
+        EditStage(),
+    ]
 
 
 def report_writer(ctx: StageContext, outcomes: list[StageOutcome], meta: ReportMeta) -> str:
@@ -709,5 +821,10 @@ def report_writer(ctx: StageContext, outcomes: list[StageOutcome], meta: ReportM
     if any(o.stage == "scout" and o.outcome == "skipped" for o in outcomes):
         note = "Discovery (the Scout stage) was skipped in this run."
     return internship_report.render(
-        meta, OpportunityStore(ctx.state), ctx.policy.k, stages=stage_rows, note=note
+        meta,
+        OpportunityStore(ctx.state),
+        ctx.policy.k,
+        stages=stage_rows,
+        note=note,
+        show_fit=fit_enabled(ctx.policy),
     )

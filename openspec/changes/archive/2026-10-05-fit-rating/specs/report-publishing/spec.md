@@ -1,22 +1,6 @@
-# report-publishing Specification
+# Spec Delta
 
-## Purpose
-The daily scheduled tracker run on GitHub Actions, the SQLite state carried between runs, and publishing each finished run into Postgres as one `tracker_runs` row and one `internship_offers` row per offer.
-## Requirements
-### Requirement: Daily scheduled run
-The tracker SHALL run once a day from a scheduled GitHub Actions workflow at 09:00 UTC, and MAY be started manually from the Actions tab by repository writers. At most one run SHALL be in progress at a time. The run's SQLite state SHALL be restored before the run and saved after it, so each run continues from the previous one.
-
-#### Scenario: Scheduled run
-- **WHEN** 09:00 UTC passes
-- **THEN** the workflow runs `python -m tracker run` with the state from the previous run, then publishes the result
-
-#### Scenario: Nothing ran
-- **WHEN** the tracker exits `1` (invalid policy, missing key or locked state)
-- **THEN** the job fails and nothing is published
-
-#### Scenario: Partial run
-- **WHEN** the tracker exits `2` or `3`
-- **THEN** its report is still published with status `partial` or `failed`
+## MODIFIED Requirements
 
 ### Requirement: Publish the latest finished run
 `python -m app.publish_report` SHALL copy the newest run with an end time from the tracker's state file into `tracker_runs`, with its Markdown report. It SHALL add one `internship_offers` row for every opportunity in that run's report. Each row records:
@@ -55,4 +39,3 @@ Unknown pay, deadline and quote, and a missing previous rank, drop reason or fit
 #### Scenario: Fit published
 - **WHEN** an opportunity in the report is rated 2 with a reason, and another is not rated
 - **THEN** the first row has `fit_score` 2 and that reason, and the second has both null
-

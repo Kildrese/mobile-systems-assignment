@@ -62,6 +62,8 @@ def offers(store: OpportunityStore, run_id: str) -> list[dict[str, Any]]:
             "deadline": _known(opp, "deadline"),
             "work_authorization_quote": _quote(opp, "work_authorization"),
             "summary": summaries.get(opp["id"]),
+            "fit_score": opp["fit"],
+            "fit_reason": opp["fit_reason"],
             "status": opp["status"],
             "status_evidence": opp["status_evidence"],
             "verified": opp["verified"],

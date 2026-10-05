@@ -4,7 +4,8 @@ The report compares this run's top K with the last run's (the newest earlier fin
 run that has ranks). Every opportunity appears in at most one section, the first that
 applies. "Also open" accumulates across runs: an opportunity is new once, then stays
 listed until it closes. Fields come from verified records; a summary appears only if the
-Editor's summary passed its checks.
+Editor's summary passed its checks. Fit appears only when the run has a profile to rate
+against.
 """
 
 from dataclasses import dataclass, field
@@ -27,12 +28,13 @@ def sections(store: OpportunityStore, run_id: str) -> Sections:
     ranks = store.ranks(run_id)
     out = Sections(previous_run=store.previous_ranked_run(run_id))
     before = store.ranks(out.previous_run) if out.previous_run else {}
+    fits = store.fits()
 
     def rank_of(opp: dict[str, Any]) -> tuple[int, int]:
         return (opp["rank"] or 10**9, opp["id"])
 
     for opp in store.opportunities():
-        r, p = ranks.get(opp["id"]), before.get(opp["id"])
+        r, p, f = ranks.get(opp["id"]), before.get(opp["id"]), fits.get(opp["id"])
         opp = {
             **opp,
             "rank": r["rank"] if r else None,
@@ -40,6 +42,8 @@ def sections(store: OpportunityStore, run_id: str) -> Sections:
             "previous_rank": p["rank"] if p else None,
             "was_top_k": bool(p and p["top_k"]),
             "drop_reason": None,
+            "fit": f["fit"] if f else None,
+            "fit_reason": f["reason"] if f else None,
             "verified": opp["checked_run"] == run_id and opp["status"] == "open",
         }
         is_open = opp["status"] == "open"
@@ -124,7 +128,11 @@ def _was(opp: dict[str, Any]) -> str:
     return "entered the top K"
 
 
-def _full_entry(opp: dict[str, Any], summary: str | None, number: int) -> list[str]:
+def _fit(opp: dict[str, Any]) -> str:
+    return "-" if opp["fit"] is None else f"{opp['fit']}/3"
+
+
+def _full_entry(opp: dict[str, Any], summary: str | None, number: int, show_fit: bool) -> list[str]:
     star = " **(top K)**" if opp["top_k"] else ""
     lines = [f"### {number}. {_one_line(opp['title'])}, {_one_line(opp['company'])}{star}", ""]
     if summary:
@@ -133,6 +141,8 @@ def _full_entry(opp: dict[str, Any], summary: str | None, number: int) -> list[s
         f"- **Location:** {_one_line(_locations(opp))}",
         f"- **Term:** {_one_line(opp['term'])}",
     ]
+    if show_fit and opp["fit"] is not None:
+        lines.append(f"- **Fit:** {_fit(opp)}, {_one_line(opp['fit_reason'])}")
     for name, label in (("compensation", "Pay"), ("deadline", "Deadline")):
         if _value(opp, name) != "unknown":
             lines.append(f"- **{label}:** {_one_line(_value(opp, name))}")
@@ -150,8 +160,10 @@ def render(
     k: int,
     stages: list[dict[str, Any]] | None = None,
     note: str | None = None,
+    show_fit: bool = False,
 ) -> str:
     s = sections(store, meta.run_id)
+    fit_head, fit_rule = (" Fit |", " --- |") if show_fit else ("", "")
     summaries = store.summaries(meta.run_id)
     lines = _header(meta, stages or [])
     if waiting := len(store.pending_postings(meta.run_id)):
@@ -166,7 +178,7 @@ def render(
     if not s.new:
         lines += ["Nothing new in this run.", ""]
     for number, opp in enumerate(s.new[:k], start=1):
-        lines += _full_entry(opp, summaries.get(opp["id"]), number)
+        lines += _full_entry(opp, summaries.get(opp["id"]), number, show_fit)
     if len(s.new) > k:
         lines += ["More new opportunities:", ""]
         lines += [
@@ -184,16 +196,17 @@ def render(
         lines += ["No earlier opportunity is in the top K.", ""]
     else:
         lines += [
-            "| Rank | Last run | Opportunity | Company | Location | Term | Link |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            f"| Rank | Last run | Opportunity | Company | Location | Term |{fit_head} Link |",
+            f"| --- | --- | --- | --- | --- | --- |{fit_rule} --- |",
         ]
         for opp in s.top_k:
             title = _cell(opp["title"])
             if not opp["verified"]:
                 title += " (not checked this run)"
+            fit = f" {_fit(opp)} |" if show_fit else ""
             lines.append(
                 f"| {opp['rank']} | {_was(opp)} | {title} | {_cell(opp['company'])} | "
-                f"{_cell(_locations(opp))} | {_cell(opp['term'])} | <{opp['url']}> |"
+                f"{_cell(_locations(opp))} | {_cell(opp['term'])} |{fit} <{opp['url']}> |"
             )
         lines.append("")
         top = [o for o in s.top_k if summaries.get(o["id"])]
@@ -224,17 +237,18 @@ def render(
         lines += ["No other earlier opportunities are still open.", ""]
     else:
         lines += [
-            "| Rank | Opportunity | Company | Location | Term | First seen | Link |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            f"| Rank | Opportunity | Company | Location | Term |{fit_head} First seen | Link |",
+            f"| --- | --- | --- | --- | --- |{fit_rule} --- | --- |",
         ]
         for opp in s.also_open:
             title = _cell(opp["title"])
             if not opp["verified"]:
                 title += " (not checked this run)"
+            fit = f" {_fit(opp)} |" if show_fit else ""
             lines.append(
                 f"| {opp['rank'] or '-'} | {title} | {_cell(opp['company'])} | "
-                f"{_cell(_locations(opp))} | {_cell(opp['term'])} | `{opp['first_seen_run']}` | "
-                f"<{opp['url']}> |"
+                f"{_cell(_locations(opp))} | {_cell(opp['term'])} |{fit} "
+                f"`{opp['first_seen_run']}` | <{opp['url']}> |"
             )
         lines.append("")
 

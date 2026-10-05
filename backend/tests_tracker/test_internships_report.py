@@ -338,3 +338,45 @@ def test_postings_waiting_for_review_are_counted(store):
     text = render(meta(RUN1, "partial"), store, 3)
     assert "**Waiting for review:** 2 postings listed in this run" in text
     assert "Waiting for review" not in render(meta(RUN2), store, 3)  # not listed in RUN2
+
+
+# Fit
+
+
+def test_fit_criterion():
+    s = RankingSettings()
+    plain = score(opp(), s, NOW)
+    # Without a profile, fit is not a criterion and scores are as before.
+    assert score(opp(), s, NOW, None) == plain
+    # Unrated: half the weight. Rated: fit / 3 of it.
+    assert score(opp(), s, NOW, {}) == pytest.approx(plain + 1.5)
+    assert score(opp(), s, NOW, {1: {"fit": 3}}) == pytest.approx(plain + 3)
+    assert score(opp(), s, NOW, {1: {"fit": 1}}) == pytest.approx(plain + 1)
+
+
+def test_fit_separates_equal_matches(store):
+    _, (weak, strong) = _seed(store, 2)
+    store.put_fit(weak, "h", 1, "Weak.")
+    store.put_fit(strong, "h", 3, "Strong.")
+    ranked = [o["id"] for o in rank_open(store, RUN1, RankingSettings(), 1, NOW, use_fit=True)]
+    assert ranked == [strong, weak]
+    # Without a profile the tie goes to the earlier first-seen, as before.
+    assert [o["id"] for o in rank_open(store, RUN1, RankingSettings(), 1, NOW)] == [weak, strong]
+
+
+def test_rated_entry(store):
+    _, (rated, _, _) = _seed(store, 3)
+    reason = "Backend role with real ownership, close to the profile's experience."
+    store.put_fit(rated, "h", 2, reason)
+    finish(store, RUN1, k=1)
+    text = render(meta(RUN1), store, 3, show_fit=True)
+    assert f"- **Fit:** 2/3, {reason}" in text
+    assert text.count("**Fit:**") == 1  # the unrated ones show nothing
+    assert "Fit" not in render(meta(RUN1), store, 3)
+
+    # Tables get a Fit column with n/3, or "-" when not rated.
+    finish(store, RUN2, k=1)
+    text = render(meta(RUN2), store, 1, show_fit=True)
+    assert "| Rank | Last run | Opportunity | Company | Location | Term | Fit | Link |" in text
+    assert "| Rank | Opportunity | Company | Location | Term | Fit | First seen | Link |" in text
+    assert " | 2/3 | " in text and " | - | " in text

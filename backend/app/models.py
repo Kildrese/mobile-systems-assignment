@@ -122,6 +122,9 @@ class InternshipOffer(Base):
     # The posting's own words on work authorization, never a judgment.
     work_authorization_quote: Mapped[str | None] = mapped_column(Text)
     summary: Mapped[str | None] = mapped_column(Text)
+    # The Assessor's fit with the profile, 0 to 3, and its one-sentence reason.
+    fit_score: Mapped[int | None] = mapped_column(Integer)
+    fit_reason: Mapped[str | None] = mapped_column(Text)
     # open, unknown or closed.
     status: Mapped[str] = mapped_column(String)
     status_evidence: Mapped[str | None] = mapped_column(Text)

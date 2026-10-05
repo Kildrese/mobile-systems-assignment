@@ -108,6 +108,15 @@ MIGRATIONS: list[str] = [
     ALTER TABLE raw_postings DROP COLUMN content_hash;
     ALTER TABLE opportunities DROP COLUMN last_seen_open_run;
     """,
+    # One fit rating per opportunity, tagged with the profile it was made under.
+    """
+    CREATE TABLE fit_ratings (
+        opportunity_id INTEGER PRIMARY KEY REFERENCES opportunities(id),
+        profile_hash TEXT NOT NULL,
+        fit INTEGER NOT NULL CHECK (fit BETWEEN 0 AND 3),
+        reason TEXT NOT NULL
+    );
+    """,
 ]
 
 
@@ -479,6 +488,32 @@ class OpportunityStore:
             r["opportunity_id"]: r["text"]
             for r in self.db.execute("SELECT * FROM summaries WHERE run_id = ?", (run_id,))
         }
+
+    # Fit ratings
+
+    def put_fit(self, opportunity_id: int, profile_hash: str, fit: int, reason: str) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT INTO fit_ratings (opportunity_id, profile_hash, fit, reason) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT (opportunity_id) DO UPDATE SET "
+                "profile_hash = excluded.profile_hash, fit = excluded.fit, "
+                "reason = excluded.reason",
+                (opportunity_id, profile_hash, fit, reason),
+            )
+
+    def fits(self) -> dict[int, dict[str, Any]]:
+        """Every stored rating, whatever profile it was made under."""
+        return {r["opportunity_id"]: dict(r) for r in self.db.execute("SELECT * FROM fit_ratings")}
+
+    def needs_fit(self, profile_hash: str) -> list[dict[str, Any]]:
+        """Open opportunities without a rating for this profile, newest first."""
+        rows = self.db.execute(
+            "SELECT o.* FROM opportunities o LEFT JOIN fit_ratings f ON f.opportunity_id = o.id "
+            "WHERE o.status = 'open' AND (f.profile_hash IS NULL OR f.profile_hash != ?) "
+            "ORDER BY o.first_seen_at DESC, o.id DESC",
+            (profile_hash,),
+        )
+        return [_decode_opportunity(r) for r in rows]
 
 
 def _decode_opportunity(row: sqlite3.Row) -> dict[str, Any]:

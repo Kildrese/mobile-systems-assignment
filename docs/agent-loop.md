@@ -4,7 +4,7 @@ What the tracker does each day, then how its agents work underneath. For setup, 
 
 ## The tracker in one picture
 
-Every morning the tracker looks for Summer 2027 software and ML internships at NYC startups, keeps what it finds, and tells you what changed since yesterday. Three AI agents do the work that needs judgment. Plain code does everything that can be checked: reading job boards, deciding what is still open, and ranking.
+Every morning the tracker looks for Summer 2027 software and ML internships at NYC startups, keeps what it finds, and tells you what changed since yesterday. Four AI agents do the work that needs judgment. Plain code does everything that can be checked: reading job boards, deciding what is still open, and ranking.
 
 ```mermaid
 flowchart TD
@@ -14,15 +14,17 @@ flowchart TD
         collect["2. Collect (code)<br/>reads every job board<br/>and lists the postings"]
         curate["3. Curate (agent)<br/>turns each posting into a record,<br/>every field backed by a quote"]
         liveness["4. Liveness (code)<br/>decides what is still open<br/>and what has closed"]
-        rank["5. Rank (code)<br/>scores every open internship<br/>and picks the top K"]
-        edit["6. Edit (agent)<br/>writes a short summary<br/>for the ones you will read"]
-        report["7. Report<br/>New · Still in top K · Dropped · Also open"]
-        scout --> collect --> curate --> liveness --> rank --> edit --> report
+        assess["5. Assess (agent)<br/>rates each new internship's fit<br/>with your profile, once"]
+        rank["6. Rank (code)<br/>scores every open internship<br/>and picks the top K"]
+        edit["7. Edit (agent)<br/>writes a short summary<br/>for the ones you will read"]
+        report["8. Report<br/>New · Still in top K · Dropped · Also open"]
+        scout --> collect --> curate --> liveness --> assess --> rank --> edit --> report
     end
     memory[("State file<br/>boards, postings, internships,<br/>past ranks: the tracker's memory")]
     collect <--> memory
     curate <--> memory
     liveness <--> memory
+    assess <--> memory
     rank <--> memory
     report --> publish["Publish to the database"] --> app(["/internships page in the app"])
 ```
@@ -33,9 +35,10 @@ What each step adds:
 2. **Collect** reads every board on the list (the starting watchlist plus what the Scout added) and saves each posting it has not seen before.
 3. **Curate** reads each new posting and fills in a record: title, term, location, pay, deadline, work authorization. Code rejects any field whose quote is not word for word in the posting, so nothing is made up.
 4. **Liveness** compares today's boards with the stored internships. One that is gone from every board it was on is closed; if a board could not be read, nothing on it changes.
-5. **Rank** scores every open internship (role, term, location, freshness) and marks the top K (5 by default). The same inputs always give the same order.
-6. **Edit** writes a short summary (at most three sentences) for each internship the report shows in full. Code rejects a summary that mentions a number or month that is not in the record.
-7. **Report** compares today's top K with the last run's: what is new, what stayed in the top K, what dropped out (closed or outranked), and everything else still open.
+5. **Assess** rates how well each internship not yet rated fits a short profile of the candidate, 0 to 3 with a one-sentence reason. Code checks each rating and keeps it, so the same internship has the same fit every day.
+6. **Rank** scores every open internship (role, term, location, freshness, fit) and marks the top K (5 by default). The same inputs always give the same order.
+7. **Edit** writes a short summary (at most three sentences) for each internship the report shows in full. Code rejects a summary that mentions a number or month that is not in the record.
+8. **Report** compares today's top K with the last run's: what is new, what stayed in the top K, what dropped out (closed or outranked), and everything else still open.
 
 The steps never talk to each other directly: each one reads what it needs from the state file and writes back what it found. That is also how a run remembers yesterday. Every agent has its own budget (steps, tokens, searches, fetches), and the whole run has one too. If an agent runs out, or a provider fails, the run still ends with a report that says what was skipped and why.
 
@@ -79,7 +82,7 @@ python -m tracker run
          └─ report_writer(), then the summary event; exit 0 / 2 / 3
 ```
 
-For the internship use case the stages are Scout (agent), Collect (code), Curate (agent, one fresh `AgentLoop` per batch of postings), Liveness (code), Rank (code) and Edit (agent). Stages hand data on only through the state file, never through a conversation.
+For the internship use case the stages are Scout (agent), Collect (code), Curate (agent, one fresh `AgentLoop` per batch of postings), Liveness (code), Assess (agent, one fresh `AgentLoop` per batch of 8 opportunities, only with a profile), Rank (code) and Edit (agent). Stages hand data on only through the state file, never through a conversation.
 
 ## The loop itself
 
@@ -174,6 +177,7 @@ When the model calls `finish` with arguments (even `{}`), the loop hands them to
 | Single-agent tracker | `report_finish(k)` | At least one item cites a URL this run searched or fetched; items citing only unseen URLs are dropped, at most K are kept |
 | Scout | `_note_finish` | Always (an optional note) |
 | Curator, per batch | pending check | On the second `finish` if postings are left (each counts a failure; twice parks it). Usually not needed: the batch's done check ends it once every posting is handled |
+| Assessor, per batch | `finish_ratings` | When every opportunity in the batch has a valid rating, or on the second `finish`: rejected ratings (`not_requested`, `invalid_fit`, a reason over 200 characters or failing the summary check) go back once |
 | Editor | `finish_summaries` | At least one summary passes the checks: requested id, at most 3 sentences, no numbers or months that are not in the record |
 
 ### Keeping prompts small

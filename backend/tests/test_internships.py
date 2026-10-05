@@ -43,6 +43,8 @@ def _state(tmp_path):
 
 def test_publish_and_read(tmp_path, client, ada, sql):
     state, store = _state(tmp_path)
+    beta = store.opportunities()[1]["id"]
+    store.put_fit(beta, "h", 2, "A backend role, close to the profile.")
     rows = offers(store, RUN2)
     run = dict(state.db.execute("SELECT * FROM runs WHERE id = ?", (RUN2,)).fetchone())
     state.close()
@@ -60,6 +62,12 @@ def test_publish_and_read(tmp_path, client, ada, sql):
     assert acme_row["compensation"] == "$45/hour"
     assert acme_row["deadline"] is None
     assert acme_row["work_authorization_quote"] == "must be authorized to work in the US"
+    # Fit published: the rated row carries it, the unrated one has nulls.
+    assert (rows[0]["fit_score"], rows[0]["fit_reason"]) == (
+        2,
+        "A backend role, close to the profile.",
+    )
+    assert (acme_row["fit_score"], acme_row["fit_reason"]) == (None, None)
 
     with get_sessionmaker()() as db:
         publish(db, run, rows, "# report")
@@ -76,6 +84,7 @@ def test_publish_and_read(tmp_path, client, ada, sql):
         ("Beta", "new", 1, True, None, None),
         ("Acme", "dropped", 2, False, 1, "outranked"),
     ]
+    assert [o["fitScore"] for o in body["offers"]] == [2, None]
 
 
 def test_empty_before_first_run(client, ada):
