@@ -10,7 +10,7 @@ import {
 } from "@/api/@tanstack/react-query.gen";
 import { exportInternshipReport } from "@/api/sdk.gen";
 import type { InternshipOffer, TrackerRun } from "@/api/types.gen";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { QueryFallback } from "@/components/query-fallback";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -178,22 +178,15 @@ async function downloadReport(runId: string) {
   URL.revokeObjectURL(url);
 }
 
-const STATUS_VARIANTS = {
-  complete: "secondary",
-  partial: "outline",
-  failed: "destructive",
+const RUN_STATUS = {
+  complete: { label: "Complete", variant: "secondary" },
+  partial: { label: "Partial", variant: "outline" },
+  failed: { label: "Failed", variant: "destructive" },
 } as const;
 
-// "Partial", with why the run stopped as a tooltip.
-export function RunStatus({ run }: { run: Pick<TrackerRun, "status" | "stopReason"> }) {
-  return (
-    <Badge
-      variant={STATUS_VARIANTS[run.status]}
-      title={run.stopReason ? `Stopped: ${run.stopReason}` : undefined}
-    >
-      {run.status[0].toUpperCase() + run.status.slice(1)}
-    </Badge>
-  );
+export function RunStatus({ status }: { status: TrackerRun["status"] }) {
+  const { label, variant } = RUN_STATUS[status];
+  return <Badge variant={variant}>{label}</Badge>;
 }
 
 // The latest report, or the report of run `runId`.
@@ -208,22 +201,7 @@ export function InternshipReport({ runId }: { runId?: string }) {
   });
   const query = runId ? one : latest;
 
-  if (query.isPending) return <p className="text-muted-foreground">Loading…</p>;
-  if (query.isError)
-    return (
-      <Alert variant="destructive">
-        <AlertTitle>The report couldn&apos;t be loaded.</AlertTitle>
-        <AlertDescription>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void query.refetch()}
-          >
-            Try again
-          </Button>
-        </AlertDescription>
-      </Alert>
-    );
+  if (!query.isSuccess) return <QueryFallback query={query} what="report" />;
 
   const { run, offers } = query.data;
   if (!run)
@@ -244,7 +222,7 @@ export function InternshipReport({ runId }: { runId?: string }) {
           <span className="font-medium">
             {runId ? "Started" : "Updated"} {formatRunTime(new Date(run.startedAt))}
           </span>
-          <RunStatus run={run} />
+          <RunStatus status={run.status} />
           {run.stopReason && (
             <span className="text-muted-foreground">stopped at {run.stopReason}</span>
           )}

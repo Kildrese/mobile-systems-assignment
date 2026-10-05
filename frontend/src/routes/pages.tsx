@@ -138,15 +138,13 @@ function PageHeader({
   );
 }
 
-const TOPIC = "Summer 2027 software and ML internships at NYC startups, checked every morning.";
-
 export function InternshipsPage() {
   useTitle("Internships");
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Internships"
-        description={TOPIC}
+        description="The internship tracker's latest report, updated every morning."
         action={
           <Button asChild variant="outline" size="sm">
             <Link to="/internships/history">

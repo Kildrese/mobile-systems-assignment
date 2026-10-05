@@ -15,18 +15,21 @@ import { runLabel } from "@/lib/run-id";
 
 type Crumb = { label: string; to?: string };
 
-const INTERNSHIPS: Crumb = { label: "Internships", to: "/internships" };
-const HISTORY: Crumb = { label: "Run history", to: "/internships/history" };
-
 // The trail after Home for a page, ending with the page itself (no link).
 // Null on home and unknown paths.
 function trail(pathname: string): Crumb[] | null {
   const path = pathname.replace(/\/+$/, "");
   if (path === "/account") return [{ label: "Account" }];
-  if (path === "/internships") return [{ label: INTERNSHIPS.label }];
-  if (path === "/internships/history") return [INTERNSHIPS, { label: HISTORY.label }];
+  if (path === "/internships") return [{ label: "Internships" }];
+  if (path === "/internships/history")
+    return [{ label: "Internships", to: "/internships" }, { label: "Run history" }];
   const run = matchPath("/internships/runs/:id", path);
-  if (run?.params.id) return [INTERNSHIPS, HISTORY, { label: runLabel(run.params.id) }];
+  if (run?.params.id)
+    return [
+      { label: "Internships", to: "/internships" },
+      { label: "Run history", to: "/internships/history" },
+      { label: runLabel(run.params.id) },
+    ];
   return null;
 }
 
