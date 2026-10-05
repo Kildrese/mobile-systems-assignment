@@ -1,8 +1,49 @@
 # The agent loop
 
-How the tracker's agents work, step by step. The loop is written by hand in [`backend/tracker/agents.py`](../backend/tracker/agents.py) as `AgentLoop`, with no agent framework, so every decision about budgets, tools and stopping is visible in our own code. For setup, policy fields and the failure and guardrail tables, see [tracker.md](tracker.md).
+What the tracker does each day, then how its agents work underneath. For setup, policy fields and the failure and guardrail tables, see [tracker.md](tracker.md).
+
+## The tracker in one picture
+
+Every morning the tracker looks for Summer 2027 software and ML internships at NYC startups, keeps what it finds, and tells you what changed since yesterday. Three AI agents do the work that needs judgment. Plain code does everything that can be checked: reading job boards, deciding what is still open, and ranking.
+
+```mermaid
+flowchart TD
+    cron(["Every morning: scheduled job starts a run"]) --> scout
+    subgraph run ["One run"]
+        scout["1. Scout (agent)<br/>searches the web for startups hiring<br/>and proposes their job boards"]
+        collect["2. Collect (code)<br/>reads every job board<br/>and lists the postings"]
+        curate["3. Curate (agent)<br/>turns each posting into a record,<br/>every field backed by a quote"]
+        liveness["4. Liveness (code)<br/>decides what is still open<br/>and what has closed"]
+        rank["5. Rank (code)<br/>scores every open internship<br/>and picks the top K"]
+        edit["6. Edit (agent)<br/>writes a short summary<br/>for the ones you will read"]
+        report["7. Report<br/>New · Still in top K · Dropped · Also open"]
+        scout --> collect --> curate --> liveness --> rank --> edit --> report
+    end
+    memory[("State file<br/>boards, postings, internships,<br/>past ranks: the tracker's memory")]
+    collect <--> memory
+    curate <--> memory
+    liveness <--> memory
+    rank <--> memory
+    report --> publish["Publish to the database"] --> app(["/internships page in the app"])
+```
+
+What each step adds:
+
+1. **Scout** finds new companies. It is the only agent that reads the open web, and it can only *suggest* a job board: code checks that the board is real before adding it.
+2. **Collect** reads every board on the list (the starting watchlist plus what the Scout added) and saves each posting it has not seen before.
+3. **Curate** reads each new posting and fills in a record: title, term, location, pay, deadline, work authorization. Code rejects any field whose quote is not word for word in the posting, so nothing is made up.
+4. **Liveness** compares today's boards with the stored internships. One that is gone from every board it was on is closed; if a board could not be read, nothing on it changes.
+5. **Rank** scores every open internship (role, term, location, freshness) and marks the top K (5 by default). The same inputs always give the same order.
+6. **Edit** writes a short summary (at most three sentences) for each internship the report shows in full. Code rejects a summary that mentions a number or month that is not in the record.
+7. **Report** compares today's top K with the last run's: what is new, what stayed in the top K, what dropped out (closed or outranked), and everything else still open.
+
+The steps never talk to each other directly: each one reads what it needs from the state file and writes back what it found. That is also how a run remembers yesterday. Every agent has its own budget (steps, tokens, searches, fetches), and the whole run has one too. If an agent runs out, or a provider fails, the run still ends with a report that says what was skipped and why.
+
+The rest of this page explains how one agent works inside its step.
 
 ## What "agent" means here
+
+The loop is written by hand in [`backend/tracker/agents.py`](../backend/tracker/agents.py) as `AgentLoop`, with no agent framework, so every decision about budgets, tools and stopping is visible in our own code.
 
 An agent is a loop in which a model chooses the next action from a fixed set of tools, sees the result, and decides again, until it decides it is done. Code owns everything around that choice: which tools exist, what each may cost, what counts as done, and what happens when something fails.
 
