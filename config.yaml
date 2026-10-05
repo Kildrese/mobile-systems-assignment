@@ -4,7 +4,8 @@
 # Relative paths below resolve against this file's directory.
 #
 # Pipeline (fixed in code): Scout (agent) -> Collect (code) -> Curate (agent) ->
-# Liveness (code) -> Rank (code) -> Edit (agent) -> report. See docs/tracker.md.
+# Liveness (code) -> Assess (agent) -> Rank (code) -> Edit (agent) -> report.
+# See docs/tracker.md.
 # The single-agent tracker on a news topic is in examples/single-agent.yaml.
 
 use_case: internships
@@ -40,7 +41,7 @@ limits:
   max_steps: 60
   max_searches: 6
   max_fetches: 40
-  max_tokens: 150000
+  max_tokens: 175000
   reserve_tokens: 5000
   max_cost_usd: 0.50
   max_wall_seconds: 1500  # Groq free tier: much of a run is waiting on per-minute limits
@@ -101,6 +102,15 @@ agents:
       You write short, factual summaries of internship opportunities for a student
       searching for {topic}. Use only facts in the record. Never add pay, dates or
       numbers that the record does not contain.
+  assessor:
+    # Rates each open opportunity's fit with options.profile once; code checks and keeps it.
+    tools: []
+    limits: {max_steps: 6, max_tokens: 25000}
+    instructions: |
+      You rate how well internship opportunities fit this candidate:
+      {profile}
+      Judge only from the record and the posting. Give each a reason of one sentence
+      that uses only facts in the record. Never add pay, dates or numbers.
 
 # Use-case settings, validated by the internship use case. Everything has a default in
 # code; set a key here only to change it:
@@ -109,4 +119,13 @@ agents:
 #               (sources.Filters)
 #   ranking     weights, recency_days, role_types, terms, locations, focus_keywords:
 #               how the top K is chosen (ranking.RankingSettings)
-options: {}
+#   profile     the candidate and the internship they want, for the assessor. Committed,
+#               so it leaves out employers and anything private.
+options:
+  profile: |
+    An experienced engineer, not a typical intern: about three years of full-time
+    fullstack and integration work (Java/Spring, TypeScript, PostgreSQL, Kafka,
+    Python, LLM tooling in production) and a startup co-founder. Wants a Summer 2027
+    software or ML engineering internship in NYC, at a startup or big tech, with real
+    ownership: backend, fullstack, data or applied AI. A weak fit: roles aimed at
+    first-year students, QA only, IT support, or non-engineering work.

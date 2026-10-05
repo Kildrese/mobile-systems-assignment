@@ -111,11 +111,23 @@ function Offer({ offer }: { offer: InternshipOffer }) {
         </CardAction>
       </CardHeader>
       {(offer.summary ||
+        offer.fitScore !== null ||
         offer.workAuthorizationQuote ||
         offer.dropReason ||
         !offer.verified) && (
         <CardContent className="flex flex-col gap-2">
           {offer.summary && <p>{offer.summary}</p>}
+          {offer.fitScore !== null && (
+            <p>
+              <span className="font-medium">Fit {offer.fitScore}/3</span>
+              {offer.fitReason && (
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {offer.fitReason}
+                </span>
+              )}
+            </p>
+          )}
           {offer.workAuthorizationQuote && (
             <p className="text-muted-foreground">
               Work authorization (quoted): “{offer.workAuthorizationQuote}”

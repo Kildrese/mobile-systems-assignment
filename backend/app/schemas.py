@@ -160,6 +160,10 @@ class InternshipOffer(ResponseModel):
         description="The posting's own words, quoted. Never a judgment."
     )
     summary: str | None
+    fit_score: int | None = Field(
+        ge=0, le=3, description="Fit with the candidate's profile, 0 to 3. Null if not rated."
+    )
+    fit_reason: str | None = Field(description="One sentence on the fit. Null if not rated.")
     status: Literal["open", "unknown", "closed"]
     status_evidence: str | None
     verified: bool = Field(description="Checked open in this run.")

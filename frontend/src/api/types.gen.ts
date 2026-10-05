@@ -89,6 +89,14 @@ export type InternshipOffer = {
      */
     workAuthorizationQuote: string | null;
     summary: string | null;
+    /**
+     * Fit with the candidate's profile, 0 to 3. Null if not rated.
+     */
+    fitScore: number | null;
+    /**
+     * One sentence on the fit. Null if not rated.
+     */
+    fitReason: string | null;
     status: 'open' | 'unknown' | 'closed';
     statusEvidence: string | null;
     /**

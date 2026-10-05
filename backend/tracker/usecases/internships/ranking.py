@@ -3,7 +3,8 @@
 Each criterion scores 1 for a match, 0 for a mismatch and 0.5 when the record says
 `unknown`, so a sparse posting is neither buried nor promoted. Work-authorization
 wording is never an input. `focus` scores the title against the kind of role the search
-is for (software, ML, data), so a design or sales internship ranks below them.
+is for (software, ML, data), so a design or sales internship ranks below them. `fit` is
+the stored fit rating over 3, counted only when the run has a profile to rate against.
 """
 
 from datetime import UTC, datetime
@@ -24,6 +25,7 @@ class Weights(BaseModel):
     location: float = Field(default=2, ge=0)
     recency: float = Field(default=1, ge=0)
     focus: float = Field(default=3, ge=0)
+    fit: float = Field(default=3, ge=0)
 
 
 class RankingSettings(BaseModel):
@@ -84,7 +86,18 @@ def focus(title: str, s: RankingSettings) -> float:
     return 1.0 if any(keyword(k).search(title) for k in s.focus_keywords) else 0.0
 
 
-def score(opp: dict[str, Any], settings: RankingSettings, now: datetime) -> float:
+def _fit(opp: dict[str, Any], fits: dict[int, dict[str, Any]]) -> float:
+    rating = fits.get(opp["id"])
+    return 0.5 if rating is None else rating["fit"] / 3
+
+
+def score(
+    opp: dict[str, Any],
+    settings: RankingSettings,
+    now: datetime,
+    fits: dict[int, dict[str, Any]] | None = None,
+) -> float:
+    """`fits` None: the run has no profile, and fit is not a criterion."""
     w = settings.weights
     total = (
         w.role * _role(opp, settings)
@@ -92,6 +105,7 @@ def score(opp: dict[str, Any], settings: RankingSettings, now: datetime) -> floa
         + w.location * _location(opp, settings)
         + w.recency * _recency(opp, settings, now)
         + w.focus * focus(opp["title"], settings)
+        + (w.fit * _fit(opp, fits) if fits is not None else 0)
     )
     return round(total, 6)
 
@@ -102,10 +116,13 @@ def rank_open(
     settings: RankingSettings,
     k: int,
     now: datetime | None = None,
+    *,
+    use_fit: bool = False,
 ) -> list[dict[str, Any]]:
     """The Rank stage: score every live opportunity, store ranks, return them in order."""
     now = now or datetime.now(UTC)
-    scored = [(score(opp, settings, now), opp) for opp in store.opportunities(("open",))]
+    fits = store.fits() if use_fit else None
+    scored = [(score(opp, settings, now, fits), opp) for opp in store.opportunities(("open",))]
     scored.sort(
         key=lambda pair: (-pair[0], pair[1]["first_seen_at"], pair[1]["company"], pair[1]["id"])
     )

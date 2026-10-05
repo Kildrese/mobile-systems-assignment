@@ -883,6 +883,30 @@
               }
             ]
           },
+          "fitScore": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 3.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fit with the candidate's profile, 0 to 3. Null if not rated."
+          },
+          "fitReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One sentence on the fit. Null if not rated."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -930,6 +954,8 @@
           "deadline",
           "workAuthorizationQuote",
           "summary",
+          "fitScore",
+          "fitReason",
           "status",
           "statusEvidence",
           "verified",

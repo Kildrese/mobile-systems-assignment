@@ -133,3 +133,44 @@ def test_store_reuses_core_connection(tmp_path):
         assert OpportunityStore(state).db is state.db
     finally:
         state.close()
+
+
+def test_fit_ratings_are_kept_until_replaced(tmp_path):
+    state, store = open_store(tmp_path / "s.sqlite")
+    try:
+        source_id = add_board(store)
+        pids = store.upsert_postings(source_id, [posting("1"), posting("2")], RUN1)
+        old, new = (
+            store.create_opportunity(
+                company="Acme",
+                url=f"https://boards.greenhouse.io/acme/jobs/{i}",
+                record=record(),
+                run_id=RUN1,
+                posting_id=pid,
+                linked_by="record",
+            )
+            for i, pid in enumerate(pids, start=1)
+        )
+        # Newest first, and nothing is rated yet.
+        assert [o["id"] for o in store.needs_fit("h1")] == [new, old]
+        store.put_fit(old, "h1", 3, "Strong.")
+        assert [o["id"] for o in store.needs_fit("h1")] == [new]
+
+        # A profile change: the old rating still counts until it is replaced.
+        assert [o["id"] for o in store.needs_fit("h2")] == [new, old]
+        assert store.fits()[old]["fit"] == 3
+        store.put_fit(old, "h2", 1, "Weak.")
+        assert store.fits()[old] == {
+            "opportunity_id": old,
+            "profile_hash": "h2",
+            "fit": 1,
+            "reason": "Weak.",
+        }
+
+        # A reopened opportunity keeps its rating.
+        store.set_status(old, "closed", RUN2, "absent from board")
+        assert [o["id"] for o in store.needs_fit("h2")] == [new]
+        store.set_status(old, "open", RUN2, "listed again")
+        assert [o["id"] for o in store.needs_fit("h2")] == [new]
+    finally:
+        state.close()
