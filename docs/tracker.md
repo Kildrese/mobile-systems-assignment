@@ -207,11 +207,14 @@ The repository's `config.yaml` runs `use_case: internships`: it tracks Summer 20
 
 **Lifecycle.** An opportunity listed on a job board closes only when every board it is on was read in this run and none lists it; a board that cannot be read changes nothing (the report notes "not checked this run"). Liveness makes no requests of its own: Collect has read the boards. An opportunity that appears again reopens and keeps its first-seen run.
 
-**Report.** Three sections, each opportunity in exactly one:
+**Report.** It compares this run's top K with the last run's: the newest earlier finished run that has ranks, so a run that failed before Rank is skipped. Four sections, each opportunity in at most one (the first that applies):
 
 1. **New since last run**: first seen in this run, by rank; the first K with all fields, the work-authorization quote and the summary.
-2. **Still open**: every earlier opportunity that is still open, accumulated across runs, in one table; the current top K are marked.
-3. **Closed since last run**: with the evidence (the boards read without the job).
+2. **Still in top K**: the rest of this run's top K, with each one's rank in the last run, or "entered the top K".
+3. **Dropped**: each opportunity in the last run's top K that is not in this one, either `closed` (with the evidence: the boards read without the job) or `outranked` (with its new rank), plus any other opportunity closed in this run.
+4. **Also open**: every other earlier opportunity that is still open, accumulated across runs, in one table by rank.
+
+On a first run every open opportunity is new, and Still in top K and Dropped say there is no earlier run to compare with.
 
 Summaries are rejected when they run over 3 sentences or mention a number or month that is not in the record; the report then shows the fields alone.
 

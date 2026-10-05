@@ -62,11 +62,19 @@ export type InternshipOffer = {
      */
     opportunityId: number;
     /**
-     * `new` since the last run, still `open`, or `closed` since the last run.
+     * `new` since the last run, still in the `top_k`, `dropped` from the last run's top K or closed this run, or also `open`.
      */
-    section: 'new' | 'open' | 'closed';
+    section: 'new' | 'top_k' | 'dropped' | 'open';
     rank: number | null;
     topK: boolean;
+    /**
+     * The rank in the last run, if it had one.
+     */
+    previousRank: number | null;
+    /**
+     * Why a `dropped` offer left the report's top K. Null in other sections.
+     */
+    dropReason: 'closed' | 'outranked' | null;
     company: string;
     title: string;
     roleType: string;

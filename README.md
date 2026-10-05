@@ -45,7 +45,7 @@ Ctrl-C stops both servers. The database keeps running; stop it with `./scripts/d
 
 ## Tracker
 
-Hand-written agents that track Summer 2027 software and ML internships at NYC startups: a Scout finds job boards, code reads them, a Curator turns postings into quote-verified records, code decides what is still open and ranks it, and an Editor writes short summaries. Each run writes a cumulative report (New since last run, Still open, Closed since last run) to `reports/`, with a trace in `traces/`. It needs only Python, uv and two free API keys, no Docker or Postgres.
+Hand-written agents that track Summer 2027 software and ML internships at NYC startups: a Scout finds job boards, code reads them, a Curator turns postings into quote-verified records, code decides what is still open and ranks it, and an Editor writes short summaries. Each run writes a cumulative report (New since last run, Still in top K, Dropped, Also open) to `reports/`, with a trace in `traces/`. It needs only Python, uv and two free API keys, no Docker or Postgres.
 
 ```bash
 cd backend
@@ -74,6 +74,6 @@ The topic, agents, models, tools, budgets, watchlist and allowed hosts are all i
 | [docs/architecture.md](docs/architecture.md) | Two-origin setup, CORS, token handling, CSP, and the security decisions |
 | [docs/deployment.md](docs/deployment.md) | Production on Vercel and Neon, production migrations, CI |
 | [docs/tracker.md](docs/tracker.md) | The agentic tracker: setup, policy, budgets, failure handling, guardrails, state and traces |
-| [docs/agent-loop.md](docs/agent-loop.md) | How the agent loop works step by step: model calls, tool dispatch, budgets, finishing and partial reports |
+| [docs/agent-loop.md](docs/agent-loop.md) | What the tracker does each run, as one flow, then how the agent loop works: model calls, tool dispatch, budgets, finishing and partial reports |
 
 This project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec) for spec-driven development: approved specs are in `openspec/specs/`, proposed changes in `openspec/changes/`.

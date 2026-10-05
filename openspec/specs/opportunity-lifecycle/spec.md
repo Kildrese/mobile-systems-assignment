@@ -23,12 +23,12 @@ Liveness SHALL mark an opportunity `closed` when every board it is listed on was
 
 #### Scenario: Closed, then its board is unreadable
 - **WHEN** an opportunity closed in run R, and its board cannot be read in run R+1
-- **THEN** its `closed_run` stays R, so it is listed under "Closed since last run" only in run R
+- **THEN** its `closed_run` stays R, so it is listed under Dropped as closed only in run R
 
 ### Requirement: Reopening
 A `closed` opportunity SHALL become `open` again when a later run sees it listed. Its `first_seen_run` stays the same, so it is not reported as new.
 
 #### Scenario: Reposted
 - **WHEN** a closed opportunity's job id reappears on its board
-- **THEN** its status returns to `open`, and it appears under Still open, not under New
+- **THEN** its status returns to `open`, and it appears under Still in top K or Also open, not under New
 

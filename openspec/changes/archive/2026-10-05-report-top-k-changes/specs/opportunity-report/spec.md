@@ -1,25 +1,6 @@
-# opportunity-report Specification
+# Spec Delta
 
-## Purpose
-Ranking in code, the checks on the Editor's summaries, and the report that compares this run's top K with the last run's: New since last run, Still in top K, Dropped and Also open.
-## Requirements
-### Requirement: Ranking in code
-Code SHALL score every open opportunity from config weights over role type, term match, location match, recency (first seen, posting date) and focus: whether the title names a role the search is for, by whole-word match against `ranking.focus_keywords` (software, ML, data, ...). Ties are broken by first-seen time, then company name. The score SHALL be deterministic for the same records and config. Work-authorization wording SHALL NOT affect it. The top K are the K highest-scoring open opportunities.
-
-#### Scenario: Deterministic ranking
-- **WHEN** ranking runs twice on unchanged records and config
-- **THEN** both produce the same order
-
-#### Scenario: Off-focus internship
-- **WHEN** a "Product Design Intern" and a "Software Engineering Intern" match on role type, term, location and recency
-- **THEN** the software internship ranks higher
-
-### Requirement: Editor agent
-The Editor agent SHALL write, for each opportunity whose summary the report shows (the first K new opportunities by rank, and the current top K), a summary of at most 3 sentences on what the role is and why it matches the configured criteria. Its tools SHALL be `get_opportunities` and `finish(summaries)`. It SHALL NOT change ranks, statuses, sources or records. A summary SHALL be accepted only when it cites the opportunity's id. If the Editor stage is skipped or runs out of budget, the report SHALL show the record's fields without a summary.
-
-#### Scenario: Editor skipped
-- **WHEN** the Editor stage is skipped because of a terminal model failure
-- **THEN** the report still lists every opportunity with title, company, location, term and link, without summaries
+## MODIFIED Requirements
 
 ### Requirement: Cumulative report layout
 The report SHALL start with the core header (topic, run, time, status, budget usage, plus per-stage outcomes). It SHALL then compare this run's top K with the last run's: the newest earlier finished run that has ranks. The sections SHALL appear in this order:
@@ -53,11 +34,3 @@ An opportunity SHALL appear in at most one section, taking the first that applie
 #### Scenario: Open entries accumulate
 - **WHEN** an opportunity first seen in run 1 stays open but outside the top K through run 5
 - **THEN** it appears under Also open in the reports of runs 2 to 5, and never under New after run 1
-
-### Requirement: Every listed opportunity cites its source
-Each opportunity in the report SHALL show at least one source URL, and every quoted field SHALL come from the verified record. Summaries SHALL NOT add facts that are not in the record or posting text. This is checked by flagging summary sentences that contain numbers or dates absent from the record.
-
-#### Scenario: Summary adds a salary
-- **WHEN** the Editor's summary mentions "$45/hour", but the record has no compensation
-- **THEN** the summary is rejected, and the report shows the fields without a summary for that opportunity
-

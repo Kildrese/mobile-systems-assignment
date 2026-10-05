@@ -1,12 +1,17 @@
 """The daily report: published from the tracker's state file, read (only) over the API."""
 
+from alembic import command
+from alembic.config import Config
+
 from app.db import get_sessionmaker
 from app.publish_report import offers, publish
+from tests.conftest import BACKEND
 from tests_tracker.internships_helpers import RUN1, RUN2, add_board, open_store, posting, record
 
 
 def _state(tmp_path):
-    """Two runs: Acme first seen in RUN1 (summarized then), Beta new in RUN2 and top K."""
+    """Two runs: Acme first seen in RUN1 (summarized then, 1st in the top K) and outranked
+    in RUN2 by Beta, new and the only top K."""
     state, store = open_store(tmp_path / "s.sqlite")
     for run_id in (RUN1, RUN2):
         state.start_run(run_id, "internships", 5)
@@ -30,6 +35,7 @@ def _state(tmp_path):
         linked_by="record",
     )
     store.put_summary(RUN1, acme, "Acme summary.")
+    store.put_ranks(RUN1, [(acme, 8.0, True)])
     store.put_ranks(RUN2, [(beta, 9.0, True), (acme, 8.0, False)])
     return state, store
 
@@ -40,8 +46,14 @@ def test_publish_and_read(tmp_path, client, ada, sql):
     run = dict(state.db.execute("SELECT * FROM runs WHERE id = ?", (RUN2,)).fetchone())
     state.close()
 
-    assert [(r["company"], r["section"]) for r in rows] == [("Beta", "new"), ("Acme", "open")]
+    assert [(r["company"], r["section"]) for r in rows] == [("Beta", "new"), ("Acme", "dropped")]
     acme_row = rows[1]
+    assert (acme_row["rank"], acme_row["previous_rank"], acme_row["drop_reason"]) == (
+        2,
+        1,
+        "outranked",
+    )
+    assert (rows[0]["previous_rank"], rows[0]["drop_reason"]) == (None, None)
     # The summary from an earlier run carries over; unknown fields become null.
     assert acme_row["summary"] == "Acme summary."
     assert acme_row["compensation"] == "$45/hour"
@@ -56,9 +68,12 @@ def test_publish_and_read(tmp_path, client, ada, sql):
     body = client.get("/api/internships/latest", headers=ada.headers).json()
     assert body["run"]["id"] == RUN2
     assert body["run"]["reportMarkdown"] == "# report"
-    assert [(o["company"], o["rank"], o["topK"]) for o in body["offers"]] == [
-        ("Beta", 1, True),
-        ("Acme", 2, False),
+    assert [
+        (o["company"], o["section"], o["rank"], o["topK"], o["previousRank"], o["dropReason"])
+        for o in body["offers"]
+    ] == [
+        ("Beta", "new", 1, True, None, None),
+        ("Acme", "dropped", 2, False, 1, "outranked"),
     ]
 
 
@@ -103,3 +118,32 @@ def test_export_serves_the_stored_report(tmp_path, client, ada):
     with get_sessionmaker()() as db:
         publish(db, run, rows, "")  # published without a report
     assert client.get(url, headers=ada.headers).status_code == 404
+
+
+def test_migration_maps_closed_rows_to_dropped(sql):
+    alembic = Config(str(BACKEND / "alembic.ini"))
+    command.downgrade(alembic, "7cd884a0e6f6")
+    try:
+        sql.run(
+            "insert into tracker_runs (id, topic, status, started_at, report_markdown) "
+            "values ('r', 't', 'complete', now(), '')"
+        )
+        for opportunity_id, section in ((1, "closed"), (2, "open")):
+            sql.run(
+                "insert into internship_offers (run_id, opportunity_id, section, top_k, company, "
+                "title, role_type, term, locations, remote, url, status, verified, first_seen_at) "
+                "values ('r', :id, :section, false, 'Acme', 'Intern', 'internship', 'Summer', "
+                "'{}', 'onsite', 'https://a.example', 'open', true, now())",
+                id=opportunity_id,
+                section=section,
+            )
+        command.upgrade(alembic, "head")
+        rows = sql.rows(
+            "select section, drop_reason from internship_offers order by opportunity_id"
+        )
+        assert [tuple(r) for r in rows] == [("dropped", "closed"), ("open", None)]
+        command.downgrade(alembic, "7cd884a0e6f6")
+        rows = sql.rows("select section from internship_offers order by opportunity_id")
+        assert [r[0] for r in rows] == ["closed", "open"]
+    finally:
+        command.upgrade(alembic, "head")
