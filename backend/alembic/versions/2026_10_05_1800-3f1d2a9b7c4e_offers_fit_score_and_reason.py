@@ -1,7 +1,7 @@
 """Offers: fit score and reason
 
 Revision ID: 3f1d2a9b7c4e
-Revises: c628931fe75c
+Revises: 5b5a53500c3a
 Create Date: 2026-10-05 18:00:00.000000
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "3f1d2a9b7c4e"
-down_revision: str | Sequence[str] | None = "c628931fe75c"
+down_revision: str | Sequence[str] | None = "5b5a53500c3a"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

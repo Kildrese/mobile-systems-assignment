@@ -26,4 +26,4 @@
 ## 5. Docs and rollout
 
 - [x] 5.1 Update `docs/tracker.md` (stages, ranking, config), the flow in `docs/agent-loop.md`, and the ranking section of `AGENT.md`
-- [ ] 5.2 Before merging, apply the migration to production with `./scripts/db-migrate-neon.sh`, since the daily publish writes the new columns
+- [x] 5.2 Before merging, apply the migration to production with `./scripts/db-migrate-neon.sh`, since the daily publish writes the new columns
