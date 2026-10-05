@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { changePassword, deleteUser, exportInternshipReport, getCurrentUser, getLatestInternshipReport, getUser, healthCheck, login, logout, type Options, register, updateUser } from '../sdk.gen';
-import type { ChangePasswordData, ChangePasswordError, ChangePasswordResponse2, DeleteUserData, DeleteUserError, DeleteUserResponse, ExportInternshipReportData, ExportInternshipReportError, ExportInternshipReportResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetLatestInternshipReportData, GetLatestInternshipReportError, GetLatestInternshipReportResponse, GetUserData, GetUserError, GetUserResponse, HealthCheckData, HealthCheckError, HealthCheckResponse, LoginData, LoginError, LoginResponse2, LogoutData, LogoutError, LogoutResponse, RegisterData, RegisterError, RegisterResponse, UpdateUserData, UpdateUserError, UpdateUserResponse } from '../types.gen';
+import { changePassword, deleteUser, exportInternshipReport, getCurrentUser, getInternshipRun, getLatestInternshipReport, getUser, healthCheck, listInternshipRunArticles, listInternshipRuns, login, logout, type Options, register, updateUser } from '../sdk.gen';
+import type { ChangePasswordData, ChangePasswordError, ChangePasswordResponse2, DeleteUserData, DeleteUserError, DeleteUserResponse, ExportInternshipReportData, ExportInternshipReportError, ExportInternshipReportResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetInternshipRunData, GetInternshipRunError, GetInternshipRunResponse, GetLatestInternshipReportData, GetLatestInternshipReportError, GetLatestInternshipReportResponse, GetUserData, GetUserError, GetUserResponse, HealthCheckData, HealthCheckError, HealthCheckResponse, ListInternshipRunArticlesData, ListInternshipRunArticlesError, ListInternshipRunArticlesResponse, ListInternshipRunsData, ListInternshipRunsError, ListInternshipRunsResponse, LoginData, LoginError, LoginResponse2, LogoutData, LogoutError, LogoutResponse, RegisterData, RegisterError, RegisterResponse, UpdateUserData, UpdateUserError, UpdateUserResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -211,6 +211,60 @@ export const getLatestInternshipReportOptions = (options?: Options<GetLatestInte
         return data;
     },
     queryKey: getLatestInternshipReportQueryKey(options)
+});
+
+export const listInternshipRunsQueryKey = (options?: Options<ListInternshipRunsData>) => createQueryKey('listInternshipRuns', options);
+
+/**
+ * Run history
+ */
+export const listInternshipRunsOptions = (options?: Options<ListInternshipRunsData>) => queryOptions<ListInternshipRunsResponse, ListInternshipRunsError, ListInternshipRunsResponse, ReturnType<typeof listInternshipRunsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listInternshipRuns({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listInternshipRunsQueryKey(options)
+});
+
+export const getInternshipRunQueryKey = (options: Options<GetInternshipRunData>) => createQueryKey('getInternshipRun', options);
+
+/**
+ * A run's report
+ */
+export const getInternshipRunOptions = (options: Options<GetInternshipRunData>) => queryOptions<GetInternshipRunResponse, GetInternshipRunError, GetInternshipRunResponse, ReturnType<typeof getInternshipRunQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getInternshipRun({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getInternshipRunQueryKey(options)
+});
+
+export const listInternshipRunArticlesQueryKey = (options: Options<ListInternshipRunArticlesData>) => createQueryKey('listInternshipRunArticles', options);
+
+/**
+ * The documents a run tried to read
+ */
+export const listInternshipRunArticlesOptions = (options: Options<ListInternshipRunArticlesData>) => queryOptions<ListInternshipRunArticlesResponse, ListInternshipRunArticlesError, ListInternshipRunArticlesResponse, ReturnType<typeof listInternshipRunArticlesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listInternshipRunArticles({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listInternshipRunArticlesQueryKey(options)
 });
 
 export const exportInternshipReportQueryKey = (options: Options<ExportInternshipReportData>) => createQueryKey('exportInternshipReport', options);

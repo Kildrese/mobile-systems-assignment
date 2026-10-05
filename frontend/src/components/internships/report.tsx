@@ -1,9 +1,13 @@
-// The latest daily internship report. Read-only: the tracker runs on a schedule
-// (.github/workflows/tracker.yml), never from the app.
+// A daily internship report: the latest, or one run's. Read-only: the tracker runs
+// on a schedule (.github/workflows/tracker.yml), never from the app.
 import { useQuery } from "@tanstack/react-query";
 import { Download, ExternalLink } from "lucide-react";
+import { Link } from "react-router";
 import { toast } from "sonner";
-import { getLatestInternshipReportOptions } from "@/api/@tanstack/react-query.gen";
+import {
+  getInternshipRunOptions,
+  getLatestInternshipReportOptions,
+} from "@/api/@tanstack/react-query.gen";
 import { exportInternshipReport } from "@/api/sdk.gen";
 import type { InternshipOffer } from "@/api/types.gen";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -16,6 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { webUrl } from "@/lib/web-url";
 
 const NO_PREVIOUS = "No earlier run to compare with yet.";
 
@@ -60,6 +65,7 @@ function where(offer: InternshipOffer): string {
 
 function Offer({ offer }: { offer: InternshipOffer }) {
   const closed = offer.status === "closed";
+  const href = webUrl(offer.url);
   const facts = [
     where(offer),
     offer.term !== "unknown" && offer.term,
@@ -96,17 +102,19 @@ function Offer({ offer }: { offer: InternshipOffer }) {
               Closed
             </span>
           ) : (
-            <Button asChild size="sm">
-              <a
-                href={offer.url}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={`Apply to ${offer.title} at ${offer.company} (opens in a new tab)`}
-              >
-                Apply
-                <ExternalLink data-icon="inline-end" />
-              </a>
-            </Button>
+            href && (
+              <Button asChild size="sm">
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Apply to ${offer.title} at ${offer.company} (opens in a new tab)`}
+                >
+                  Apply
+                  <ExternalLink data-icon="inline-end" />
+                </a>
+              </Button>
+            )
           )}
         </CardAction>
       </CardHeader>
@@ -160,8 +168,17 @@ async function downloadReport(runId: string) {
   URL.revokeObjectURL(url);
 }
 
-export function InternshipReport() {
-  const query = useQuery(getLatestInternshipReportOptions());
+// The latest report, or the report of run `runId`.
+export function InternshipReport({ runId }: { runId?: string }) {
+  const latest = useQuery({
+    ...getLatestInternshipReportOptions(),
+    enabled: !runId,
+  });
+  const one = useQuery({
+    ...getInternshipRunOptions({ path: { id: runId ?? "" } }),
+    enabled: !!runId,
+  });
+  const query = runId ? one : latest;
 
   if (query.isPending) return <p className="text-muted-foreground">Loading…</p>;
   if (query.isError)
@@ -199,15 +216,29 @@ export function InternshipReport() {
           {run.topic} · updated {new Date(run.startedAt).toLocaleString()}
           {run.status !== "complete" && ` · ${run.status} run`}
         </p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="cursor-pointer"
-          onClick={() => void downloadReport(run.id)}
-        >
-          <Download data-icon="inline-start" />
-          Export
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {!runId && (
+            <>
+              <Button asChild variant="link" size="sm">
+                <Link to={`/internships/runs/${encodeURIComponent(run.id)}`}>
+                  Articles in this run
+                </Link>
+              </Button>
+              <Button asChild variant="link" size="sm">
+                <Link to="/internships/history">Run history</Link>
+              </Button>
+            </>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="cursor-pointer"
+            onClick={() => void downloadReport(run.id)}
+          >
+            <Download data-icon="inline-start" />
+            Export
+          </Button>
+        </div>
       </div>
       {SECTIONS.map(({ key, title, empty, comparesRuns }) => {
         const list = offers.filter((o) => o.section === key);

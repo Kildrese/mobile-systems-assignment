@@ -4,6 +4,8 @@ import { AppLayout, PublicLayout } from "@/routes/layouts";
 import {
   AccountPage,
   HomePage,
+  InternshipHistoryPage,
+  InternshipRunPage,
   InternshipsPage,
   LoginPage,
   RegisterPage,
@@ -23,6 +25,8 @@ export function App() {
           <Route index element={<HomePage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/internships" element={<InternshipsPage />} />
+          <Route path="/internships/history" element={<InternshipHistoryPage />} />
+          <Route path="/internships/runs/:id" element={<InternshipRunPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

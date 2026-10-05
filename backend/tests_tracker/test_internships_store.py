@@ -3,6 +3,7 @@
 import sqlite3
 
 from tests_tracker.internships_helpers import RUN1, RUN2, add_board, open_store, posting, record
+from tracker import state as core_state
 from tracker.state import StateStore
 from tracker.usecases.internships.store import MIGRATIONS, OpportunityStore
 
@@ -23,7 +24,8 @@ def test_core_state_file_upgrades_in_place(tmp_path):
         assert version == len(MIGRATIONS)
         assert store.sources() == []
         # The core's own schema version is untouched.
-        assert state.db.execute("PRAGMA user_version").fetchone()[0] == 1
+        user_version = state.db.execute("PRAGMA user_version").fetchone()[0]
+        assert user_version == len(core_state.MIGRATIONS)
     finally:
         state.close()
 

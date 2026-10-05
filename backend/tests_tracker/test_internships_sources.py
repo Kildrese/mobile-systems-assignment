@@ -223,6 +223,48 @@ def test_conditional_request_and_304(store, http, trace, tmp_path):
     assert statuses == ["ok", "not_modified"]
 
 
+def fetch_log(store, run_id):
+    return [
+        tuple(r)
+        for r in store.db.execute(
+            "SELECT kind, title, status, reason FROM fetch_log WHERE run_id = ? ORDER BY id",
+            (run_id,),
+        )
+    ]
+
+
+@respx.mock
+def test_fetch_log_over_two_runs(store, http, trace):
+    load_watchlist(
+        store,
+        [
+            WatchlistEntry(company="Acme", kind="greenhouse", board="acme"),
+            WatchlistEntry(company="Beta", kind="lever", board="beta"),
+        ],
+        RUN1,
+    )
+    acme = respx.get(pinned(board_url("greenhouse", "acme")))
+    acme.side_effect = [
+        httpx.Response(200, headers={**JSON, "etag": '"v1"'}, json=GREENHOUSE),
+        httpx.Response(304, headers={"etag": '"v1"'}),
+    ]
+    respx.get(pinned(board_url("lever", "beta"))).respond(503)
+
+    collect_all(store, http, trace, RUN1, Filters())
+    collect_all(store, http, trace, RUN2, Filters())
+
+    intern = "Software Engineering Intern (Summer 2027)"
+    assert fetch_log(store, RUN1) == [
+        ("board", "Acme (Greenhouse board)", "fetched", None),
+        ("posting", intern, "fetched", None),  # the senior role is filtered out, not logged
+        ("board", "Beta (Lever board)", "failed", "unreachable"),
+    ]
+    assert fetch_log(store, RUN2)[:2] == [
+        ("board", "Acme (Greenhouse board)", "skipped", None),
+        ("posting", intern, "skipped", None),
+    ]
+
+
 @respx.mock
 def test_bad_json_is_unreadable(store, http, trace):
     source_id, _ = store.add_source(
@@ -243,6 +285,9 @@ def test_collect_respects_guardrails(store, policy, trace):
     result = collect_source(store, read_source(store, source_id), http, trace, RUN1)
     assert result.status == "unreadable"
     assert result.reason == "blocked_address"
+    assert fetch_log(store, RUN1) == [
+        ("board", "Acme (Lever board)", "rejected", "blocked_address")
+    ]
 
 
 @respx.mock

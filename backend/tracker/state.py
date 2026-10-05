@@ -1,4 +1,5 @@
-"""SQLite state kept between runs: runs, fetched articles, searches and reported items.
+"""SQLite state kept between runs: runs, fetched articles, searches, reported items and
+the fetch log (every document each run tried to read).
 
 One run at a time: opening the store takes an exclusive lock on `<state>.lock` and a
 second opener fails with `StateLocked`. The schema version lives in `PRAGMA
@@ -54,7 +55,34 @@ MIGRATIONS: list[str] = [
         at TEXT NOT NULL
     );
     """,
+    """
+    CREATE TABLE fetch_log (
+        id INTEGER PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        url TEXT NOT NULL,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL,
+        reason TEXT,
+        at TEXT NOT NULL
+    );
+    CREATE INDEX fetch_log_run ON fetch_log(run_id);
+    """,
 ]
+
+# Failure reasons that mean a guardrail refused the document; any other is `failed`.
+GUARDRAIL_REASONS = {
+    "invalid_arguments",
+    "invalid_url",
+    "scheme_not_allowed",
+    "host_not_allowed",
+    "blocked_address",
+    "dns_error",
+    "too_large",
+    "unsupported_content_type",
+    "too_many_redirects",
+}
 
 
 def _now() -> str:
@@ -77,6 +105,34 @@ def canonicalize(url: str) -> str:
         ]
     )
     return urlunsplit((scheme, netloc, parts.path or "/", query, ""))
+
+
+def fetch_status(status: str, reason: str | None = None) -> str:
+    """The fetch log's status for an outcome: fetched, skipped, rejected or failed."""
+    if status == "ok":
+        return "fetched"
+    if status in ("cached", "not_modified"):
+        return "skipped"
+    return "rejected" if reason in GUARDRAIL_REASONS else "failed"
+
+
+def log_fetch(
+    db: sqlite3.Connection,
+    run_id: str,
+    stage: str,
+    kind: str,
+    url: str,
+    title: str,
+    status: str,
+    reason: str | None = None,
+) -> None:
+    """Record one document a run tried to read. `status` is from `fetch_status`."""
+    with db:
+        db.execute(
+            "INSERT INTO fetch_log (run_id, stage, kind, url, title, status, reason, at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (run_id, stage, kind, url[:2048], title[:300], status, reason, _now()),
+        )
 
 
 class StateStore:

@@ -79,6 +79,40 @@ def test_fetch_guardrail_is_a_result(toolbox):
     assert read_trace(toolbox.trace.path)[-1]["status"] == "blocked"
 
 
+@respx.mock
+def test_fetch_log_records_every_status(policy, public_resolver, tmp_path):
+    respx.get(f"https://{PUBLIC_IP}/news/1").respond(200, headers=HTML, content=PAGE)
+    respx.get(f"https://{PUBLIC_IP}/gone").respond(404)
+    state = StateStore(tmp_path / "state.sqlite")
+    trace = Trace(None, "r1").bind(stage="scout")
+    toolbox = Toolbox(policy, trace, "r1", state=state, resolver=public_resolver)
+    for url in (
+        "https://news.example.com/news/1",
+        "https://news.example.com/news/1",  # served from state
+        "http://169.254.169.254/latest/meta-data/",
+        "javascript:alert(1)",
+        "https://news.example.com/gone",
+    ):
+        toolbox.fetch_article(url)
+    rows = [
+        tuple(r)
+        for r in state.db.execute(
+            "SELECT run_id, stage, kind, url, title, status, reason FROM fetch_log ORDER BY id"
+        )
+    ]
+    state.close()
+    assert rows == [
+        ("r1", "scout", "page", "https://news.example.com/news/1", "Robot Model Released",
+         "fetched", None),
+        ("r1", "scout", "page", "https://news.example.com/news/1", "Robot Model Released",
+         "skipped", None),
+        ("r1", "scout", "page", "http://169.254.169.254/latest/meta-data/", "", "rejected",
+         "blocked_address"),
+        ("r1", "scout", "page", "javascript:alert(1)", "", "rejected", "scheme_not_allowed"),
+        ("r1", "scout", "page", "https://news.example.com/gone", "", "failed", "http_error"),
+    ]  # fmt: skip
+
+
 def test_fetch_host_not_allowed(make_policy, tmp_path):
     policy = make_policy(fetch={"allowed_hosts": ["*.example.com"]})
     toolbox = Toolbox(policy, Trace(None, "r"), "r", state=None)
