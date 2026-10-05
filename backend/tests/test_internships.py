@@ -191,8 +191,8 @@ def test_run_history(tmp_path, client, ada):
     assert newest["articles"] == {"fetched": 1, "skipped": 1, "rejected": 1}
     assert "reportMarkdown" not in newest
 
-    page = client.get(f"/api/internships/runs?limit=1&before={RUN2}", headers=ada.headers)
-    assert [r["id"] for r in page.json()["runs"]] == [RUN1]
+    page = client.get("/api/internships/runs?limit=1", headers=ada.headers)
+    assert [r["id"] for r in page.json()["runs"]] == [RUN2]
     assert client.get("/api/internships/runs?limit=0", headers=ada.headers).status_code == 400
     assert client.get("/api/internships/runs").status_code == 401
 

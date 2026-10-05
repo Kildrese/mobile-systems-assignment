@@ -8,15 +8,15 @@
 - the number of its offers in each section (`new`, `top_k`, `dropped`, `open`);
 - the number of its articles in each status (`fetched`, `skipped`, `rejected`, `failed`).
 
-It SHALL take `limit` (default 30, at most 100) and `before` (a run id: only older runs).
+It SHALL take `limit` (default 30, at most 100).
 
 #### Scenario: History
 - **WHEN** a signed-in user requests the run list after three published runs
 - **THEN** the response lists the three runs newest first, each with its section and article counts
 
-#### Scenario: Paging
-- **WHEN** the request has `limit=1&before=<id of the newest run>`
-- **THEN** the response holds only the second-newest run
+#### Scenario: Limit
+- **WHEN** the request has `limit=1`
+- **THEN** the response holds only the newest run
 
 #### Scenario: Not signed in
 - **WHEN** the request has no valid bearer token

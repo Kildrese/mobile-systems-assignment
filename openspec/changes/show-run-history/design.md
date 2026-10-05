@@ -58,7 +58,7 @@ All text is stored as it came: titles cut to 300 characters, URLs to 2,048 (the 
 ### D4. "What changed" is counted, not stored
 `GET /api/internships/runs` counts each run's `internship_offers` by section and its `tracker_articles` by status, with two `GROUP BY` queries over the page of runs. There are no counter columns to keep in sync. A run's own titles (what was new, what dropped) come from `GET /api/internships/runs/{id}`, which returns the same shape as `/latest`, and both share one handler.
 
-The history is paged with `limit` (default 30, maximum 100) and `before` (a run id, since ids sort by start time).
+The history returns the newest `limit` runs (default 30, maximum 100), a month of daily runs. There is no paging: add a `before` cursor once the history outgrows one page.
 
 ### D5. Rendering web text
 Titles, URLs, reasons and summaries are React text children, never `dangerouslySetInnerHTML`. A URL is an `<a href>` only when `new URL(url).protocol` is `http:` or `https:`, and otherwise plain text, because a rejected URL can be `javascript:` or `data:`. One helper, `webUrl()`, does this check; the articles table and the Apply button in the report both use it.

@@ -18,7 +18,6 @@ const SECTION_NAMES: Record<string, string> = {
   top_k: "still in top K",
   dropped: "dropped",
   open: "still open",
-  closed: "closed",
 };
 
 const STATUS_NAMES: Record<TrackerArticle["status"], string> = {
@@ -112,7 +111,7 @@ export function RunHistory() {
   );
 }
 
-export function ArticleUrl({ url }: { url: string }) {
+function ArticleUrl({ url }: { url: string }) {
   const href = webUrl(url);
   const text = <span className="break-all">{url}</span>;
   return href ? (

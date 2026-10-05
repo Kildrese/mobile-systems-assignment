@@ -111,10 +111,7 @@ def publish(
     )
     db.flush()
     db.add_all(models.InternshipOffer(run_id=run["id"], **row) for row in rows)
-    db.add_all(
-        models.TrackerArticle(run_id=run["id"], **{k: v for k, v in article.items() if k != "at"})
-        for article in fetched
-    )
+    db.add_all(models.TrackerArticle(run_id=run["id"], **article) for article in fetched)
     db.commit()
 
 

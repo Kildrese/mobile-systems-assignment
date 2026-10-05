@@ -15,7 +15,7 @@ Apply after `report-top-k-changes`.
 
 ## 3. API (internship-report-view)
 
-- [x] 3.1 Add `GET /api/internships/runs` with section and article counts, `limit` and `before` (design D4)
+- [x] 3.1 Add `GET /api/internships/runs` with section and article counts and `limit` (design D4)
 - [x] 3.2 Add `GET /api/internships/runs/{id}`, sharing the handler with `/latest`
 - [x] 3.3 Add `GET /api/internships/runs/{id}/articles`
 - [x] 3.4 Test 401, 404, empty logs, paging, and the documented-routes and 405 scenarios across all internship paths
@@ -25,7 +25,7 @@ Apply after `report-top-k-changes`.
 
 - [x] 4.1 Add `webUrl()` (the URL if http(s), else null) with a Vitest test (`javascript:`, `data:`, relative and https URLs), and use it for Apply (design D5)
 - [x] 4.2 Let `InternshipReport` take an optional run id. Add `/internships/history` and `/internships/runs/:id` behind the login guard, with the links from `/internships`
-- [ ] 4.3 (needs a browser; the render test in `history.test.ts` covers the escaping and the `javascript:` URL) Check in the browser with a published run whose log holds the test injection page (`tests_tracker/fixtures/injection.html`) and a rejected `javascript:` URL: nothing runs, and both show as text
+- [ ] 4.3 (needs a browser; `web-url.test.ts` covers the `javascript:` URL) Check in the browser with a published run whose log holds the test injection page (`tests_tracker/fixtures/injection.html`) and a rejected `javascript:` URL: nothing runs, and both show as text
 
 ## 5. Docs
 

@@ -624,12 +624,6 @@ export type ListInternshipRunsData = {
          * At most this many runs.
          */
         limit?: number;
-        /**
-         * Before
-         *
-         * A run id: only runs that started before it.
-         */
-        before?: string | null;
     };
     url: '/api/internships/runs';
 };

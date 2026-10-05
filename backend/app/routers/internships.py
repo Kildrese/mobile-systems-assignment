@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, defer
 
 from app import models, schemas
@@ -79,9 +79,6 @@ def list_runs(
     db: Db,
     _: CurrentSession,
     limit: Annotated[int, Query(ge=1, le=100, description="At most this many runs.")] = 30,
-    before: Annotated[
-        str | None, Query(description="A run id: only runs that started before it.")
-    ] = None,
 ):
     query = (
         select(models.TrackerRun)
@@ -89,11 +86,6 @@ def list_runs(
         .order_by(models.TrackerRun.started_at.desc(), models.TrackerRun.id.desc())
         .limit(limit)
     )
-    if before is not None:
-        # Keyset paging on (started_at, id): the id breaks ties between equal start times.
-        started = select(models.TrackerRun.started_at).where(models.TrackerRun.id == before)
-        key = tuple_(models.TrackerRun.started_at, models.TrackerRun.id)
-        query = query.where(key < tuple_(started.scalar_subquery(), before))
     runs = db.scalars(query).all()
     ids = [run.id for run in runs]
     sections = _counts(db, models.InternshipOffer.section, ids)

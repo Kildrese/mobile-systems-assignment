@@ -227,7 +227,7 @@ def _fetch_posting_detail(store: OpportunityStore, toolbox: Toolbox, args: Detai
             "curate",
             "page",
             args.url,
-            posting["title"] if posting and outcome.ok else "",
+            posting["title"] if outcome.ok else "",
             fetch_status(outcome.status, outcome.reason),
             outcome.reason,
         )

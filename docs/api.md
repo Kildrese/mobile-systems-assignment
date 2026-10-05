@@ -19,7 +19,7 @@ Protected endpoints take `Authorization: Bearer <token>`, where the token comes 
 | POST | `/api/auth/change-password` | yes | Needs the current password. Revokes every session and returns a new `token` |
 | GET / PATCH / DELETE | `/api/users/:id` | yes | Read, update (username, first and last name) or delete your own account |
 | GET | `/api/internships/latest` | yes | The latest published tracker run and its offers (`run` is `null` before the first). Read-only: nothing in the API starts the tracker |
-| GET | `/api/internships/runs` | yes | Run history, newest first: each run's times, status, offers per report section and articles per status. `limit` (1–100, default 30) and `before` (a run id) page through it |
+| GET | `/api/internships/runs` | yes | Run history, newest first: each run's times, status, offers per report section and articles per status. `limit` (1–100, default 30) caps how many |
 | GET | `/api/internships/runs/:id` | yes | One run's report, the same shape as `/latest` (`404` if unknown) |
 | GET | `/api/internships/runs/:id/articles` | yes | The documents the run tried to read (pages, job boards, postings), in fetch order, with title, URL, fetch time and status: `fetched`, `skipped` (already seen), `rejected` (by a fetch guardrail) or `failed` (`404` if unknown) |
 | GET | `/api/internships/runs/:id/report.md` | yes | Download a run's Markdown report, exactly as the tracker wrote it (`404` if the run is unknown or has no report) |
