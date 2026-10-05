@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Ranking in code
-Code SHALL score every open opportunity from config weights over role type, term match, location match, recency (first seen, posting date), focus and fit. Focus is whether the title names a role the search is for, by whole-word match against `ranking.focus_keywords` (software, ML, data, ...). Fit is the opportunity's stored fit rating divided by 3, weighted by `ranking.weights.fit` (default 6); an opportunity without a rating scores 0.5, like any unknown field. Ties are broken by first-seen time, then company name. The score SHALL be deterministic for the same records, ratings and config. Work-authorization wording SHALL NOT affect it. The top K are the K highest-scoring open opportunities.
+Code SHALL score every open opportunity from config weights over role type, term match, location match, recency (first seen, posting date), focus and fit. Focus is whether the title names a role the search is for, by whole-word match against `ranking.focus_keywords` (software, ML, data, ...). Fit is the opportunity's stored fit rating divided by 3, weighted by `ranking.weights.fit` (default 3); an opportunity without a rating scores 0.5, like any unknown field. Ties are broken by first-seen time, then company name. The score SHALL be deterministic for the same records, ratings and config. Work-authorization wording SHALL NOT affect it. The top K are the K highest-scoring open opportunities.
 
 #### Scenario: Deterministic ranking
 - **WHEN** ranking runs twice on unchanged records, ratings and config
