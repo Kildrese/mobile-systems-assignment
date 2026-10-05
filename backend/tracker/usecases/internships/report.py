@@ -163,6 +163,7 @@ def render(
     show_fit: bool = False,
 ) -> str:
     s = sections(store, meta.run_id)
+    fit_head, fit_rule = (" Fit |", " --- |") if show_fit else ("", "")
     summaries = store.summaries(meta.run_id)
     lines = _header(meta, stages or [])
     if waiting := len(store.pending_postings(meta.run_id)):
@@ -194,7 +195,6 @@ def render(
     elif not s.top_k:
         lines += ["No earlier opportunity is in the top K.", ""]
     else:
-        fit_head, fit_rule = (" Fit |", " --- |") if show_fit else ("", "")
         lines += [
             f"| Rank | Last run | Opportunity | Company | Location | Term |{fit_head} Link |",
             f"| --- | --- | --- | --- | --- | --- |{fit_rule} --- |",
@@ -236,7 +236,6 @@ def render(
     if not s.also_open:
         lines += ["No other earlier opportunities are still open.", ""]
     else:
-        fit_head, fit_rule = (" Fit |", " --- |") if show_fit else ("", "")
         lines += [
             f"| Rank | Opportunity | Company | Location | Term |{fit_head} First seen | Link |",
             f"| --- | --- | --- | --- | --- |{fit_rule} --- | --- |",

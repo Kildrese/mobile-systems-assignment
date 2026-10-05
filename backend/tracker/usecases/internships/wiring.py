@@ -654,11 +654,6 @@ class LivenessStage:
         return StageOutcome("complete", usage=asdict(counts))
 
 
-def _unrated(store: OpportunityStore, digest: str, ids: set[int]) -> list[int]:
-    fits = store.fits()
-    return sorted(i for i in ids if fits.get(i, {}).get("profile_hash") != digest)
-
-
 @dataclass
 class AssessStage:
     name: str = "assess"
@@ -675,20 +670,14 @@ class AssessStage:
         ctx = replace(ctx, profile=ctx.profile.model_copy(update={"instructions": instructions}))
         store = OpportunityStore(ctx.state)
         digest = assessing.profile_hash(profile)
-        tried: set[int] = set()  # left unrated after their batch: wait for the next run
-        rated = 0
-        while batch := [o for o in store.needs_fit(digest) if o["id"] not in tried][
-            : assessing.BATCH_SIZE
-        ]:
-            ids = {o["id"] for o in batch}
-            tried |= ids
-            stop = self._assess(ctx, store, profile, batch, ids)
-            rated += len(ids) - len(_unrated(store, digest, ids))
+        todo = store.needs_fit(digest)
+        for start in range(0, len(todo), assessing.BATCH_SIZE):
+            stop = self._assess(ctx, store, profile, todo[start : start + assessing.BATCH_SIZE])
             if stop.finish is None:  # budget or provider stop: the rest waits
                 outcome = StageOutcome.from_stop(stop)
-                outcome.usage = {"rated": rated}
+                outcome.usage = {"rated": len(todo) - len(store.needs_fit(digest))}
                 return outcome
-        return StageOutcome("complete", usage={"rated": rated})
+        return StageOutcome("complete", usage={"rated": len(todo) - len(store.needs_fit(digest))})
 
     def _assess(
         self,
@@ -696,8 +685,9 @@ class AssessStage:
         store: OpportunityStore,
         profile: str,
         batch: list[dict[str, Any]],
-        ids: set[int],
     ) -> Stop:
+        ids = {o["id"] for o in batch}
+        done: set[int] = set()
         finishes = 0
 
         def finish(arguments: dict[str, Any], step: int, toolbox: Toolbox, trace: Trace):
@@ -714,7 +704,8 @@ class AssessStage:
                 accepted=outcome.data.get("accepted"),
                 rejected=outcome.data.get("rejected"),
             )
-            left = _unrated(store, assessing.profile_hash(profile), ids)
+            done.update(outcome.data.get("accepted", []))
+            left = sorted(ids - done)
             # Rejected ratings go back once for correction; then the batch ends.
             if left and finishes < 2:
                 return json.dumps({**outcome.data, "unrated": left}), None
