@@ -4,23 +4,26 @@ The daily tracker has never run on its own. `tracker.yml` has had a `schedule` t
 
 ## What Changes
 
-- **An external daily cron starts the run.** A cron service calls GitHub's REST endpoint `POST /repos/{owner}/{repo}/actions/workflows/tracker.yml/dispatches` with `ref: master` once a day at 09:17 UTC. It authenticates with a fine-grained personal access token limited to this repository and to Actions read and write.
-- **BREAKING (operations):** the `schedule` trigger is removed from `tracker.yml`, so GitHub's scheduler can't start a second run on a day it happens to work. `workflow_dispatch` becomes the only trigger, for the cron and for manual runs alike.
-- **A missed trigger gets noticed.** The cron service emails the owner when the dispatch call fails (anything other than `204`). A run that starts and fails is reported by GitHub's usual failed-workflow email to the token's owner.
-- **Still no API route starts a run.** The cron talks to GitHub, not to our backend.
-- **Docs:** `docs/deployment.md` describes the trigger, the token, how to rotate it, and how to check that the day's run happened.
+- **Vercel Cron starts the run.** The backend project (`mobile-systems-api`) gets a daily Vercel Cron Job (`0 9 * * *`, so 09:00–09:59 UTC on the Hobby plan). It calls a new internal route, which calls GitHub's `workflow_dispatch` endpoint for `tracker.yml` on `master` with a fine-grained token limited to this repository and to Actions read and write.
+- **The route can't be reached by users.** It accepts only Vercel's `CRON_SECRET` bearer token, compared in constant time. Without it (no header, a user's session token, a wrong secret, or no secret configured) the answer is `404`, the same as for a path that doesn't exist. It is left out of the OpenAPI document, so it isn't in the docs or the generated frontend client.
+- **At most one dispatch per UTC day.** A new `tracker_dispatches` table holds one row per day, keyed by the date. The route claims the day with one atomic `INSERT … ON CONFLICT` before calling GitHub, so of two calls arriving together, Postgres lets exactly one through. A failed dispatch marks the day `failed`, and a later call that day may claim it again. The table also records when each day's dispatch happened and why it failed.
+- **BREAKING (decision):** "The API cannot start the tracker" becomes "No user can start the tracker". The internal route is the one exception, open only to the cron.
+- **BREAKING (operations):** the `schedule` trigger is removed from `tracker.yml`, so GitHub's scheduler can't add a second run on a day it happens to work. `workflow_dispatch` becomes the only trigger, for the cron and for manual runs.
 
 ## Capabilities
 
 ### New Capabilities
-<!-- none -->
+- `tracker-dispatch`: the internal route Vercel Cron calls, how it authenticates the cron, the once-a-day claim in `tracker_dispatches`, and the GitHub call.
 
 ### Modified Capabilities
-- `report-publishing`: the "Daily scheduled run" requirement says what starts the run (an external daily dispatch at 09:17 UTC, not GitHub's `schedule`), that GitHub's scheduler can't start a second daily run, and that a failed dispatch is reported. It also corrects the stale 09:00 time.
+- `report-publishing`: "Daily scheduled run" says the run is started by the daily dispatch (not GitHub's `schedule`), that GitHub's scheduler can't add a run, and the time (it was still 09:00).
+- `internship-report-view`: "The API cannot start the tracker" is renamed "No user can start the tracker" and allows the cron-only dispatch route.
 
 ## Impact
 
-- **Code:** `.github/workflows/tracker.yml` (drop `on.schedule`, update the header comment). No backend, tracker or frontend code changes.
-- **Outside the repo:** a cron-job.org job and a fine-grained PAT (Actions: read and write, this repository only, expiring after at most a year). Both are set up by the repository owner. The token is stored only in the cron service, never in the repository.
-- **Docs:** `docs/deployment.md`.
-- **Unchanged:** the job itself (state cache, exit codes, publishing, artifacts), the concurrency group, and the read-only API.
+- **Backend:** a router `app/routers/internal.py`, a `TrackerDispatch` model and an Alembic migration for `tracker_dispatches`, two optional settings (`CRON_SECRET`, `GITHUB_DISPATCH_TOKEN`), and `backend/vercel.json` with the cron. It uses `httpx` for the GitHub call; no new dependency.
+- **Workflow:** `.github/workflows/tracker.yml` loses `on.schedule`.
+- **Outside the repo:** the owner creates the fine-grained token and sets both env vars on the Vercel backend project (Production).
+- **Docs and comments:** `docs/deployment.md`, `docs/agent-loop.md`, and the comments in `tracker.yml`, `app/routers/internships.py` and `app/publish_report.py` that say no route can start a run.
+- **Unchanged:** the job itself (state cache, exit codes, publishing, artifacts), the concurrency group, and the public read-only internship routes.
+- **Order:** `complete-daily-runs` and `show-run-history` modify the same two requirements and aren't archived yet. Their changes are carried over here, so archive them first.

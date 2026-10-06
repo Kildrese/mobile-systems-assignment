@@ -7,81 +7,113 @@
 - both commits that set the cron (#16, #21) resolve to the owner's account (`Kildrese`), so the scheduled actor exists;
 - `workflow_dispatch` on the same file works (4 successful runs).
 
-GitHub documents `schedule` as best effort, and people report crons that never register until something "wakes" the repository ([community #202602](https://github.com/orgs/community/discussions/202602)). Re-committing the cron in #21 was that wake-up, and the next slot was still skipped. We can't fix GitHub's scheduler, so we stop depending on it.
+GitHub documents `schedule` as best effort, and people report crons that never register ([community #202602](https://github.com/orgs/community/discussions/202602)). Re-committing the cron in #21 didn't help. We stop depending on GitHub's scheduler.
 
-The API has no route that starts a run, by design, and that stays true.
+The backend is FastAPI on Vercel (project `mobile-systems-api`, root `backend/`), with Neon Postgres and Alembic migrations. Until now no API route could start a run. The owner has agreed to relax that rule to "no user can start a run", which allows a route that only the cron can reach.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- One run a day without anyone clicking anything.
-- A missed day is noticed the same day.
-- No new code, service or secret in our own stack.
+- One run a day without anyone clicking anything, scheduled from config in this repository.
+- No user, signed in or not, can start a run through the API.
+- A duplicate cron call never starts a second run.
+- A failed dispatch leaves a record that says why.
 
 **Non-Goals:**
-- An endpoint in our backend that starts a run.
-- Catching up on missed days, or retrying a failed run automatically. A failed run is investigated, as today.
-- Moving the tracker off GitHub Actions.
+- Retrying automatically within the day, or catching up on missed days. Vercel calls the cron once; a manual run from the Actions tab covers a failed day.
+- Deduplicating manual runs. A writer who starts one from the Actions tab means it.
+- Alerting on a missed day (see Open Questions).
 
 ## Decisions
 
-### D1. An external cron calls `workflow_dispatch`
+### D1. Vercel Cron calls an internal route
 
-The cron service sends, once a day at 09:17 UTC:
+`backend/vercel.json`:
 
-```
-POST https://api.github.com/repos/Kildrese/mobile-systems-assignment/actions/workflows/tracker.yml/dispatches
-Authorization: Bearer <fine-grained PAT>
-Accept: application/vnd.github+json
-X-GitHub-Api-Version: 2022-11-28
-
-{"ref": "master"}
+```json
+{ "crons": [{ "path": "/api/internal/tracker-dispatch", "schedule": "0 9 * * *" }] }
 ```
 
-GitHub answers `204`, and the run is the same job as a manual run.
+Vercel sends `GET` to the path on the production deployment, with `Authorization: Bearer $CRON_SECRET`. On the Hobby plan a daily cron fires anywhere between 09:00 and 09:59 UTC ([Vercel docs](https://vercel.com/docs/cron-jobs/usage-and-pricing)), which is fine for a daily report.
+
+Alternatives: cron-job.org (no code, but the schedule and the token live in a third-party dashboard, and that adds an account); a Neon Function trigger (new runtime and deploy path for one call); keep waiting on GitHub's `schedule` (failed twice, silently).
+
+### D2. Only the cron can reach the route
+
+- The route reads `Authorization`, strips `Bearer `, and compares it with `CRON_SECRET` using `secrets.compare_digest`. A missing or empty `CRON_SECRET` rejects everything, so a local or preview deployment without the secret has no reachable route.
+- Every rejection is `404` with the API's usual not-found body. A user can't tell the route from a path that doesn't exist.
+- User session tokens are never looked up: the route doesn't use `CurrentSession`, so a valid user token is just a wrong secret.
+- `include_in_schema=False` keeps it out of `/api/openapi.json`, the docs page, the OpenAPI check and the generated frontend client.
+
+Alternative: return `401` for a bad secret. That says the route exists, and nothing legitimate needs to know.
+
+### D3. Claim the day in Postgres before calling GitHub
+
+Table `tracker_dispatches`:
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `day` | `date` | primary key, the UTC date |
+| `status` | `text` | `claimed`, `dispatched` or `failed` |
+| `claimed_at` | `timestamptz` | when the current claim was taken |
+| `attempts` | `int` | how many calls claimed this day |
+| `error` | `text`, null | GitHub's status and message for a failure |
+
+The claim is one statement, so Postgres's row lock on the primary key makes it atomic:
+
+```sql
+INSERT INTO tracker_dispatches (day, status, claimed_at, attempts)
+VALUES (:day, 'claimed', now(), 1)
+ON CONFLICT (day) DO UPDATE
+   SET status = 'claimed', claimed_at = now(), attempts = tracker_dispatches.attempts + 1, error = NULL
+ WHERE tracker_dispatches.status = 'failed'
+    OR (tracker_dispatches.status = 'claimed' AND tracker_dispatches.claimed_at < now() - interval '5 minutes')
+RETURNING attempts
+```
+
+A row back means this call owns the day and calls GitHub. No row back means another call already has it, and the route answers `already_dispatched`. Two simultaneous calls serialize on the key, and the second sees the first's row. The claim is committed before the GitHub call, so the lock isn't held during the network request.
+
+- **`failed` can be claimed again**, so a manual re-call of the route (or a second Vercel call) after a GitHub error isn't blocked for the rest of the day.
+- **A `claimed` row older than 5 minutes can be claimed again.** That covers a function that died between the claim and the GitHub answer. The GitHub call times out after 10 s, well inside 5 minutes, so a live call is never overtaken.
 
 Alternatives:
-- **Keep waiting on `schedule`, or re-commit the cron again.** It already failed twice, and we only find out by looking.
-- **A scheduled GitHub workflow in another repository that dispatches this one.** It depends on the same scheduler.
-- **Vercel Cron, a Neon Function trigger or a Claude scheduled routine.** Each works, but each needs a small piece of code and puts the same token in another place. Vercel Cron would also need a route in our app that starts a run, which we don't want.
-- **cron-job.org (chosen).** It is free and has nothing to deploy. It can send a POST with headers and a JSON body, and emails on failure. Its one cost is that the setup lives outside the repository, so `docs/deployment.md` records it step by step.
+- **Ask GitHub whether a tracker run already started today, then dispatch.** Two calls can both see "none" and both dispatch. The check and the action aren't atomic, and GitHub can't make them so.
+- **A Postgres advisory lock.** It stops two calls at the same moment, but not a duplicate an hour later, and leaves no record.
+- **Rely on the workflow's concurrency group.** It queues the second run; it doesn't cancel it.
 
-### D2. Remove `schedule` from the workflow
+### D4. The GitHub call
 
-If GitHub's scheduler starts working one day, keeping both triggers would mean two runs a day. The concurrency group would make the second wait, not overlap. It would still cost a second Scout (6 Tavily credits, about 47,000 gpt-oss-120b tokens), write a near-empty second report, and make "New since last run" compare with a run from the same morning. One trigger, one run.
+`httpx.post` to `https://api.github.com/repos/Kildrese/mobile-systems-assignment/actions/workflows/tracker.yml/dispatches`, body `{"ref": "master"}`, headers `Authorization: Bearer $GITHUB_DISPATCH_TOKEN`, `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, timeout 10 s. The repository and workflow are constants in the router. They never change, so they're not settings.
 
-Alternative: keep `schedule` as a backup and skip a run when one already succeeded that day. That needs a step that queries the Actions API and has its own failure modes, to cover a scheduler that has never fired.
+`204` → `dispatched`, answer `202`. Anything else → `failed` with `"<status>: <GitHub's message>"` (never the request headers), `logger.error`, answer `502`. A `502` shows as a failed cron invocation in Vercel's cron and runtime logs.
 
-### D3. A fine-grained token, scoped to this repository
+The token is a fine-grained personal access token: **repository access only `mobile-systems-assignment`, permission Actions: read and write**, expiring after at most a year. That is the least GitHub allows for `workflow_dispatch`. It lives only in the Vercel project's Production env, next to `DATABASE_URL`.
 
-The token is a fine-grained personal access token with **Repository access: only `mobile-systems-assignment`** and **Permissions: Actions: read and write** (Metadata: read is added automatically). That is the least GitHub allows for `workflow_dispatch`. It expires after at most a year. A classic token with `repo` scope would grant write access to every repository the owner has.
+### D5. Remove `schedule` from the workflow
 
-The token is stored only in the cron service's job settings. It never goes into the repository or into GitHub secrets, since nothing in GitHub uses it.
-
-### D4. How a missed day is noticed
-
-- **The dispatch fails** (expired token, GitHub outage): cron-job.org treats any non-2xx answer as a failure and emails the owner.
-- **The run fails:** GitHub emails the token's owner, who is the actor of a dispatched run, as it does today for manual runs.
-- **The cron service itself doesn't fire:** nothing alerts. The frontend shows the newest run's time, so a stale date is visible. Watching for that is out of scope (see Open Questions).
+If GitHub's scheduler starts working one day, it would add a second daily run that the claim table can't see, because GitHub would start it directly. One trigger, one run.
 
 ## Risks / Trade-offs
 
-- [The token leaks from the cron service] → It can only start, cancel, re-run or delete workflow runs and read their logs in this one repository. Logs never contain the API keys, since Actions masks secrets. The worst case is extra runs, which the concurrency group serializes and Groq/Tavily budgets cap. Revoke the token in GitHub settings to stop it.
-- [The token expires and runs stop] → The first failed dispatch triggers cron-job.org's email. `docs/deployment.md` puts rotation in the expiry month.
-- [The setup isn't in the repository] → `docs/deployment.md` lists the exact request, schedule and token settings, so anyone with owner access can recreate it in a few minutes.
-- [cron-job.org has an outage] → That day is skipped. A manual run from the Actions tab is the fallback, as today.
+- [`CRON_SECRET` leaks] → Whoever holds it can call the route, but the claim table still allows one dispatch a day, so the worst case is the run we wanted anyway. Rotate it in Vercel's env settings.
+- [`GITHUB_DISPATCH_TOKEN` leaks] → It can start, cancel, re-run or delete workflow runs and read logs in this one repository. Logs don't contain the API keys (Actions masks secrets). Revoke it in GitHub.
+- [The token expires and dispatches fail] → Each day gets a `failed` row with `401`, and Vercel's logs show a failed cron. Nobody is emailed (Vercel Hobby doesn't alert on cron failures). Mitigation: the docs put token rotation in the expiry month. The app shows the newest run's date, so a stale report is visible.
+- [Vercel skips a day] → No row for that date. A manual run from the Actions tab covers it.
+- [Vercel invokes the cron twice] → The second call gets `already_dispatched`. This is the case D3 exists for.
+- [Clock edge at midnight UTC] → The cron fires between 09:00 and 09:59 UTC, nowhere near a date change.
 
 ## Migration Plan
 
-1. The owner creates the fine-grained token (D3).
-2. The owner creates the cron-job.org job (D1) and runs it once with "Test run". Expect `204` and a new `workflow_dispatch` run in the Actions tab.
-3. Merge the workflow change that removes `schedule`, with the docs.
-4. The next morning, check that a run started at about 09:17 UTC by the token's owner.
+1. The owner creates the fine-grained token (D4).
+2. Set `CRON_SECRET` (random, at least 16 characters) and `GITHUB_DISPATCH_TOKEN` on the Vercel backend project, Production only.
+3. Apply the migration to Neon (`./scripts/db-migrate-neon.sh`), then merge. Order: migrate first, since the new code needs the table.
+4. After the deploy, call the route once by hand with the secret (`curl -H "Authorization: Bearer $CRON_SECRET" https://<api>/api/internal/tracker-dispatch`). Expect `202` and a new run in the Actions tab. A second call returns `already_dispatched`. Delete that day's row afterwards if the next day's test should start clean (not needed: the cron runs the next day anyway).
+5. The next morning, check that a run started between 09:00 and 10:00 UTC and that its row is `dispatched`.
 
-Rollback: disable the cron job and put the `schedule` block back.
+Rollback: remove the cron from `backend/vercel.json` (or unset `CRON_SECRET`, which turns the route into a `404`) and put the `schedule` block back in `tracker.yml`.
 
-`complete-daily-runs` also modifies the "Daily scheduled run" requirement (the job-timeout clause). Its text is carried over unchanged in this change's delta. Archive `complete-daily-runs` first so the two don't overwrite each other.
+`complete-daily-runs` and `show-run-history` modify the same requirements ("Daily scheduled run", "The API cannot start the tracker"). Their text is carried over unchanged in this change's deltas. Archive them first.
 
 ## Open Questions
 
-- Should a stale run (no new run for over 26 hours) raise an alert? Not needed for one run a day while the owner checks the app daily. Revisit if that changes.
+- Should a missed day alert someone (for example a GitHub issue opened by the route on `failed`, or a check in the app for "no run in 26 hours")? Left out until a missed day actually goes unnoticed.
