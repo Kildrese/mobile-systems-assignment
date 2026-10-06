@@ -8,7 +8,7 @@ from fastapi.openapi.utils import get_openapi
 
 from app.config import get_settings
 from app.errors import install_error_handlers
-from app.routers import auth, health, internships, users
+from app.routers import auth, health, internal, internships, users
 
 DESCRIPTION = (
     "JSON API for accounts, users and the daily internship report. Log in with "
@@ -61,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(internships.router)
+    app.include_router(internal.router)
     app.openapi = lambda: _openapi(app)
 
     # Middleware added later wraps middleware added earlier, so the order is

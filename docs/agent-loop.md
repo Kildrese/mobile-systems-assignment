@@ -8,7 +8,7 @@ Every morning the tracker looks for Summer 2027 software and ML internships at N
 
 ```mermaid
 flowchart TD
-    cron(["Every morning: scheduled job starts a run"]) --> scout
+    cron(["Every morning: the backend's daily cron starts a run"]) --> scout
     subgraph run ["One run"]
         scout["1. Scout (agent)<br/>searches the web for startups hiring<br/>and proposes their job boards"]
         collect["2. Collect (code)<br/>reads every job board<br/>and lists the postings"]

@@ -1,17 +1,17 @@
 # The daily internship tracker. Runs the tracker, then copies its latest run into the
-# production database, where the API serves it read-only. This schedule is the only way
-# a run starts: the API has no route for it. `workflow_dispatch` is for a manual run
-# from the Actions tab (repository writers only).
+# production database, where the API serves it read-only.
+#
+# `workflow_dispatch` is the only trigger. The backend's Vercel cron (`backend/vercel.json`)
+# dispatches it once a day between 09:00 and 09:59 UTC, through a route only the cron can
+# reach, which claims the day in `tracker_dispatches` so a duplicate call never starts a
+# second run. Repository writers can also start a run from the Actions tab. There is no
+# `schedule`: GitHub never started a scheduled run of this workflow, and if it ever did,
+# that run would bypass the once-a-day claim.
 #
 # Secrets: GROQ_API_KEY, TAVILY_API_KEY, DATABASE_URL (Neon, pooled).
 name: Internship tracker
 
 on:
-  schedule:
-    # GitHub cron is UTC: 09:17 UTC is 5:17 in New York in summer, 4:17 in winter.
-    # Off the hour on purpose: GitHub delays scheduled runs at the start of each hour,
-    # when load is highest, and may drop them (the first 09:00 run never started).
-    - cron: "17 9 * * *"
   workflow_dispatch:
 
 # Never two runs at once: they share the state file.

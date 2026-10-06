@@ -9,8 +9,8 @@ from app.deps import CurrentSession, Db
 from app.errors import NOT_FOUND as NOT_FOUND_ERROR
 from app.routers.responses import BAD_REQUEST, INTERNAL, UNAUTHORIZED, not_found
 
-# Read-only on purpose: the tracker runs once a day from the scheduled workflow, and
-# no route can start it or change what it published.
+# Read-only on purpose: no user can start the tracker or change what it published. The
+# daily run is started by the cron-only dispatch route (`app/routers/internal.py`).
 router = APIRouter(prefix="/api/internships", tags=["Internships"])
 
 UNKNOWN_RUN = not_found("No published run with this id.")
