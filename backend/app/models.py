@@ -1,11 +1,13 @@
 """The database schema. Alembic migrations are generated from these models."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     ARRAY,
     Boolean,
+    CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -151,3 +153,19 @@ class TrackerArticle(Base):
     status: Mapped[str] = mapped_column(String)
     reason: Mapped[str | None] = mapped_column(String)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class TrackerDispatch(Base):
+    """One UTC day's start of the tracker workflow by the daily cron. The day is the key, so
+    claiming it is atomic: of any number of cron calls on one day, one dispatches."""
+
+    __tablename__ = "tracker_dispatches"
+    __table_args__ = (CheckConstraint("status in ('claimed', 'dispatched', 'failed')", "status"),)
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    # claimed (a call is dispatching), dispatched (GitHub accepted) or failed.
+    status: Mapped[str] = mapped_column(String)
+    claimed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer)
+    # GitHub's status and message for the last failure; never the token.
+    error: Mapped[str | None] = mapped_column(Text)

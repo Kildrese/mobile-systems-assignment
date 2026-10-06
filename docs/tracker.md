@@ -211,7 +211,7 @@ The repository's `config.yaml` runs `use_case: internships`: it tracks Summer 20
 
 **When the Scout is done.** The Scout's work is open-ended, so its stage has a defined end. It is `complete` when it calls `finish`; when code has accepted `max_new_sources` proposals, which ends the stage without another model call (reason `max_new_sources`); or when its own step or token budget stops it after all its searches are used (reason `searches_spent`). It is `partial` when that budget stops it with searches left, when the run's wall clock stops it, or after a provider failure. The reason is in the report's stage table and the trace summary.
 
-**Wall time.** `config.yaml` allows 1,500 seconds: on Groq's free tier much of a run is spent waiting out per-minute token limits. The scheduled job's timeout must exceed `max_wall_seconds` by at least five minutes for setup, saving state and publishing; a test checks the two files agree.
+**Wall time.** `config.yaml` allows 1,500 seconds: on Groq's free tier much of a run is spent waiting out per-minute token limits. The daily job's timeout must exceed `max_wall_seconds` by at least five minutes for setup, saving state and publishing; a test checks the two files agree.
 
 **Privileges.** Only the Scout reads the open web, and it can only *propose* sources. Code accepts a proposal only for a Greenhouse, Lever or Ashby board with a valid identifier, never a page (a page the Scout read could otherwise put itself on the watchlist for every run), citing an `evidence_url` the Scout actually saw in this run, up to `max_new_sources` per run. The Curator has no search and fetches only a posting's own page on the job-board posting hosts (`fetch_hosts`); posting text and titles reach it only as untrusted data, in its task or through `get_posting`. The Editor can read records but cannot change ranks, statuses or sources. The Assessor has no tool besides `finish`; records and the first 1,500 characters of each posting reach it in its task as untrusted data. Agents never talk to each other: stages hand on records through the state file.
 
@@ -236,7 +236,7 @@ Summaries are rejected when they run over 3 sentences or mention a number or mon
 
 **Watchlist.** Without `options.watchlist`, the run starts from `backend/tracker/usecases/internships/watchlist.yaml` (ten NYC boards). Check those boards against the live APIs before relying on them.
 
-**Publishing.** In production the run is scheduled, and its report lands in Postgres for the web app; see [deployment.md](deployment.md#daily-internship-tracker). Locally, `uv run python -m app.publish_report` publishes the latest finished run to `DATABASE_URL`.
+**Publishing.** In production the backend's daily cron starts the run, and its report lands in Postgres for the web app; see [deployment.md](deployment.md#daily-internship-tracker). Locally, `uv run python -m app.publish_report` publishes the latest finished run to `DATABASE_URL`.
 
 **Tools without the model.** Every internship tool runs from the command line against the state file, for example:
 

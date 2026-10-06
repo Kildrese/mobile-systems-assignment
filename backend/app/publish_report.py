@@ -4,9 +4,10 @@
 
 The daily tracker workflow (`.github/workflows/tracker.yml`) runs this right after
 `python -m tracker run`. It is the only writer of `tracker_runs`, `internship_offers` and
-`tracker_articles`:
-the API only reads them and can never start the tracker. Publishing a run again replaces
-its rows, so a retried job is safe.
+`tracker_articles`: the API only reads them, and no user can start the tracker through it
+(the one route that starts the workflow is the cron-only dispatch in
+`app/routers/internal.py`). Publishing a run again replaces its rows, so a retried job is
+safe.
 """
 
 import sys

@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # Comma-separated in the environment, e.g. `http://localhost:5173,https://app.example`.
     cors_origins: Annotated[list[str], NoDecode] = []
     session_ttl_days: int = 7
+    # The daily tracker dispatch (`app/routers/internal.py`). Vercel Cron sends
+    # `CRON_SECRET` as a bearer token; unset, the route answers 404 to everyone.
+    cron_secret: str | None = None
+    # A fine-grained GitHub token: this repository only, Actions read and write.
+    github_dispatch_token: str | None = None
 
     @field_validator("cors_origins", mode="before")
     @classmethod
