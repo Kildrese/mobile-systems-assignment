@@ -28,11 +28,11 @@ const NO_PREVIOUS = "No earlier run to compare with yet.";
 
 // Top picks first, by rank, whether new or not; the other sections leave them out.
 const SECTIONS: {
-  key: string;
+  key: InternshipOffer["section"] | "top";
   title: string;
   empty: string;
   comparesRuns?: boolean;
-  pick: (o: InternshipOffer) => boolean;
+  pick?: (o: InternshipOffer) => boolean;
 }[] = [
   {
     key: "top",
@@ -51,13 +51,11 @@ const SECTIONS: {
     title: "Dropped",
     empty: "Nothing dropped out of the top K or closed in this run.",
     comparesRuns: true,
-    pick: (o) => o.section === "dropped",
   },
   {
     key: "open",
     title: "Also open",
     empty: "No other earlier offers are still open.",
-    pick: (o) => o.section === "open",
   },
 ];
 
@@ -252,7 +250,7 @@ export function InternshipReport({ runId }: { runId?: string }) {
         </div>
       </div>
       {SECTIONS.map(({ key, title, empty, comparesRuns, pick }) => {
-        const list = offers.filter(pick);
+        const list = offers.filter(pick ?? ((o) => o.section === key));
         // Top picks come from two API sections, each already in rank order.
         if (key === "top") list.sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
         return (
