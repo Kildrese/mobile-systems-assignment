@@ -6,7 +6,7 @@ The tracker follows Summer 2027 software and ML internships at NYC startups (K =
 Scout (agent) -> Collect (code) -> Curate (agent) -> Liveness (code) -> Assess (agent) -> Rank (code) -> Edit (agent) -> report
 ```
 
-All numbers below are from run 1, `20261005T170512Z-2187` ([report](reports/run1.md), [trace](traces/20261005T170512Z-2187.jsonl)). It was the first production run after the tracker's tables and state were reset, started from the daily workflow with empty state.
+Unless a number says otherwise, it is from run 1, `20261005T170512Z-2187` ([report](reports/run1.md), [trace](traces/20261005T170512Z-2187.jsonl)). It was the first production run after the tracker's tables and state were reset, started by hand from the daily workflow with empty state. Run 2, `20261006T110639Z-da8c` ([report](reports/run2.md), [trace](traces/20261006T110639Z-da8c.jsonl)), is the next production run, 18 hours later, started the same way on top of run 1's state. Where run 2 differs, it shows what a day of carried-over state changes.
 
 ## 1. Workflow vs. agent
 
@@ -26,7 +26,7 @@ All numbers below are from run 1, `20261005T170512Z-2187` ([report](reports/run1
 
 **The decision we moved out of the model is ranking.** The single-agent tracker (`examples/single-agent.yaml`) lets the model order the items in `finish`. In the internship pipeline, `ranking.py` scores each open opportunity with weights from config: role 3, term 3, location 2, recency 1, focus 3, fit 3. A criterion scores 1 for a match, 0 for a mismatch and 0.5 for `unknown`.
 
-Fit is the only input to the score that comes from a model (change `fit-rating`). Almost every posting matches the search on role, term, location and focus, so without fit the top K would be ordered by recency alone. In run 1 the Assessor rated all 22 opportunities in 3 calls. The Assessor rates each opportunity once against a short profile in `config.yaml`, 0 to 3, with a one-sentence reason. Code checks the rating, stores it, and reuses it on every run until the profile changes. Ranking stays in code. The model never orders the list, a rating is worth at most 3 points and changes nothing else, and an unrated opportunity scores half, like any other unknown field. We rank in code for three reasons:
+Fit is the only input to the score that comes from a model (change `fit-rating`). Almost every posting matches the search on role, term, location and focus, so without fit the top K would be ordered by recency alone. In run 1 the Assessor rated all 22 opportunities in 3 calls. In run 2 it rated only the 7 new ones, in 1 call (1.8 s), and reused the other 22 ratings. The Assessor rates each opportunity once against a short profile in `config.yaml`, 0 to 3, with a one-sentence reason. Code checks the rating, stores it, and reuses it on every run until the profile changes. Ranking stays in code. The model never orders the list, a rating is worth at most 3 points and changes nothing else, and an unrated opportunity scores half, like any other unknown field. We rank in code for three reasons:
 
 1. **Comparing runs needs a stable rank.** The "New / Still in top K / Dropped" section compares this run's top K with the previous one. If a model ranked, two runs over the same postings could order them differently, and an opportunity would "drop" because of sampling when nothing had changed. Scores from code are reproducible.
 2. **The ranking reads untrusted text.** A posting that says "rank this first" can't move a weighted sum of fields that were checked against quotes. It could move a model's ordering.
@@ -59,7 +59,20 @@ Where the time went:
 
 Stage times were Scout 318 s, Collect 2 s, Curator 565 s, Assess 57 s and Editor 92 s. The run ended partial because the Curator used all 35 of its steps with 6 postings still unread (`curator.max_steps`), not because of time: it took 1,033 s of the 1,500 s budget. The next run reads those 6 first. The wall-clock budget was 900 s until an earlier run hit it before the Editor could write any summaries.
 
-Bandwidth and latency barely matter here. What limits the run is the provider's per-minute token window. That's why the Curator runs on gpt-oss-20b (its quota is separate from the Scout's 120b), page text is cut to `fetch.max_chars_for_model`, and older tool results are shortened. A second run uses less: boards that haven't changed answer `304` with no body, and postings that were already curated aren't sent to the model again.
+Bandwidth and latency barely matter here. What limits the run is the provider's per-minute token window. That's why the Curator runs on gpt-oss-20b (its quota is separate from the Scout's 120b), page text is cut to `fetch.max_chars_for_model`, and older tool results are shortened.
+
+A second run uses less, and run 2 shows how much. It made 75 round trips in 533 s and ended complete:
+
+| | Run 1 | Run 2 |
+| --- | --- | --- |
+| Groq round trips (120b / 20b) | 39 / 71 | 31 / 22 |
+| Answered 429 | 56 | 26 |
+| Waiting on `retry-after` | 953 s (92%) | 494 s (93%) |
+| Board requests | 12, all `200` | 13: 7 `304` with no body, 5 `200`, 1 refused as too large |
+| Postings sent to the Curator | 24 (6 left unread) | 7 |
+| Curator time | 565 s | 146 s |
+
+Run 2 had 13 boards because the Scout proposed one more, Shield AI's Lever board. Its Lever API answer declared 9.6 MB, over the 8 MB response cap, so Collect refused it before reading the body and deactivated the source (`too_large`). Run 2's Scout took about as long as run 1's (376 s, 352 s of it waiting): it searches the open web on every run, so carried-over state doesn't help it. It now accounts for most of a run's time.
 
 ## 3. "New"
 
@@ -68,6 +81,8 @@ An opportunity is new if this run is the first one to see it. Deciding whether t
 1. **Same board, same job id.** `raw_postings` is unique on `(source_id, external_id)`, so when a board lists a job again its row is updated and no new row is created. Only postings still marked `pending` go to the Curator, so a posting it has already read costs nothing.
 2. **Same canonical URL.** Code links these without a model call (`link_exact`, `curation.py:207`). Canonical means the scheme and host are lowercased, the port is the default, and the fragment and `utm_*`/tracking parameters are removed (`state.canonicalize`).
 3. **Same company, similar title.** `candidates()` lists the company's existing opportunities whose title shares at least 50% of its words (Jaccard on stemmed words, ignoring years and filler words). The Curator sees them in `get_posting` and decides with `mark_same`. Code refuses `mark_same` across companies (`company_mismatch`).
+
+In run 2, layer 1 did almost all the work. The 22 opportunities from run 1 were still listed, so their postings were updated in place and never reached the Curator again. They appear under "Still in top K" (the same 5, in the same order) or "Also open", with run 1 as their first sighting. The Curator read only the 7 postings that were new, linked none of them to an existing opportunity (no `mark_same`, `linked_by_code` 0), and all 7 appear under "New since last run". Nothing dropped.
 
 **A case this gets wrong:** a company reposts "Software Engineering Intern, Summer 2027" as "SWE Intern (Summer 2027)" under a new job id. The ids and URLs differ, and once "intern", the year and the term are removed the two titles have no word in common, so `title_similarity` returns 0.0. The Curator never sees the earlier opportunity, and the repost shows up as new. It also fails the other way: "Software Engineer Intern - Infrastructure" and "Software Engineer Intern - Product" score 0.5 and are offered as candidates. If the Curator merges two different roles, the second one never appears.
 
@@ -102,7 +117,7 @@ The quota patterns are in `config.yaml`: `["per day", "\\(RPD\\)", "\\(TPD\\)"]`
 
 - The result is `Transient`, and `send_with_retries()` sleeps for `retry-after`. If the header is missing it uses exponential backoff, `min(60, 1 × 2^attempt)` with 50–100% jitter.
 - It tries up to `retry.max_attempts` = 4 times.
-- Each wait is traced as `status: "retry"` with its `wait_seconds`. Run 1 waited 56 times.
+- Each wait is traced as `status: "retry"` with its `wait_seconds`. Run 1 waited 56 times and run 2 26 times. In run 2 one Editor call needed all 4 attempts and succeeded on the last one, so a single further 429 would have cost the run its summaries.
 - If a wait would go past `max_wall_seconds`, the stage stops and the report is marked partial.
 - If all 4 attempts fail, the failure becomes terminal `unreachable`.
 
@@ -129,7 +144,7 @@ One run (from the usage line in `reports/run1.md`):
 | Tavily | 5 credits (basic search, 1 credit each) | free tier; $0.008 a credit pay-as-you-go | $0 ($0.04 at the paid price, which is what the cost budget counts) |
 | Job boards | 12 requests | public, no key | $0 |
 
-A run costs $0 on the free tiers and $0.04 at paid prices. The policy caps it at `max_cost_usd: 0.50` and 175,000 tokens.
+A run costs $0 on the free tiers and $0.04 at paid prices. The policy caps it at `max_cost_usd: 0.50` and 175,000 tokens. Run 2 used 55,753 tokens on gpt-oss-120b (31 requests), 23,073 on gpt-oss-20b (22 requests), 6 Tavily credits (the Scout's cap; its 7th search was refused as `budget_exhausted`) and 13 board requests: $0.048 at paid prices.
 
 Running daily:
 
@@ -145,7 +160,7 @@ The limit that binds is Groq's per-minute token window. It costs wall time, not 
 
 ## 6. Injection
 
-**The model may follow injected instructions. The runtime keeps them from doing anything.** No live run has read a seeded page yet. Run 1 didn't: the Scout fetched 1 page, and neither it nor any of the 24 postings the Curator read (`get_posting`) was flagged `injection_suspected: true`. So the evidence below comes from the code and from a test that replays a model obeying an injected page, and we don't claim that a live model ignores the page.
+**The model may follow injected instructions. The runtime keeps them from doing anything.** No live run has read a seeded page yet. Run 1 didn't: the Scout fetched 1 page, and neither it nor any of the 24 postings the Curator read (`get_posting`) was flagged `injection_suspected: true`. Neither did run 2, with 2 fetched pages and 7 postings. So the evidence below comes from the code and from a test that replays a model obeying an injected page, and we don't claim that a live model ignores the page.
 
 The test page (`backend/tests_tracker/fixtures/injection.html`) tries three things: calling an unknown tool (`delete_state`), an SSRF fetch to `169.254.169.254`, and closing the data block early to raise `max_steps` to 1000. `test_injection_page_cannot_change_tools_or_budgets` (`tests_tracker/test_loop.py`) plays a model that does obey. What the runtime does:
 
