@@ -26,22 +26,25 @@ import { webUrl } from "@/lib/web-url";
 
 const NO_PREVIOUS = "No earlier run to compare with yet.";
 
+// Top picks first, by rank, whether new or not; the other sections leave them out.
 const SECTIONS: {
-  key: InternshipOffer["section"];
+  key: InternshipOffer["section"] | "top";
   title: string;
   empty: string;
   comparesRuns?: boolean;
+  pick?: (o: InternshipOffer) => boolean;
 }[] = [
+  {
+    key: "top",
+    title: "Top picks",
+    empty: "No offer is ranked in this run.",
+    pick: (o) => o.topK,
+  },
   {
     key: "new",
     title: "New since last run",
-    empty: "Nothing new in this run.",
-  },
-  {
-    key: "top_k",
-    title: "Still in top K",
-    empty: "No earlier offer is in the top K.",
-    comparesRuns: true,
+    empty: "Nothing else new in this run.",
+    pick: (o) => o.section === "new" && !o.topK,
   },
   {
     key: "dropped",
@@ -83,13 +86,12 @@ function Offer({ offer }: { offer: InternshipOffer }) {
           )}
           {offer.title}
           {offer.topK && (
-            <Badge className="ml-2 align-middle">Top pick</Badge>
-          )}
-          {offer.section === "top_k" && (
             <span className="ml-2 text-xs font-normal text-muted-foreground">
-              {offer.previousRank === null
-                ? "entered the top K"
-                : `was #${offer.previousRank}`}
+              {offer.section === "new"
+                ? "new"
+                : offer.previousRank === null
+                  ? "entered the top K"
+                  : `was #${offer.previousRank}`}
             </span>
           )}
         </CardTitle>
@@ -247,8 +249,10 @@ export function InternshipReport({ runId }: { runId?: string }) {
           </Button>
         </div>
       </div>
-      {SECTIONS.map(({ key, title, empty, comparesRuns }) => {
-        const list = offers.filter((o) => o.section === key);
+      {SECTIONS.map(({ key, title, empty, comparesRuns, pick }) => {
+        const list = offers.filter(pick ?? ((o) => o.section === key));
+        // Top picks come from two API sections, each already in rank order.
+        if (key === "top") list.sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
         return (
           <section key={key} className="flex flex-col gap-3">
             <h2 className="flex items-center gap-2 text-lg font-semibold">
