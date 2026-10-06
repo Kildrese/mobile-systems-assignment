@@ -23,7 +23,7 @@
 
 ## 4. Schedule and workflow
 
-- [ ] 4.1 Add `backend/vercel.json` with the cron `{"path": "/api/internal/tracker-dispatch", "schedule": "0 9 * * *"}`, and check on a preview deploy that Vercel still detects the FastAPI app with this file present
+- [x] 4.1 Add `backend/vercel.json` with the cron `{"path": "/api/internal/tracker-dispatch", "schedule": "0 9 * * *"}`, and check on a preview deploy that Vercel still detects the FastAPI app with this file present
 - [x] 4.2 Remove the `schedule` block from `.github/workflows/tracker.yml` and rewrite its header comment (dispatched daily by the backend's Vercel cron; manual runs use the same trigger)
 
 ## 5. Docs
