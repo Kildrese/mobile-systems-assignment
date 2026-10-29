@@ -7,10 +7,12 @@ the source and the posting. Same-role links are made by code where an exact key
 matches, and by the Curator (`mark_same`) only between postings of the same company.
 """
 
+import copy
 import json
 import re
 import unicodedata
 from typing import Any
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -289,7 +291,8 @@ def fetch_posting_detail(
     max_chars: int = 6000,
 ) -> ToolOutcome:
     """Fetch a posting's own page and keep its text for quotes. `http` allows only the
-    agent's hosts, so a page elsewhere is blocked before any connection."""
+    agent's hosts, so a page elsewhere is blocked before any connection; a Simplify
+    posting's own page is allowed on any host."""
     posting, check = _pending(store, posting_id)
     if posting is None:
         return check
@@ -304,6 +307,11 @@ def fetch_posting_detail(
             "url_mismatch",
             f"url must be posting {posting_id}'s own page: {posting['url']}",
         )
+    if posting["kind"] == "simplify" and http.allowed_hosts is not None:
+        # A listing links to the company's own page, on any host. Only this exact URL,
+        # which came from the list and not from the model, gets past `fetch_hosts`.
+        http = copy.copy(http)
+        http.allowed_hosts = (*http.allowed_hosts, urlsplit(url).hostname or "")
     try:
         result = http.get(url)
     except HttpFailure as err:

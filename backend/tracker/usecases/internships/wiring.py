@@ -8,6 +8,7 @@ writes the report with `report_writer` once every stage has run.
 """
 
 import json
+import time
 from collections import Counter
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any
@@ -54,8 +55,12 @@ class InternshipOptions(BaseModel):
     watchlist: list[sources.WatchlistEntry] | None = None
     filters: sources.Filters = sources.Filters()
     ranking: RankingSettings = RankingSettings()
-    # Job boards can be large JSON documents; pages keep fetch.max_bytes.
-    board_max_bytes: int = Field(default=8_000_000, gt=0)
+    # Job boards can be large JSON documents (a Simplify list is over 13 MB); pages keep
+    # fetch.max_bytes.
+    board_max_bytes: int = Field(default=20_000_000, gt=0)
+    # Simplify listings posted earlier than this are not collected, so the Curator's
+    # backlog stays within a few runs' budget.
+    simplify_max_age_days: int = Field(default=14, gt=0)
     # The candidate and the internship they want, for the Assessor. Empty: no Assess stage.
     profile: str = ""
 
@@ -92,10 +97,12 @@ def validate(policy: Policy) -> InternshipOptions:
             + ", ".join(f"agents.{a}" for a in missing)
         )
     opts = options(policy)
+    # The Scout may add any job board; a list source is read only when configured.
+    kinds = {*sources.BOARD_KINDS, *(entry.kind for entry in watchlist(opts))}
     blocked = [
         host
-        for host in sources.BOARD_API_HOSTS.values()
-        if not host_allowed(host, policy.fetch.allowed_hosts)
+        for kind, host in sources.BOARD_API_HOSTS.items()
+        if kind in kinds and not host_allowed(host, policy.fetch.allowed_hosts)
     ]
     if blocked:
         raise PolicyError(
@@ -497,7 +504,8 @@ class ScoutStage:
     def run(self, ctx: StageContext) -> StageOutcome:
         store = OpportunityStore(ctx.state)
         sources.load_watchlist(store, watchlist(options(ctx.policy)), ctx.run_id)
-        known = ", ".join(sorted({s["company"] for s in store.sources()})) or "none yet"
+        boards = [s for s in store.sources() if s["kind"] in sources.BOARD_KINDS]
+        known = ", ".join(sorted({s["company"] for s in boards})) or "none yet"
         cap = _agent_option(ctx.policy, "scout", "max_new_sources", DEFAULT_MAX_NEW_SOURCES)
         assert ctx.profile is not None
         limits = ctx.profile.limits
@@ -537,8 +545,9 @@ class CollectStage:
         opts = options(ctx.policy)
         store = OpportunityStore(ctx.state)
         sources.load_watchlist(store, watchlist(opts), ctx.run_id)
+        posted_after = time.time() - opts.simplify_max_age_days * 86400
         results = sources.collect_all(
-            store, board_http(ctx, opts), ctx.trace, ctx.run_id, opts.filters
+            store, board_http(ctx, opts), ctx.trace, ctx.run_id, opts.filters, posted_after
         )
         readable = [r for r in results if r.readable]
         usage = {"requests": len(results), "readable": len(readable)}

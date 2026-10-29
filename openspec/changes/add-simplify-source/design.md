@@ -1,0 +1,56 @@
+## Context
+
+Collect reads each watchlist source's public JSON, parses it into `RawPosting`s, pre-filters on title and location, and upserts into `raw_postings` keyed by `(source_id, external_id)`. Everything after Collect gets a posting's company from its source (`JOIN sources s ... s.company`). Liveness closes an opportunity when every source it is listed on was read in the run and none lists it any more.
+
+`listings.json` in SimplifyJobs/Summer2027-Internships (branch `dev`) is a JSON list. Each listing has: `id` (UUID), `company_name`, `title`, `url`, `locations` (list), `terms` (list, e.g. `Summer 2027`, `N/A`), `active`, `is_visible`, `date_posted` and `date_updated` (Unix seconds), `category`, `sponsorship` (`Other`, `Offers Sponsorship`, `Does Not Offer Sponsorship`, `U.S. Citizenship is Required`), `degrees`. Measured on 2026-10-28: 13.2 MB, 17,533 listings, 5,020 active and visible, 470 past our pre-filter, of which 61 / 109 / 191 were posted in the last 7 / 14 / 30 days.
+
+## Goals / Non-Goals
+
+**Goals:**
+- Read the Simplify list every run, with the guardrails and caching a board gets.
+- Give the Curator a backlog it can work through, not hundreds of postings on the first run.
+- Keep the Scout unable to add an aggregator.
+
+**Non-Goals:**
+- Fetching each listing's linked page during Collect.
+- Other aggregators or other Simplify repositories. A second one is a watchlist entry, since the board identifier is the repository.
+- Widening the Curator's `fetch_hosts` for board postings.
+
+## Decisions
+
+### D1. A source kind, not a separate stage
+`simplify` is a fourth entry in `board_url` and `PARSERS`. Collect, the HTTP cache, `unreadable` handling and Liveness then apply without change. A separate stage would duplicate all of that.
+
+### D2. Board identifier is `owner/repo`, checked by its own pattern
+`BOARD_ID` doesn't allow `/`. `check_board_id` takes the kind and, for `simplify`, matches `^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$`, then quotes each part separately when the URL is built. The branch (`dev`) and the path are fixed in code. When Simplify moves them, the source goes `unreadable`, which the run reports as it does for a board.
+
+### D3. Config only
+`propose_source` checks the kind against the three job-board kinds, not against every kind the parser knows. A page the Scout reads can't put an aggregator of thousands of listings on the watchlist. The rejection reason stays `unknown_kind`.
+
+### D4. Per-posting company, falling back to the source's
+`RawPosting.company: str = ""`, and a nullable `raw_postings.listed_company` column added by `OpportunityStore._migrate` (the store already tracks schema versions in `component_versions`). Reads that return a posting select `COALESCE(p.listed_company, s.company) AS company`. The column isn't called `company`, because `p.*` would then return two `company` columns and `sqlite3.Row` reads the first. `linked_postings` keeps the source's company: its callers (Liveness's close evidence, `Simplify board`, and Assess) never need the listing's. Boards leave it empty, so nothing changes for them. The source's own `company` is "Simplify", which shows only in Collect's trace and fetch log.
+
+### D5. Filter in the parser, cap by age
+`parse_simplify` drops listings that are not `active` or not `is_visible`, whose `terms` name only other terms, or whose `date_posted` is older than `simplify_max_age_days` (default 14, from the run's clock). Dropping them in the parser rather than the pre-filter means they never reach `raw_postings`, so an old listing never shows up as pending. The cost: a listing older than the cap that we already hold looks "no longer listed" to Liveness and closes. That's acceptable, because the cap is about whether we curate a listing, and by then its record was rated and ranked while it was fresh. If this closes too much, we exempt `external_id`s we already hold (see Open Questions).
+
+Why 14 days: about 110 postings on the first run and about 8 a day after that. The Curator (35 steps) drains the first backlog in 3–4 runs, and pending postings carry over between runs. 30 days would double the first backlog for little gain.
+
+### D6. Posting text from the fields
+Lines `Company: …`, `Title: …`, `Locations: …`, `Terms: …`, `Category: …`, `Degrees: …`, `Posted: YYYY-MM-DD`, `Sponsorship: …`, each only when the listing has a value. `Sponsorship: Other` is left out, since it says nothing. Quotes the Curator saves are checked against this text, so a sponsorship value it records is word for word what Simplify says. The text goes through `wrap` like any posting: it is third-party data.
+
+### D7. Size cap, and why the whole file
+The default `board_max_bytes` goes from 8 MB to 20 MB. `json.loads` of 13 MB stays well within a GitHub runner's memory. httpx asks for gzip, so about 1.8 MB crosses the wire, and a `304` skips the download entirely. Reading only part of the file was considered and rejected. raw.githubusercontent.com has no query, only byte ranges (it answers `206`). New listings are mostly added at the end (on 2026-10-28 every listing from the last 14 days was in the last ~1,570 entries), but the file isn't sorted (7,405 entries are out of date order). Worse, a listing closes by turning `active: false` wherever it sits, so with only the end of the file, Liveness would close every older opportunity.
+
+### D8. The Curator may open a Simplify listing's own page
+`fetch_posting_detail` already accepts only the posting's own stored URL (`url_mismatch` otherwise). For a posting whose source is `simplify`, it adds that URL's host to the allowed hosts for this one call; board postings keep `fetch_hosts` as is. So the Curator can't choose a host. Only Simplify, by listing a URL, decides which page may be fetched, and the address checks (no private or loopback addresses), size and time caps still apply. The page text is wrapped as untrusted, like any detail page. A JavaScript-only page leaves little text, which costs one fetch and changes nothing: quotes can still come from the listing's fields (`posting_text` joins both).
+
+## Risks / Trade-offs
+
+- **The same role on a board and on Simplify**: two postings, one per source. When Simplify links the same Greenhouse/Ashby URL, `link_exact` joins them through the canonical URL. Otherwise the Curator sees a same-company candidate and can `mark_same`. Either way it ends as one opportunity listed on two sources, and it only closes when both stop listing it.
+- **Simplify changes its schema** → the parser's validation fails → `bad_response`, source `unreadable`. A config source is never deactivated, so it is tried again the next run.
+- **Thin records** → when the application page renders with JavaScript, fewer fields are known, which lowers fit ratings and ranks for those postings. That's honest, and better than not seeing them at all.
+- **Wider reading surface for injection** → the Curator reads company pages, not only three board hosts. It already reads untrusted posting text, it has no tool that can add a source or reach the open web, and quotes are checked against the stored text, so an injected page can at most skew that one posting's record.
+
+## Open Questions
+
+- Should a listing we already hold stay "listed" after it ages past the cap (D5)? Start without it and look at the closed counts after a week.

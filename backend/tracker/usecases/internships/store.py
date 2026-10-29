@@ -117,7 +117,14 @@ MIGRATIONS: list[str] = [
         reason TEXT NOT NULL
     );
     """,
+    # A list source (Simplify) names the company per posting; boards leave it NULL.
+    """
+    ALTER TABLE raw_postings ADD COLUMN listed_company TEXT;
+    """,
 ]
+
+# A posting's company: its own when the source lists many companies, else the source's.
+COMPANY = "COALESCE(p.listed_company, s.company) AS company"
 
 
 def _now() -> str:
@@ -137,6 +144,7 @@ class RawPosting:
     url: str
     text: str
     location: str = ""
+    company: str = ""  # set by sources that list many companies
 
 
 def _row(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -248,11 +256,12 @@ class OpportunityStore:
             for p in postings:
                 self.db.execute(
                     "INSERT INTO raw_postings (source_id, external_id, url, canonical_url, "
-                    "title, location, text, first_seen_run, seen_run) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "title, location, text, listed_company, first_seen_run, seen_run) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT (source_id, external_id) DO UPDATE SET url = excluded.url, "
                     "canonical_url = excluded.canonical_url, title = excluded.title, "
                     "location = excluded.location, text = excluded.text, "
+                    "listed_company = excluded.listed_company, "
                     "seen_run = excluded.seen_run",
                     (
                         source_id,
@@ -262,6 +271,7 @@ class OpportunityStore:
                         p.title,
                         p.location,
                         p.text,
+                        p.company or None,
                         run_id,
                         run_id,
                     ),
@@ -277,7 +287,7 @@ class OpportunityStore:
     def posting(self, posting_id: int) -> dict[str, Any] | None:
         return _row(
             self.db.execute(
-                "SELECT p.*, s.company FROM raw_postings p "
+                f"SELECT p.*, {COMPANY}, s.kind FROM raw_postings p "
                 "JOIN sources s ON s.id = p.source_id WHERE p.id = ?",
                 (posting_id,),
             ).fetchone()
@@ -286,7 +296,8 @@ class OpportunityStore:
     def pending_postings(self, run_id: str) -> list[dict[str, Any]]:
         """Pending postings listed in `run_id`. One no longer listed is not worth curating."""
         rows = self.db.execute(
-            "SELECT p.*, s.company FROM raw_postings p JOIN sources s ON s.id = p.source_id "
+            f"SELECT p.*, {COMPANY}, s.kind FROM raw_postings p "
+            "JOIN sources s ON s.id = p.source_id "
             "WHERE p.curation = 'pending' AND p.seen_run = ? ORDER BY p.id",
             (run_id,),
         )

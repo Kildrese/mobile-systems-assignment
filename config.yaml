@@ -93,6 +93,8 @@ agents:
       from the posting. If the posting does not state a field, set it to unknown.
       Record any sentence about work authorization or visa sponsorship as written;
       never judge it. Use mark_same only for the same role at the same company.
+      Call fetch_posting_detail only when the posting text lacks a field the record
+      needs, such as a short listing that gives no term or location.
   editor:
     # All summaries go in one finish call, and gpt-oss's reasoning counts against the cap.
     model: {max_output_tokens: 2048}

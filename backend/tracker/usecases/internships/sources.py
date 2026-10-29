@@ -1,6 +1,7 @@
 """Where opportunities come from: the watchlist, the job-board collectors, the pre-filter.
 
-Collectors read public board APIs (Greenhouse, Lever, Ashby) without keys and without
+Collectors read public board APIs (Greenhouse, Lever, Ashby) and SimplifyJobs internship
+lists (one GitHub repository's `listings.json`, many companies) without keys and without
 a model. Every request goes through `GuardedHttp`, so the core fetch guardrails apply.
 Responses are cached with their validators: a `304` re-parses the stored body, so a
 board that did not change still counts as read and still lists its postings.
@@ -11,12 +12,20 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+)
 
 from tracker.fetch import extract
 from tracker.state import canonicalize, fetch_status, log_fetch
@@ -25,12 +34,15 @@ from tracker.trace import Trace
 from tracker.usecases.internships.http import GuardedHttp, HttpFailure
 from tracker.usecases.internships.store import OpportunityStore, RawPosting
 
+# What the Scout may propose. `simplify` lists thousands of jobs, so it is config only.
 BOARD_KINDS = ("greenhouse", "lever", "ashby")
 BOARD_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$")
+GITHUB_REPO = re.compile(r"^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$")
 BOARD_API_HOSTS = {
     "greenhouse": "boards-api.greenhouse.io",
     "lever": "api.lever.co",
     "ashby": "api.ashbyhq.com",
+    "simplify": "raw.githubusercontent.com",
 }
 # Hosts where a posting's own page lives, for the Curator's detail fetches.
 POSTING_HOSTS = (
@@ -48,14 +60,19 @@ class SourceError(ValueError):
         self.detail = detail
 
 
-def check_board_id(board: str) -> str:
-    """Validate a board identifier before any URL is built from it."""
-    if not BOARD_ID.fullmatch(board or ""):
+def check_board_id(board: str, kind: str = "greenhouse") -> str:
+    """Validate a board identifier before any URL is built from it. A `simplify` board is
+    a GitHub repository, `owner/repo`; a dot-only name would walk up the path."""
+    pattern = GITHUB_REPO if kind == "simplify" else BOARD_ID
+    if not pattern.fullmatch(board or "") or board.split("/")[-1] in (".", ".."):
         raise SourceError("invalid_board", f"'{board}' is not a valid board identifier")
     return board
 
 
 def board_url(kind: str, board: str) -> str:
+    if kind == "simplify":
+        owner, repo = (quote(part, safe="") for part in check_board_id(board, kind).split("/"))
+        return f"https://raw.githubusercontent.com/{owner}/{repo}/dev/.github/scripts/listings.json"
     board = quote(check_board_id(board), safe="")
     if kind == "greenhouse":
         return f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true"
@@ -73,13 +90,13 @@ class WatchlistEntry(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
     company: str = Field(min_length=1, max_length=120)
-    kind: Literal["greenhouse", "lever", "ashby"]
+    kind: Literal["greenhouse", "lever", "ashby", "simplify"]
     board: str
 
     @field_validator("board")
     @classmethod
-    def board_id(cls, board: str) -> str:
-        return check_board_id(board)
+    def board_id(cls, board: str, info: ValidationInfo) -> str:
+        return check_board_id(board, info.data.get("kind", "greenhouse"))
 
 
 WATCHLIST_FILE = Path(__file__).with_name("watchlist.yaml")
@@ -236,6 +253,63 @@ def parse_ashby(body: Any) -> list[RawPosting]:
     return postings
 
 
+class _SimplifyListing(_Loose):
+    id: str
+    company_name: str
+    title: str
+    url: str
+    locations: list[str] = Field(default_factory=list)
+    terms: list[str] = Field(default_factory=list)
+    active: bool = False
+    is_visible: bool = False
+    date_posted: float = 0
+    category: str = ""
+    degrees: list[str] = Field(default_factory=list)
+    sponsorship: str = ""
+
+
+SIMPLIFY_TERM = "Summer 2027"
+NO_TERM = ("", "n/a")
+
+
+def parse_simplify(body: Any, posted_after: float = 0) -> list[RawPosting]:
+    """Active, visible Summer 2027 listings posted after `posted_after` (Unix seconds).
+    A listing has no description, so its text is its fields, one per line."""
+    if not isinstance(body, list):
+        raise ValueError("a Simplify list is a JSON list")
+    postings = []
+    for raw in body:
+        job = _SimplifyListing.model_validate(raw)
+        terms = [t.strip() for t in job.terms]
+        no_term = all(t.lower() in NO_TERM for t in terms)
+        if not (job.active and job.is_visible) or job.date_posted < posted_after:
+            continue
+        if not no_term and SIMPLIFY_TERM not in terms:
+            continue
+        posted = datetime.fromtimestamp(job.date_posted, UTC).date().isoformat()
+        lines = [
+            ("Company", job.company_name),
+            ("Title", job.title),
+            ("Locations", "; ".join(job.locations)),
+            ("Terms", "" if no_term else ", ".join(terms)),
+            ("Category", job.category),
+            ("Degrees", ", ".join(job.degrees)),
+            ("Posted", posted if job.date_posted else ""),
+            ("Sponsorship", "" if job.sponsorship == "Other" else job.sponsorship),
+        ]
+        postings.append(
+            RawPosting(
+                external_id=job.id,
+                title=job.title,
+                url=job.url,
+                text="\n".join(f"{name}: {value}" for name, value in lines if value),
+                location="; ".join(job.locations),
+                company=job.company_name.strip(),
+            )
+        )
+    return postings
+
+
 PARSERS: dict[str, Callable[[Any], list[RawPosting]]] = {
     "greenhouse": parse_greenhouse,
     "lever": parse_lever,
@@ -284,8 +358,10 @@ def collect_source(
     http: GuardedHttp,
     trace: Trace,
     run_id: str,
+    posted_after: float = 0,
 ) -> CollectResult:
-    """Read one source. A failure marks it `unreadable` and never raises."""
+    """Read one source. A failure marks it `unreadable` and never raises.
+    `posted_after` (Unix seconds) drops older listings of a `simplify` source."""
     url = board_url(source["kind"], source["board"])
     cached = store.http_cache(url)
     event: dict[str, Any] = {"source": source["key"], "url": url}
@@ -318,7 +394,11 @@ def collect_source(
     not_modified = result.status == 304 and cached is not None
     body = cached["body"] if not_modified else result.text
     try:
-        postings = PARSERS[source["kind"]](json.loads(body))
+        data = json.loads(body)
+        if source["kind"] == "simplify":
+            postings = parse_simplify(data, posted_after)
+        else:
+            postings = PARSERS[source["kind"]](data)
     except (ValueError, ValidationError) as err:  # JSONDecodeError is a ValueError
         trace.event(
             "tool",
@@ -385,11 +465,12 @@ def collect_all(
     trace: Trace,
     run_id: str,
     filters: Filters,
+    posted_after: float = 0,
 ) -> list[CollectResult]:
     """Read every active source, pre-filter, and store what is kept. The Collect stage."""
     results = []
     for source in store.sources():
-        result = collect_source(store, source, http, trace, run_id)
+        result = collect_source(store, source, http, trace, run_id, posted_after)
         if result.readable:
             kept, dropped = prefilter(result.postings, filters)
             for posting_id in store.upsert_postings(source["id"], kept, run_id):

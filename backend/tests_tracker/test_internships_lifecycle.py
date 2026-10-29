@@ -113,3 +113,19 @@ def test_closed_and_then_unreadable_is_not_closed_again(store):
     run_liveness(store, RUN3)
     opp = store.opportunity(oid)
     assert (opp["status"], opp["closed_run"]) == ("closed", RUN2)
+
+
+def test_simplify_listing_turned_inactive_closes(store):
+    source_id, _ = store.add_source(
+        company="Simplify", kind="simplify", board="o/r", added_by="config", run_id=RUN1
+    )
+    [pid] = store.upsert_postings(source_id, [posting("1", company="Acme")], RUN1)
+    store.mark_source_read(source_id, RUN1, "ok")
+    oid = save_record(store, pid, record(), RUN1).data["opportunity_id"]
+    assert store.opportunity(oid)["company"] == "Acme"
+
+    store.mark_source_read(source_id, RUN2, "ok")  # read, listing no longer kept
+    run_liveness(store, RUN2)
+    opp = store.opportunity(oid)
+    assert opp["status"] == "closed"
+    assert "Simplify board" in opp["status_evidence"]
