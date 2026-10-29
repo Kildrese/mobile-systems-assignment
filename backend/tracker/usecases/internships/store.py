@@ -425,8 +425,8 @@ class OpportunityStore:
         return [
             dict(r)
             for r in self.db.execute(
-                f"SELECT p.*, s.last_read_run, s.last_read_status, {COMPANY}, "
-                "s.company AS source_company FROM opportunity_links l "
+                "SELECT p.*, s.last_read_run, s.last_read_status, "
+                "s.company FROM opportunity_links l "
                 "JOIN raw_postings p ON p.id = l.raw_posting_id "
                 "JOIN sources s ON s.id = p.source_id WHERE l.opportunity_id = ? ORDER BY p.id",
                 (opportunity_id,),

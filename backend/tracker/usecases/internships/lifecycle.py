@@ -52,7 +52,7 @@ def run_liveness(store: OpportunityStore, run_id: str) -> LivenessCounts:
         if listed:
             _change(store, counts, opp, "open", run_id, f"listed on {listed[0]['url']}")
         elif read and len(read) == len(links):
-            boards = ", ".join(sorted({p["source_company"] + " board" for p in read}))
+            boards = ", ".join(sorted({p["company"] + " board" for p in read}))
             _change(store, counts, opp, "closed", run_id, f"absent from {boards} read in {run_id}")
         else:
             counts.unchanged += 1

@@ -36,7 +36,6 @@ from tracker.usecases.internships.store import OpportunityStore, RawPosting
 
 # What the Scout may propose. `simplify` lists thousands of jobs, so it is config only.
 BOARD_KINDS = ("greenhouse", "lever", "ashby")
-SOURCE_KINDS = (*BOARD_KINDS, "simplify")
 BOARD_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$")
 GITHUB_REPO = re.compile(r"^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$")
 BOARD_API_HOSTS = {

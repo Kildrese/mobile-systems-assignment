@@ -100,10 +100,9 @@ def validate(policy: Policy) -> InternshipOptions:
     # The Scout may add any job board; a list source is read only when configured.
     kinds = {*sources.BOARD_KINDS, *(entry.kind for entry in watchlist(opts))}
     blocked = [
-        sources.BOARD_API_HOSTS[kind]
-        for kind in sources.SOURCE_KINDS
-        if kind in kinds
-        and not host_allowed(sources.BOARD_API_HOSTS[kind], policy.fetch.allowed_hosts)
+        host
+        for kind, host in sources.BOARD_API_HOSTS.items()
+        if kind in kinds and not host_allowed(host, policy.fetch.allowed_hosts)
     ]
     if blocked:
         raise PolicyError(

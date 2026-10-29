@@ -8,7 +8,7 @@
 ## 2. Store
 
 - [x] 2.1 Add `company` to `RawPosting` (default `""`) and a nullable `raw_postings.listed_company` column through `_migrate`; write it in `upsert_postings`
-- [x] 2.2 Select `COALESCE(p.listed_company, s.company) AS company` in `posting`, `pending_postings`, `linked_postings` and every other read that joins `sources` for the company (design D4)
+- [x] 2.2 Select `COALESCE(p.listed_company, s.company) AS company` in `posting` and `pending_postings`; `linked_postings` keeps the source's company (design D4)
 
 ## 3. Curation
 
