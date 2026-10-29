@@ -14,7 +14,7 @@ Collect reads each watchlist source's public JSON, parses it into `RawPosting`s,
 **Non-Goals:**
 - Fetching each listing's linked page during Collect.
 - Other aggregators or other Simplify repositories. A second one is a watchlist entry, since the board identifier is the repository.
-- Widening the Curator's `fetch_hosts`.
+- Widening the Curator's `fetch_hosts` for board postings.
 
 ## Decisions
 
@@ -38,14 +38,18 @@ Why 14 days: about 110 postings on the first run and about 8 a day after that. T
 ### D6. Posting text from the fields
 Lines `Company: …`, `Title: …`, `Locations: …`, `Terms: …`, `Category: …`, `Degrees: …`, `Posted: YYYY-MM-DD`, `Sponsorship: …`, each only when the listing has a value. `Sponsorship: Other` is left out, since it says nothing. Quotes the Curator saves are checked against this text, so a sponsorship value it records is word for word what Simplify says. The text goes through `wrap` like any posting: it is third-party data.
 
-### D7. Size cap
-The default `board_max_bytes` goes from 8 MB to 20 MB. `json.loads` of 13 MB stays well within a GitHub runner's memory. A `304` skips both the download and the size check.
+### D7. Size cap, and why the whole file
+The default `board_max_bytes` goes from 8 MB to 20 MB. `json.loads` of 13 MB stays well within a GitHub runner's memory. httpx asks for gzip, so about 1.8 MB crosses the wire, and a `304` skips the download entirely. Reading only part of the file was considered and rejected. raw.githubusercontent.com has no query, only byte ranges (it answers `206`). New listings are mostly added at the end (on 2026-10-28 every listing from the last 14 days was in the last ~1,570 entries), but the file isn't sorted (7,405 entries are out of date order). Worse, a listing closes by turning `active: false` wherever it sits, so with only the end of the file, Liveness would close every older opportunity.
+
+### D8. The Curator may open a Simplify listing's own page
+`fetch_posting_detail` already accepts only the posting's own stored URL (`url_mismatch` otherwise). For a posting whose source is `simplify`, it adds that URL's host to the allowed hosts for this one call; board postings keep `fetch_hosts` as is. So the Curator can't choose a host. Only Simplify, by listing a URL, decides which page may be fetched, and the address checks (no private or loopback addresses), size and time caps still apply. The page text is wrapped as untrusted, like any detail page. A JavaScript-only page leaves little text, which costs one fetch and changes nothing: quotes can still come from the listing's fields (`posting_text` joins both).
 
 ## Risks / Trade-offs
 
 - **The same role on a board and on Simplify**: two postings, one per source. When Simplify links the same Greenhouse/Ashby URL, `link_exact` joins them through the canonical URL. Otherwise the Curator sees a same-company candidate and can `mark_same`. Either way it ends as one opportunity listed on two sources, and it only closes when both stop listing it.
 - **Simplify changes its schema** → the parser's validation fails → `bad_response`, source `unreadable`. A config source is never deactivated, so it is tried again the next run.
-- **Thin records** → fewer known fields means lower fit ratings and ranks for those postings. That's honest, and better than not seeing them at all.
+- **Thin records** → when the application page renders with JavaScript, fewer fields are known, which lowers fit ratings and ranks for those postings. That's honest, and better than not seeing them at all.
+- **Wider reading surface for injection** → the Curator reads company pages, not only three board hosts. It already reads untrusted posting text, it has no tool that can add a source or reach the open web, and quotes are checked against the stored text, so an injected page can at most skew that one posting's record.
 
 ## Open Questions
 
