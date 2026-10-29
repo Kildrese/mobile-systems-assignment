@@ -254,6 +254,24 @@ def test_board_hosts_must_be_allowed(tmp_path):
     assert "boards-api.greenhouse.io" in str(err.value)
 
 
+def test_list_host_must_be_allowed_only_when_configured(tmp_path):
+    hosts = ["boards-api.greenhouse.io", "api.lever.co", "api.ashbyhq.com"]
+    curator = {"curator": {"fetch_hosts": None}}
+    wiring.stages(
+        policy_from_dict(policy_data(fetch={"allowed_hosts": hosts}, agents=curator), tmp_path)
+    )
+    simplify = {"company": "Simplify", "kind": "simplify", "board": "SimplifyJobs/x"}
+    policy = policy_from_dict(
+        policy_data(
+            fetch={"allowed_hosts": hosts}, agents=curator, options={"watchlist": [simplify]}
+        ),
+        tmp_path,
+    )
+    with pytest.raises(PolicyError) as err:
+        wiring.stages(policy)
+    assert "raw.githubusercontent.com" in str(err.value)
+
+
 def test_internship_tools_run_from_cli(tmp_path, capsys):
     path = tmp_path / "config.yaml"
     import yaml

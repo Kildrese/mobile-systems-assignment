@@ -36,3 +36,9 @@
 - company: Gecko Robotics
   kind: ashby
   board: gecko-robotics  # jobs.ashbyhq.com/gecko-robotics/c097505b-0a28-4a33-a917-268f463641e8
+# Not a company's board: the SimplifyJobs list of Summer 2027 internships, read from the
+# repository's .github/scripts/listings.json (checked 2026-10-28: 17,533 listings, 13 MB).
+# Each listing names its own company. Config only; the Scout cannot propose a list.
+- company: Simplify
+  kind: simplify
+  board: SimplifyJobs/Summer2027-Internships

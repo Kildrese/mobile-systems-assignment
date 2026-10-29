@@ -163,6 +163,42 @@ def test_detail_fetch_off_list_host(store, policy):
     assert not outcome.requested
 
 
+def _simplify_posting(store, url):
+    source_id, _ = store.add_source(
+        company="Simplify", kind="simplify", board="o/r", added_by="config", run_id=RUN1
+    )
+    [pid] = store.upsert_postings(source_id, [posting("9", url=url, company="Acme")], RUN1)
+    return pid
+
+
+@respx.mock
+def test_detail_fetch_of_a_simplify_listing_on_any_host(store, policy):
+    # A listing links to the company's own page (often Workday): allowed for that URL only.
+    url = "https://acme.wd1.myworkdayjobs.com/careers/job/9"
+    pid = _simplify_posting(store, url)
+    respx.get(f"https://{PUBLIC_IP}/careers/job/9").respond(
+        200, headers={"content-type": "text/html"}, content=b"<p>Office: Brooklyn, NY</p>"
+    )
+    http = GuardedHttp(
+        policy.fetch, policy.retry, resolver=resolver_for(PUBLIC_IP), allowed_hosts=POSTING_HOSTS
+    )
+    outcome = fetch_posting_detail(store, pid, url, http=http)
+    assert outcome.ok
+    assert "Brooklyn" in outcome.untrusted
+    assert http.allowed_hosts == POSTING_HOSTS  # the shared client is not widened
+
+
+def test_detail_fetch_of_a_simplify_listing_keeps_address_checks(store, policy):
+    url = "https://intranet.acme.example/job/9"
+    pid = _simplify_posting(store, url)
+    http = GuardedHttp(
+        policy.fetch, policy.retry, resolver=resolver_for("10.0.0.5"), allowed_hosts=POSTING_HOSTS
+    )
+    with respx.mock:
+        outcome = fetch_posting_detail(store, pid, url, http=http)
+    assert (outcome.status, outcome.reason) == ("blocked", "blocked_address")
+
+
 def test_detail_fetch_of_another_posting(store):
     # Quotes are checked against the detail text, so it must be this posting's own page.
     pid = _one_posting(store)

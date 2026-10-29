@@ -21,6 +21,7 @@ from tracker.usecases.internships.sources import (
     parse_ashby,
     parse_greenhouse,
     parse_lever,
+    parse_simplify,
     prefilter,
     propose_source,
     read_watchlist,
@@ -79,6 +80,40 @@ ASHBY = {
         },
     ]
 }
+
+NOW = 1793000000  # 2026-10-26
+DAY = 86400
+
+
+def listing(id_="s1", **overrides):
+    values = {
+        "id": id_,
+        "company_name": "Acme",
+        "title": "Software Engineering Intern",
+        "url": f"https://acme.wd1.myworkdayjobs.com/careers/job/{id_}?utm_source=Simplify",
+        "locations": ["New York, NY", "Remote in USA"],
+        "terms": ["Summer 2027"],
+        "active": True,
+        "is_visible": True,
+        "date_posted": NOW - 3 * DAY,
+        "category": "Software",
+        "degrees": ["Bachelor's"],
+        "sponsorship": "Does Not Offer Sponsorship",
+        "source": "Simplify",
+    }
+    values.update(overrides)
+    return values
+
+
+SIMPLIFY = [
+    listing("new"),
+    listing("old", date_posted=NOW - 40 * DAY),
+    listing("inactive", active=False, date_posted=NOW - DAY),
+    listing("hidden", is_visible=False),
+    listing("fall", terms=["Fall 2026"]),
+    listing("anyterm", terms=["N/A"], sponsorship="Other", company_name="Beta Inc"),
+]
+POSTED_AFTER = NOW - 14 * DAY
 
 JSON = {"content-type": "application/json"}
 
@@ -139,6 +174,21 @@ def test_invalid_board_rejected_before_url(board):
         board_url("greenhouse", board)
 
 
+def test_simplify_board_is_a_repository():
+    entry = WatchlistEntry(
+        company="Simplify", kind="simplify", board="SimplifyJobs/Summer2027-Internships"
+    )
+    assert board_url(entry.kind, entry.board) == (
+        "https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships"
+        "/dev/.github/scripts/listings.json"
+    )
+    for board in ("SimplifyJobs", "a/b/c", "owner/..", "../x", "own er/repo"):
+        with pytest.raises(ValueError):
+            WatchlistEntry(company="Simplify", kind="simplify", board=board)
+    with pytest.raises(ValueError):  # a board is not a repository, and the reverse
+        WatchlistEntry(company="Acme", kind="greenhouse", board="SimplifyJobs/x")
+
+
 def test_board_urls():
     assert board_url("greenhouse", "acme").startswith("https://boards-api.greenhouse.io/v1/boards/")
     assert board_url("lever", "beta") == "https://api.lever.co/v0/postings/beta?mode=json"
@@ -171,6 +221,72 @@ def test_parse_ashby_skips_unlisted_and_marks_remote():
 
 
 # Collectors
+
+
+@respx.mock
+def test_parse_simplify_keeps_recent_summer_2027_listings():
+    postings = parse_simplify(SIMPLIFY, POSTED_AFTER)
+    assert [p.external_id for p in postings] == ["new", "anyterm"]
+    new, anyterm = postings
+    assert new.company == "Acme"
+    assert new.location == "New York, NY; Remote in USA"
+    assert new.text.splitlines() == [
+        "Company: Acme",
+        "Title: Software Engineering Intern",
+        "Locations: New York, NY; Remote in USA",
+        "Terms: Summer 2027",
+        "Category: Software",
+        "Degrees: Bachelor's",
+        "Posted: 2026-10-23",
+        "Sponsorship: Does Not Offer Sponsorship",
+    ]
+    # No term and an uninformative sponsorship: both lines are left out.
+    assert anyterm.company == "Beta Inc"
+    assert "Terms:" not in anyterm.text and "Sponsorship:" not in anyterm.text
+
+
+def test_parse_simplify_rejects_other_shapes():
+    with pytest.raises(ValueError):
+        parse_simplify({"jobs": []})
+
+
+@respx.mock
+def test_collect_simplify_list(store, http, trace):
+    source_id, _ = store.add_source(
+        company="Simplify",
+        kind="simplify",
+        board="SimplifyJobs/Summer2027-Internships",
+        added_by="config",
+        run_id=RUN1,
+    )
+    route = respx.get(pinned(board_url("simplify", "SimplifyJobs/Summer2027-Internships")))
+    route.side_effect = [
+        httpx.Response(200, headers={**JSON, "etag": '"v1"'}, json=SIMPLIFY),
+        httpx.Response(304, headers={"etag": '"v1"'}),
+    ]
+    collect_all(store, http, trace, RUN1, Filters(), POSTED_AFTER)
+    second = collect_source(store, read_source(store, source_id), http, trace, RUN2, POSTED_AFTER)
+
+    pending = store.pending_postings(RUN1)
+    assert [(p["external_id"], p["company"], p["kind"]) for p in pending] == [
+        ("new", "Acme", "simplify"),
+        ("anyterm", "Beta Inc", "simplify"),
+    ]
+    assert second.status == "not_modified"
+    assert [p.external_id for p in second.postings] == ["new", "anyterm"]
+
+
+def test_board_postings_keep_their_source_company(store):
+    board_id, _ = store.add_source(
+        company="Acme", kind="greenhouse", board="acme", added_by="config", run_id=RUN1
+    )
+    list_id, _ = store.add_source(
+        company="Simplify", kind="simplify", board="o/r", added_by="config", run_id=RUN1
+    )
+    [on_board] = store.upsert_postings(board_id, [posting("1")], RUN1)
+    [listed] = store.upsert_postings(list_id, [posting("2", company="Beta")], RUN1)
+    assert store.posting(on_board)["company"] == "Acme"
+    assert store.posting(listed)["company"] == "Beta"
 
 
 @respx.mock
@@ -387,6 +503,13 @@ def test_proposal_cap(store):
 def test_proposal_bad_identifier_and_kind(store):
     assert _propose(store, SEEN, board="../x").reason == "invalid_board"
     assert _propose(store, SEEN, kind="workday").reason == "unknown_kind"
+
+
+def test_scout_cannot_propose_a_list(store):
+    # A list adds thousands of postings: config only.
+    outcome = _propose(store, SEEN, kind="simplify", board="SimplifyJobs/Summer2027-Internships")
+    assert outcome.reason == "unknown_kind"
+    assert store.sources() == []
 
 
 def test_scout_cannot_propose_a_page(store):
