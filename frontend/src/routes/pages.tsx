@@ -1,6 +1,7 @@
 import { BookOpen, Briefcase, History, UserRound, type LucideIcon } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
+import { ApplicantProfile } from "@/components/account/applicant-profile";
 import { DeleteAccount } from "@/components/account/delete-account";
 import { PasswordForm } from "@/components/account/password-form";
 import { ProfileForm } from "@/components/account/profile-form";
@@ -112,6 +113,7 @@ export function AccountPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold">Account</h1>
       <ProfileForm />
+      <ApplicantProfile />
       <PasswordForm />
       <DeleteAccount />
     </div>

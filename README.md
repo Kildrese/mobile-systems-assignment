@@ -71,6 +71,14 @@ uv sync
 VERIFIER_TOKEN=dev-token GROQ_API_KEY=... uv run fastapi dev main.py --port 8001
 ```
 
+The drafter, in [`services/drafter/`](services/drafter/), turns a new top-K offer into a one-page CV (and a cover letter when the posting asks for one) from your master CV and fact bank, which you upload on `/account`. Only users in `DRAFTING_USERS` can use it. To run it locally:
+
+```bash
+cd services/drafter
+uv sync
+DRAFTER_TOKEN=dev-token ANTHROPIC_API_KEY=... uv run fastapi dev main.py --port 8002
+```
+
 The topic, agents, models, tools, budgets, watchlist and allowed hosts are all in [`config.yaml`](config.yaml). The app shows each run's report, the run history and the articles each run fetched at `/internships`; the endpoints and tables behind it are in [docs/api.md](docs/api.md#tracker-tables). See [docs/tracker.md](docs/tracker.md) for the policy fields, budgets, failure handling, fetch guardrails, state and trace format.
 
 ## Documentation

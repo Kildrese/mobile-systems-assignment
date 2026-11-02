@@ -1,0 +1,240 @@
+# A fictional applicant ("Sam Example") with the same CV layout as the real master.
+# Tests and CI use this profile; the real one never leaves private/ or the database.
+
+# Northwind Systems AG (nws): four sub-projects
+- id: exp.nws.1
+  section: experience
+  entry: "Northwind Systems AG (nws): Senior Consultant, Claims Portal (Apr 2026 to Jul 2026)"
+  text: "Built the full-stack claims portal for a regional insurer, from the first design to production use"
+  tags: [fullstack, swe, insurance]
+  on_master_cv: true
+  approved: true
+- id: exp.nws.2
+  section: experience
+  entry: "Northwind Systems AG (nws): Senior Consultant, Claims Portal (Apr 2026 to Jul 2026)"
+  text: "Designed a cross-platform portal that connects Salesforce with Kafka-based claim workflows"
+  tags: [fullstack, integration, kafka, swe]
+  on_master_cv: true
+  approved: true
+- id: exp.nws.3
+  section: experience
+  entry: "Northwind Systems AG (nws): Senior Consultant, Claims Portal (Apr 2026 to Jul 2026)"
+  text: "Turned the client product owner's requirements into features for claims handlers"
+  tags: [product, client_facing]
+  on_master_cv: true
+  approved: true
+- id: exp.nws.4
+  section: experience
+  entry: "Northwind Systems AG (nws): Senior Consultant, Claims Portal (Apr 2026 to Jul 2026)"
+  text: "Worked with the client's product owner to turn handler needs into shipped features"
+  tags: [product, client_facing]
+  on_master_cv: false
+  approved: true
+- id: exp.nws.5
+  section: experience
+  entry: "Northwind Systems AG (nws): Consultant, Document Parsing Pipeline, internal tooling (Sep 2023 to Mar 2024)"
+  text: "Wrote a Python pipeline on Azure OpenAI that migrated ~400 legacy documents to a new store"
+  tags: [ml_ai, llm, python]
+  on_master_cv: true
+  approved: true
+- id: exp.nws.6
+  section: experience
+  entry: "Northwind Systems AG (nws): Consultant, Document Parsing Pipeline, internal tooling (Sep 2023 to Mar 2024)"
+  text: "Used GPT-4 to parse unstructured Word documents and map their sections to a fixed schema"
+  tags: [ml_ai, llm, python]
+  on_master_cv: true
+  approved: true
+- id: exp.nws.7
+  section: experience
+  entry: "Northwind Systems AG (nws): Consultant, Document Parsing Pipeline, internal tooling (Sep 2023 to Mar 2024)"
+  text: "Wrote a production Python pipeline on Azure OpenAI that migrated ~400 legacy documents"
+  tags: [ml_ai, llm, python]
+  on_master_cv: false
+  approved: true
+- id: exp.nws.8
+  section: experience
+  entry: "Northwind Systems AG (nws): Consultant to Senior Consultant, Permit Tracking Application (Aug 2024 to Mar 2026)"
+  text: "Built a permit-tracking system for a city office end-to-end in Spring Boot and Angular"
+  tags: [fullstack, java, government]
+  on_master_cv: true
+  approved: true
+- id: exp.nws.9
+  section: experience
+  entry: "Northwind Systems AG (nws): Consultant to Senior Consultant, Permit Tracking Application (Aug 2024 to Mar 2026)"
+  text: "Designed PostgreSQL schemas and REST APIs with JUnit tests; deployed the system on OpenShift"
+  tags: [backend, java, government]
+  on_master_cv: true
+  approved: true
+- id: exp.nws.10
+  section: experience
+  entry: "Northwind Systems AG (nws): Consultant to Senior Consultant, Permit Tracking Application (Aug 2024 to Mar 2026)"
+  text: "Designed database schemas with full audit trails for the city office"
+  tags: [backend, government]
+  on_master_cv: false
+  approved: false
+- id: exp.nws.11
+  section: experience
+  entry: "Northwind Systems AG (nws): Consultant to Senior Consultant, Permit Tracking Application (Aug 2024 to Mar 2026)"
+  text: "Implemented a domain-driven design in Spring Boot and Angular under strict security rules"
+  tags: [backend, java, government, regulated]
+  on_master_cv: false
+  approved: true
+- id: exp.nws.12
+  section: experience
+  entry: "Northwind Systems AG (nws): Consultant, Event Integration Hub (Nov 2023 to Jul 2024)"
+  text: "Built Kafka and MuleSoft integrations between a hospital group's internal systems and its partners"
+  tags: [integration, kafka, healthcare]
+  on_master_cv: true
+  approved: true
+- id: exp.nws.13
+  section: experience
+  entry: "Northwind Systems AG (nws): Consultant, Event Integration Hub (Nov 2023 to Jul 2024)"
+  text: "Helped move the message bus to Azure and set code standards for the integration team"
+  tags: [integration, cloud]
+  on_master_cv: true
+  approved: true
+- id: exp.nws.14
+  section: experience
+  entry: "Northwind Systems AG (nws): Consultant, Event Integration Hub (Nov 2023 to Jul 2024)"
+  text: "Built integration interfaces between internal systems and external partners for a hospital group"
+  tags: [integration, healthcare]
+  on_master_cv: false
+  approved: true
+
+# cardly
+- id: exp.cardly.1
+  section: experience
+  entry: "cardly: Co-Founder & Chief Technology Officer (CTO) (Apr 2021 to Sep 2023)"
+  text: "Built the ticketing app used at 1,200+ events; selected for a university startup program"
+  tags: [founder, fullstack, mobile]
+  on_master_cv: true
+  approved: true
+- id: exp.cardly.2
+  section: experience
+  entry: "cardly: Co-Founder & Chief Technology Officer (CTO) (Apr 2021 to Sep 2023)"
+  text: "Shipped the product from concept to launch on web, iOS and Android with a team of three"
+  tags: [founder, fullstack, mobile, product]
+  on_master_cv: true
+  approved: true
+- id: exp.cardly.3
+  section: experience
+  entry: "cardly: Co-Founder & Chief Technology Officer (CTO) (Apr 2021 to Sep 2023)"
+  text: "Mobile App for Event Tickets (React, Node.js, Firebase, Flutter)"
+  tags: [founder]
+  on_master_cv: true
+  approved: true
+- id: exp.cardly.4
+  section: experience
+  entry: "cardly: Co-Founder & Chief Technology Officer (CTO) (Apr 2021 to Sep 2023)"
+  text: "Set the technical direction and took the app from concept to production on web, iOS and Android"
+  tags: [founder, fullstack, mobile]
+  on_master_cv: false
+  approved: true
+- id: exp.cardly.5
+  section: experience
+  entry: "cardly: Co-Founder & Chief Technology Officer (CTO) (Apr 2021 to Sep 2023)"
+  text: "Sold the app and its users to a competitor"
+  tags: [founder]
+  on_master_cv: false
+  approved: true
+
+# medrelay
+- id: exp.medrelay.1
+  section: experience
+  entry: "medrelay: Chief Technology Officer (CTO) (Mar 2021 to May 2022)"
+  text: "Built and deployed Python automation that forwarded 8,000+ lab results from partner clinics to family doctors and connected them to two regional health record systems"
+  tags: [python, healthcare, integration]
+  on_master_cv: true
+  approved: true
+- id: exp.medrelay.2
+  section: experience
+  entry: "medrelay: Chief Technology Officer (CTO) (Mar 2021 to May 2022)"
+  text: "Lab Result Forwarding (Python, Selenium)"
+  tags: [healthcare]
+  on_master_cv: true
+  approved: true
+- id: exp.medrelay.3
+  section: experience
+  entry: "medrelay: Chief Technology Officer (CTO) (Mar 2021 to May 2022)"
+  text: "Automated lab result forwarding in Python for partner clinics, replacing a manual fax workflow"
+  tags: [python, healthcare]
+  on_master_cv: false
+  approved: true
+
+# Stridewell
+- id: exp.stridewell.1
+  section: experience
+  entry: "Stridewell: Developer Intern, University Lab (Oct 2020 to Apr 2021)"
+  text: "Built an iOS app (Swift) that measures running cadence from the phone's motion sensors"
+  tags: [mobile, swe]
+  on_master_cv: true
+  approved: true
+- id: exp.stridewell.2
+  section: experience
+  entry: "Stridewell: Developer Intern, University Lab (Oct 2020 to Apr 2021)"
+  text: "Worked in an agile student team to build an iOS app in Swift that measures running cadence from motion sensors and suggests shoes"
+  tags: [mobile, swe]
+  on_master_cv: false
+  approved: true
+
+# Projects
+- id: proj.contract.1
+  section: projects
+  entry: "Contract Review Assistant: course project (Sep 2026 to present)"
+  text: "Building a multi-agent system that reads several contract sources to support review decisions"
+  tags: [ml_ai, llm, python, legal]
+  on_master_cv: true
+  approved: true
+- id: proj.contract.2
+  section: projects
+  entry: "Contract Review Assistant: course project (Sep 2026 to present)"
+  text: "Contract Review Assistant, course project (Python, FastAPI, LangGraph; in progress)"
+  tags: [ml_ai]
+  on_master_cv: true
+  approved: true
+- id: proj.contract.3
+  section: projects
+  entry: "Contract Review Assistant: course project (Sep 2026 to present)"
+  text: "Building a multi-agent system that combines several contract sources to support legal review"
+  tags: [ml_ai, llm, python, legal]
+  on_master_cv: false
+  approved: true
+
+# Education
+- id: edu.1
+  section: education
+  entry: "Hudson University: MS in Applied Computing and Product Design (Sep 2026 to Dec 2027)"
+  text: "MS in Applied Computing and Product Design (School of Engineering), Hudson University, Expected Dec 2027"
+  tags: [general]
+  on_master_cv: true
+  approved: true
+- id: edu.2
+  section: education
+  entry: "Alpine Technical University: B.Sc. in Computer Science (Oct 2018 to May 2022)"
+  text: "Thesis: A permission model for shared research datasets in a small lab"
+  tags: [research]
+  on_master_cv: true
+  approved: true
+
+# Skills
+- id: skill.1
+  section: skills
+  entry: "Additional Information: Languages & Frameworks"
+  text: "Languages & Frameworks: TypeScript, Python, Java, React, Angular, Node.js, Spring Boot, Quarkus, FastAPI, Swift"
+  tags: [general]
+  on_master_cv: true
+  approved: true
+- id: skill.2
+  section: skills
+  entry: "Additional Information: AI, Data & Cloud"
+  text: "AI, Data & Cloud: Azure OpenAI, LangGraph, PostgreSQL, MongoDB, Kafka, Azure DevOps, OpenShift, Git, CI/CD"
+  tags: [general]
+  on_master_cv: true
+  approved: true
+- id: skill.3
+  section: skills
+  entry: "Additional Information: AI, Data & Cloud"
+  text: "AI, Data & Cloud: Azure OpenAI, LangGraph, PostgreSQL, MongoDB, Kafka, Azure DevOps, OpenShift, MuleSoft, Git"
+  tags: [general]
+  on_master_cv: false
+  approved: true

@@ -85,6 +85,24 @@ jobs:
       # Fetches and the model are faked: no network, no secrets.
       - run: uv run pytest
 
+  drafter:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/drafter
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - run: uv sync --locked
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      # The fictional profile in tests/fixtures; fetches and the model are faked.
+      - run: uv run pytest
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

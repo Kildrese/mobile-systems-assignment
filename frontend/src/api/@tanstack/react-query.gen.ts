@@ -3,8 +3,8 @@
 import { queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { changePassword, deleteUser, exportInternshipReport, getCurrentUser, getInternshipRun, getLatestInternshipReport, getUser, healthCheck, listInternshipRunArticles, listInternshipRuns, login, logout, type Options, register, updateUser } from '../sdk.gen';
-import type { ChangePasswordData, ChangePasswordError, ChangePasswordResponse2, DeleteUserData, DeleteUserError, DeleteUserResponse, ExportInternshipReportData, ExportInternshipReportError, ExportInternshipReportResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetInternshipRunData, GetInternshipRunError, GetInternshipRunResponse, GetLatestInternshipReportData, GetLatestInternshipReportError, GetLatestInternshipReportResponse, GetUserData, GetUserError, GetUserResponse, HealthCheckData, HealthCheckError, HealthCheckResponse, ListInternshipRunArticlesData, ListInternshipRunArticlesError, ListInternshipRunArticlesResponse, ListInternshipRunsData, ListInternshipRunsError, ListInternshipRunsResponse, LoginData, LoginError, LoginResponse2, LogoutData, LogoutError, LogoutResponse, RegisterData, RegisterError, RegisterResponse, UpdateUserData, UpdateUserError, UpdateUserResponse } from '../types.gen';
+import { changePassword, createDraft, deleteUser, downloadDraftCv, downloadDraftLetter, downloadDraftLetterText, exportInternshipReport, getCurrentUser, getInternshipRun, getLatestInternshipReport, getProfile, getUser, healthCheck, listDrafts, listInternshipRunArticles, listInternshipRuns, login, logout, type Options, register, updateUser, uploadProfile } from '../sdk.gen';
+import type { ChangePasswordData, ChangePasswordError, ChangePasswordResponse2, CreateDraftData, CreateDraftError, CreateDraftResponse, DeleteUserData, DeleteUserError, DeleteUserResponse, DownloadDraftCvData, DownloadDraftCvError, DownloadDraftCvResponse, DownloadDraftLetterData, DownloadDraftLetterError, DownloadDraftLetterResponse, DownloadDraftLetterTextData, DownloadDraftLetterTextError, DownloadDraftLetterTextResponse, ExportInternshipReportData, ExportInternshipReportError, ExportInternshipReportResponse, GetCurrentUserData, GetCurrentUserError, GetCurrentUserResponse, GetInternshipRunData, GetInternshipRunError, GetInternshipRunResponse, GetLatestInternshipReportData, GetLatestInternshipReportError, GetLatestInternshipReportResponse, GetProfileData, GetProfileError, GetProfileResponse, GetUserData, GetUserError, GetUserResponse, HealthCheckData, HealthCheckError, HealthCheckResponse, ListDraftsData, ListDraftsError, ListDraftsResponse, ListInternshipRunArticlesData, ListInternshipRunArticlesError, ListInternshipRunArticlesResponse, ListInternshipRunsData, ListInternshipRunsError, ListInternshipRunsResponse, LoginData, LoginError, LoginResponse2, LogoutData, LogoutError, LogoutResponse, RegisterData, RegisterError, RegisterResponse, UpdateUserData, UpdateUserError, UpdateUserResponse, UploadProfileData, UploadProfileError, UploadProfileResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -283,4 +283,128 @@ export const exportInternshipReportOptions = (options: Options<ExportInternshipR
         return data;
     },
     queryKey: exportInternshipReportQueryKey(options)
+});
+
+export const getProfileQueryKey = (options?: Options<GetProfileData>) => createQueryKey('getProfile', options);
+
+/**
+ * Your applicant profile
+ */
+export const getProfileOptions = (options?: Options<GetProfileData>) => queryOptions<GetProfileResponse, GetProfileError, GetProfileResponse, ReturnType<typeof getProfileQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getProfile({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getProfileQueryKey(options)
+});
+
+/**
+ * Upload your applicant profile
+ */
+export const uploadProfileMutation = (options?: Partial<Options<UploadProfileData>>): UseMutationOptions<UploadProfileResponse, UploadProfileError, Options<UploadProfileData>> => {
+    const mutationOptions: UseMutationOptions<UploadProfileResponse, UploadProfileError, Options<UploadProfileData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await uploadProfile({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listDraftsQueryKey = (options?: Options<ListDraftsData>) => createQueryKey('listDrafts', options);
+
+/**
+ * Drafts you may read
+ */
+export const listDraftsOptions = (options?: Options<ListDraftsData>) => queryOptions<ListDraftsResponse, ListDraftsError, ListDraftsResponse, ReturnType<typeof listDraftsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listDrafts({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listDraftsQueryKey(options)
+});
+
+/**
+ * Draft an application for an offer
+ */
+export const createDraftMutation = (options?: Partial<Options<CreateDraftData>>): UseMutationOptions<CreateDraftResponse, CreateDraftError, Options<CreateDraftData>> => {
+    const mutationOptions: UseMutationOptions<CreateDraftResponse, CreateDraftError, Options<CreateDraftData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createDraft({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const downloadDraftCvQueryKey = (options: Options<DownloadDraftCvData>) => createQueryKey('downloadDraftCv', options);
+
+/**
+ * Download a draft's CV
+ */
+export const downloadDraftCvOptions = (options: Options<DownloadDraftCvData>) => queryOptions<DownloadDraftCvResponse, DownloadDraftCvError, DownloadDraftCvResponse, ReturnType<typeof downloadDraftCvQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await downloadDraftCv({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: downloadDraftCvQueryKey(options)
+});
+
+export const downloadDraftLetterQueryKey = (options: Options<DownloadDraftLetterData>) => createQueryKey('downloadDraftLetter', options);
+
+/**
+ * Download a draft's cover letter
+ */
+export const downloadDraftLetterOptions = (options: Options<DownloadDraftLetterData>) => queryOptions<DownloadDraftLetterResponse, DownloadDraftLetterError, DownloadDraftLetterResponse, ReturnType<typeof downloadDraftLetterQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await downloadDraftLetter({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: downloadDraftLetterQueryKey(options)
+});
+
+export const downloadDraftLetterTextQueryKey = (options: Options<DownloadDraftLetterTextData>) => createQueryKey('downloadDraftLetterText', options);
+
+/**
+ * Download a draft's cover letter as text
+ */
+export const downloadDraftLetterTextOptions = (options: Options<DownloadDraftLetterTextData>) => queryOptions<DownloadDraftLetterTextResponse, DownloadDraftLetterTextError, DownloadDraftLetterTextResponse, ReturnType<typeof downloadDraftLetterTextQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await downloadDraftLetterText({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: downloadDraftLetterTextQueryKey(options)
 });

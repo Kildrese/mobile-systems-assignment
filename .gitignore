@@ -35,3 +35,6 @@ traces/*
 !reports/run2.md
 !traces/20261005T170512Z-2187.jsonl
 !traces/20261006T110639Z-da8c.jsonl
+
+# Personal applicant data (CV, fact bank, drafts): never committed; uploaded via the app
+private/

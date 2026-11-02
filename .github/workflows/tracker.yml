@@ -9,7 +9,8 @@
 # that run would bypass the once-a-day claim.
 #
 # Secrets: GROQ_API_KEY, TAVILY_API_KEY, DATABASE_URL (Neon, pooled), VERIFIER_URL and
-# VERIFIER_TOKEN (the verifier service; without them claims show as unverified).
+# VERIFIER_TOKEN (the verifier service; without them claims show as unverified),
+# DRAFTER_URL, DRAFTER_TOKEN and DRAFTING_USERS (the drafter; without them nothing is drafted).
 name: Internship tracker
 
 on:
@@ -36,6 +37,9 @@ jobs:
       VERIFIER_URL: ${{ secrets.VERIFIER_URL }}
       VERIFIER_TOKEN: ${{ secrets.VERIFIER_TOKEN }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DRAFTER_URL: ${{ secrets.DRAFTER_URL }}
+      DRAFTER_TOKEN: ${{ secrets.DRAFTER_TOKEN }}
+      DRAFTING_USERS: ${{ secrets.DRAFTING_USERS }}
     steps:
       - uses: actions/checkout@v7
 
@@ -69,6 +73,12 @@ jobs:
 
       - name: Publish the report
         run: uv run python -m app.publish_report
+
+      # CV drafts for the new top-K offers. A failure is stored on each draft row and
+      # never fails the job: the run is already published.
+      - name: Draft applications
+        continue-on-error: true
+        run: uv run python -m app.draft_new
 
       - uses: actions/upload-artifact@v4
         if: always()
