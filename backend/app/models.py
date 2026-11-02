@@ -1,7 +1,7 @@
 """The database schema. Alembic migrations are generated from these models."""
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import (
     ARRAY,
@@ -11,10 +11,12 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     MetaData,
     String,
     Text,
     UniqueConstraint,
+    Uuid,
     func,
     text,
 )
@@ -143,6 +145,29 @@ class InternshipOffer(Base):
     claims: Mapped[list[dict]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
+    @property
+    def deadline_passed(self) -> bool:
+        return deadline_passed(self.deadline)
+
+
+DEADLINE_FORMATS = ("%Y-%m-%d", "%B %d, %Y", "%b %d, %Y", "%B %d %Y", "%b %d %Y", "%m/%d/%Y")
+
+
+def deadline_passed(deadline: str | None, today: date | None = None) -> bool:
+    """Whether a deadline (free text from the posting) is a date before today, UTC. Text
+    that isn't one of the common date formats is never treated as passed."""
+    # ponytail: a few fixed formats; add more when a real deadline goes unrecognized
+    if not deadline:
+        return False
+    value = deadline.strip().rstrip(".")
+    for fmt in DEADLINE_FORMATS:
+        try:
+            day = datetime.strptime(value[:10] if fmt == "%Y-%m-%d" else value, fmt).date()
+        except ValueError:
+            continue
+        return day < (today or datetime.now(UTC).date())
+    return False
+
 
 class TrackerArticle(Base):
     """One document a run tried to read: a page, a job board or a posting. Published from
@@ -178,3 +203,62 @@ class TrackerDispatch(Base):
     attempts: Mapped[int] = mapped_column(Integer)
     # GitHub's status and message for the last failure; never the token.
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class ApplicantProfile(Base):
+    """One user's applicant profile: the master CV and the three files that drive tailoring.
+    Personal data: only the owner reads it, and no route or log returns its contents."""
+
+    __tablename__ = "applicant_profiles"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey(User.id, ondelete="CASCADE"), primary_key=True
+    )
+    cv_docx: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    fact_bank: Mapped[str] = mapped_column(Text, deferred=True)
+    rules_md: Mapped[str] = mapped_column(Text, deferred=True)
+    checks_yaml: Mapped[str] = mapped_column(Text, deferred=True)
+    # {file name: {"size": bytes, "sha256": hex}} for the four files.
+    files: Mapped[dict] = mapped_column(JSONB)
+    # Users who may read (only) this user's drafts. Set by `python -m app.share_drafts`.
+    viewer_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(Uuid), server_default=text("'{}'::uuid[]")
+    )
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ApplicationDraft(Base):
+    """The latest tailored CV (and cover letter) of one user for one opportunity."""
+
+    __tablename__ = "application_drafts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "opportunity_id"),
+        CheckConstraint("status in ('pending', 'ready', 'partial', 'failed')", "status"),
+    )
+
+    # In download URLs; the (user, opportunity) pair is the real key.
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"))
+    # The opportunity's id in the tracker's state file, as on `internship_offers`.
+    opportunity_id: Mapped[int] = mapped_column(Integer)
+    company: Mapped[str] = mapped_column(String)
+    title: Mapped[str] = mapped_column(String)
+    cover_letter: Mapped[bool] = mapped_column(Boolean)
+    status: Mapped[str] = mapped_column(String)
+    cv_docx: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    letter_docx: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    letter_text: Mapped[str | None] = mapped_column(Text)
+    role_type: Mapped[str | None] = mapped_column(String)
+    # [{name, outcome, detail}]: what code changed or rejected in the model's plan.
+    checks: Mapped[list[dict]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    # Why a draft is partial or failed (an error code and message), never file contents.
+    error: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(String)
+    # Hash of the profile files the draft was made from (stale when the profile changes).
+    profile_hash: Mapped[str] = mapped_column(String)
+    request_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Drafts started for this row on `starts_day` (UTC), for the daily cap: the row is
+    # replaced on every draft, so a count of rows would undercount.
+    starts_day: Mapped[date] = mapped_column(Date)
+    starts: Mapped[int] = mapped_column(Integer)

@@ -27,6 +27,7 @@ from agentkit.contract import (
 )
 from agentkit.fetch import FetchError, Page, parse_retry_after
 from agentkit.guard import Blocked
+from agentkit.service import ProviderBusy, ProviderFailed
 from agentkit.settings import FetchSettings
 from agentkit.text import quote_found
 from agentkit.untrusted import wrap
@@ -58,18 +59,6 @@ Otherwise answer "unsupported" with evidence null.
 Reply with JSON only:
 {{"verdicts": [{{"claim_id": "...", "verdict": "supported" or "unsupported",
   "evidence": "..." or null}}]}}"""
-
-
-class ProviderBusy(Exception):
-    """Retrying later can work: a per-minute limit, an overloaded provider."""
-
-    def __init__(self, retry_after: float) -> None:
-        super().__init__(f"provider busy, retry after {retry_after}s")
-        self.retry_after = retry_after
-
-
-class ProviderFailed(Exception):
-    """Retrying won't help: a bad key or an exhausted daily quota."""
 
 
 Fetcher = Callable[[str, FetchSettings], Page]

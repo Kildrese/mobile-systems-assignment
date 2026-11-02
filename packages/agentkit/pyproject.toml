@@ -1,12 +1,15 @@
 [project]
 name = "agentkit"
 version = "0.1.0"
-description = "What the tracker and the verifier share: fetch guardrails, text checks and the wire contract"
+description = "What the tracker, the verifier and the drafter share: fetch guardrails, text checks, the wire contract and the CV layout map"
 requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4>=4.15.0",
+    "fastapi>=0.115",
     "httpx>=0.28.1",
     "pydantic>=2.11",
+    "python-docx>=1.1.2",
+    "pyyaml>=6.0.2",
 ]
 
 [build-system]

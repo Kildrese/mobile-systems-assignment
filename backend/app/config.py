@@ -25,12 +25,25 @@ class Settings(BaseSettings):
     cron_secret: str | None = None
     # A fine-grained GitHub token: this repository only, Actions read and write.
     github_dispatch_token: str | None = None
+    # The drafter service (services/drafter). Unset, drafting answers 503.
+    drafter_url: str | None = None
+    drafter_token: str | None = None
+    # Usernames that may upload a profile and start drafts (they spend model tokens).
+    # Empty or unset: no one.
+    drafting_users: Annotated[list[str], NoDecode] = []
 
     @field_validator("cors_origins", mode="before")
     @classmethod
     def split_origins(cls, value: object) -> object:
         if isinstance(value, str):
             return [origin.strip().rstrip("/") for origin in value.split(",") if origin.strip()]
+        return value
+
+    @field_validator("drafting_users", mode="before")
+    @classmethod
+    def split_users(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [name.strip().lower() for name in value.split(",") if name.strip()]
         return value
 
 

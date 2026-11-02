@@ -5,6 +5,36 @@ export type ClientOptions = {
 };
 
 /**
+ * Body_uploadProfile
+ */
+export type BodyUploadProfile = {
+    /**
+     * Cvdocx
+     *
+     * cv.docx
+     */
+    cvDocx?: Blob | File | null;
+    /**
+     * Factbank
+     *
+     * fact_bank.yaml
+     */
+    factBank?: Blob | File | null;
+    /**
+     * Rulesmd
+     *
+     * rules.md
+     */
+    rulesMd?: Blob | File | null;
+    /**
+     * Checksyaml
+     *
+     * checks.yaml
+     */
+    checksYaml?: Blob | File | null;
+};
+
+/**
  * ChangePasswordBody
  */
 export type ChangePasswordBody = {
@@ -45,6 +75,72 @@ export type Claim = {
 };
 
 /**
+ * CreateDraftBody
+ */
+export type CreateDraftBody = {
+    opportunityId: number;
+    coverLetter?: boolean;
+};
+
+/**
+ * Draft
+ *
+ * A tailored CV (and cover letter) for one offer, by its owner.
+ */
+export type Draft = {
+    id: string;
+    opportunityId: number;
+    /**
+     * The owner's username.
+     */
+    owner: string;
+    /**
+     * False for a draft shared with you by its owner.
+     */
+    mine: boolean;
+    status: 'pending' | 'ready' | 'partial' | 'failed';
+    /**
+     * Whether a cover letter was asked for.
+     */
+    coverLetter: boolean;
+    hasCv: boolean;
+    hasLetter: boolean;
+    letterText: string | null;
+    roleType: string | null;
+    checks: Array<DraftCheck>;
+    /**
+     * Why the draft is partial or failed.
+     */
+    error: string | null;
+    /**
+     * Made with an older profile than the owner's.
+     */
+    profileOutdated: boolean;
+    createdAt: string;
+};
+
+/**
+ * DraftCheck
+ *
+ * Something code changed or rejected in the model's plan. Show as text.
+ */
+export type DraftCheck = {
+    name: string;
+    outcome: 'fallback' | 'dropped' | 'refilled' | 'cut' | 'rejected' | 'note';
+    detail: string;
+};
+
+/**
+ * DraftList
+ */
+export type DraftList = {
+    /**
+     * Yours and those shared with you, newest first.
+     */
+    drafts: Array<Draft>;
+};
+
+/**
  * Error
  */
 export type Error = {
@@ -63,7 +159,7 @@ export type ErrorBody = {
 /**
  * ErrorCode
  */
-export type ErrorCode = 'VALIDATION_ERROR' | 'UNAUTHORIZED' | 'INVALID_CREDENTIALS' | 'NOT_FOUND' | 'METHOD_NOT_ALLOWED' | 'USERNAME_TAKEN' | 'INVALID_PASSWORD' | 'INTERNAL';
+export type ErrorCode = 'VALIDATION_ERROR' | 'UNAUTHORIZED' | 'INVALID_CREDENTIALS' | 'NOT_FOUND' | 'METHOD_NOT_ALLOWED' | 'USERNAME_TAKEN' | 'INVALID_PASSWORD' | 'NOT_ALLOWED' | 'INVALID_PROFILE' | 'PROFILE_MISSING' | 'DRAFT_IN_PROGRESS' | 'DEADLINE_PASSED' | 'DAILY_LIMIT' | 'DRAFTER_UNAVAILABLE' | 'INTERNAL';
 
 /**
  * Health
@@ -106,6 +202,10 @@ export type InternshipOffer = {
     url: string;
     compensation: string | null;
     deadline: string | null;
+    /**
+     * The deadline is a date before today (UTC).
+     */
+    deadlinePassed: boolean;
     /**
      * The posting's own words, quoted. Never a judgment.
      */
@@ -163,6 +263,35 @@ export type LoginResponse = {
      */
     token: string;
     user: User;
+};
+
+/**
+ * Profile
+ *
+ * The caller's own applicant profile: file names, sizes and hashes, never contents.
+ */
+export type Profile = {
+    /**
+     * Empty until a profile is uploaded.
+     */
+    files: Array<ProfileFile>;
+    uploadedAt: string | null;
+    /**
+     * Whether this account may upload a profile and draft.
+     */
+    canDraft: boolean;
+};
+
+/**
+ * ProfileFile
+ */
+export type ProfileFile = {
+    name: 'cv.docx' | 'fact_bank.yaml' | 'rules.md' | 'checks.yaml';
+    /**
+     * In bytes.
+     */
+    size: number;
+    sha256: string;
 };
 
 /**
@@ -809,3 +938,276 @@ export type ExportInternshipReportResponses = {
 };
 
 export type ExportInternshipReportResponse = ExportInternshipReportResponses[keyof ExportInternshipReportResponses];
+
+export type GetProfileData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/profile';
+};
+
+export type GetProfileErrors = {
+    /**
+     * Missing, malformed, unknown or expired token.
+     */
+    401: Error;
+    /**
+     * Unexpected server error.
+     */
+    500: Error;
+};
+
+export type GetProfileError = GetProfileErrors[keyof GetProfileErrors];
+
+export type GetProfileResponses = {
+    /**
+     * The stored files' names, sizes and hashes; never their contents.
+     */
+    200: Profile;
+};
+
+export type GetProfileResponse = GetProfileResponses[keyof GetProfileResponses];
+
+export type UploadProfileData = {
+    body?: BodyUploadProfile;
+    path?: never;
+    query?: never;
+    url: '/api/profile';
+};
+
+export type UploadProfileErrors = {
+    /**
+     * A file is missing, too large or fails its checks; the message names it.
+     */
+    400: Error;
+    /**
+     * Missing, malformed, unknown or expired token.
+     */
+    401: Error;
+    /**
+     * This account may not upload a profile or draft (`DRAFTING_USERS`).
+     */
+    403: Error;
+    /**
+     * Unexpected server error.
+     */
+    500: Error;
+};
+
+export type UploadProfileError = UploadProfileErrors[keyof UploadProfileErrors];
+
+export type UploadProfileResponses = {
+    /**
+     * The profile as stored. All four files replace any earlier upload.
+     */
+    200: Profile;
+};
+
+export type UploadProfileResponse = UploadProfileResponses[keyof UploadProfileResponses];
+
+export type ListDraftsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Opportunityid
+         *
+         * Only this offer's drafts.
+         */
+        opportunityId?: number | null;
+    };
+    url: '/api/drafts';
+};
+
+export type ListDraftsErrors = {
+    /**
+     * The body is not valid JSON or fails validation.
+     */
+    400: Error;
+    /**
+     * Missing, malformed, unknown or expired token.
+     */
+    401: Error;
+    /**
+     * Unexpected server error.
+     */
+    500: Error;
+};
+
+export type ListDraftsError = ListDraftsErrors[keyof ListDraftsErrors];
+
+export type ListDraftsResponses = {
+    /**
+     * Your drafts and those shared with you, newest first.
+     */
+    200: DraftList;
+};
+
+export type ListDraftsResponse = ListDraftsResponses[keyof ListDraftsResponses];
+
+export type CreateDraftData = {
+    body: CreateDraftBody;
+    path?: never;
+    query?: never;
+    url: '/api/drafts';
+};
+
+export type CreateDraftErrors = {
+    /**
+     * The body is not valid JSON or fails validation.
+     */
+    400: Error;
+    /**
+     * Missing, malformed, unknown or expired token.
+     */
+    401: Error;
+    /**
+     * This account may not upload a profile or draft (`DRAFTING_USERS`).
+     */
+    403: Error;
+    /**
+     * No published offer with this opportunity id.
+     */
+    404: Error;
+    /**
+     * No profile yet, a draft for this offer is in progress, or its deadline passed.
+     */
+    409: Error;
+    /**
+     * You started 20 drafts today (UTC).
+     */
+    429: Error;
+    /**
+     * Unexpected server error.
+     */
+    500: Error;
+    /**
+     * The drafter is not configured.
+     */
+    503: Error;
+};
+
+export type CreateDraftError = CreateDraftErrors[keyof CreateDraftErrors];
+
+export type CreateDraftResponses = {
+    /**
+     * The stored draft: ready, partial (with the reason) or failed.
+     */
+    200: Draft;
+};
+
+export type CreateDraftResponse = CreateDraftResponses[keyof CreateDraftResponses];
+
+export type DownloadDraftCvData = {
+    body?: never;
+    path: {
+        /**
+         * Id
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/drafts/{id}/cv.docx';
+};
+
+export type DownloadDraftCvErrors = {
+    /**
+     * Missing, malformed, unknown or expired token.
+     */
+    401: Error;
+    /**
+     * No draft with this id that you may read, or it has no such file.
+     */
+    404: Error;
+    /**
+     * Unexpected server error.
+     */
+    500: Error;
+};
+
+export type DownloadDraftCvError = DownloadDraftCvErrors[keyof DownloadDraftCvErrors];
+
+export type DownloadDraftCvResponses = {
+    /**
+     * Successful Response
+     */
+    200: Blob | File;
+};
+
+export type DownloadDraftCvResponse = DownloadDraftCvResponses[keyof DownloadDraftCvResponses];
+
+export type DownloadDraftLetterData = {
+    body?: never;
+    path: {
+        /**
+         * Id
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/drafts/{id}/cover-letter.docx';
+};
+
+export type DownloadDraftLetterErrors = {
+    /**
+     * Missing, malformed, unknown or expired token.
+     */
+    401: Error;
+    /**
+     * No draft with this id that you may read, or it has no such file.
+     */
+    404: Error;
+    /**
+     * Unexpected server error.
+     */
+    500: Error;
+};
+
+export type DownloadDraftLetterError = DownloadDraftLetterErrors[keyof DownloadDraftLetterErrors];
+
+export type DownloadDraftLetterResponses = {
+    /**
+     * Successful Response
+     */
+    200: Blob | File;
+};
+
+export type DownloadDraftLetterResponse = DownloadDraftLetterResponses[keyof DownloadDraftLetterResponses];
+
+export type DownloadDraftLetterTextData = {
+    body?: never;
+    path: {
+        /**
+         * Id
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/drafts/{id}/cover-letter.txt';
+};
+
+export type DownloadDraftLetterTextErrors = {
+    /**
+     * Missing, malformed, unknown or expired token.
+     */
+    401: Error;
+    /**
+     * No draft with this id that you may read, or it has no such file.
+     */
+    404: Error;
+    /**
+     * Unexpected server error.
+     */
+    500: Error;
+};
+
+export type DownloadDraftLetterTextError = DownloadDraftLetterTextErrors[keyof DownloadDraftLetterTextErrors];
+
+export type DownloadDraftLetterTextResponses = {
+    /**
+     * Successful Response
+     */
+    200: Blob | File;
+};
+
+export type DownloadDraftLetterTextResponse = DownloadDraftLetterTextResponses[keyof DownloadDraftLetterTextResponses];

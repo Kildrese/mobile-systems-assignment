@@ -47,6 +47,11 @@ export function errorCode(error: unknown): string | undefined {
   return (error as Partial<ApiErrorBody> | undefined)?.error?.code;
 }
 
+// The API's own message (e.g. which profile file failed and why), or the generic one.
+export function errorMessage(error: unknown): string {
+  return (error as Partial<ApiErrorBody> | undefined)?.error?.message ?? SOMETHING_WENT_WRONG;
+}
+
 // For shadcn's `<FieldError errors={…} />`.
 export function asErrors(messages: string[] | undefined) {
   return messages?.map((m) => ({ message: m }));

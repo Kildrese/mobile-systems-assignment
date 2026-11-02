@@ -1,0 +1,40 @@
+# The rules code enforces, for the fictional test profile. Same keys as the real one.
+
+banned_words: [leverage, robust, seamless, pivotal, crucial, delve, foster, showcase, passionate, device-independent]
+scope_words: [led, owned, sole, architected, the only, spearheaded, headed]
+client_names: [Acme Mutual, City of Springfield]
+never_on_cv: [exp.cardly.5]
+never_cut: [exp.cardly.1, exp.medrelay.1]
+
+# Bullets per block, as the plan may choose them. The cut order may go lower.
+bullet_bounds:
+  Claims Portal: {min: 3, max: 3}
+  Document Parsing Pipeline: {min: 2, max: 2}
+  Permit Tracking Application: {min: 2, max: 2}
+  Event Integration Hub: {min: 2, max: 2}
+  cardly: {min: 2, max: 3}
+  medrelay: {min: 1, max: 2}
+  Stridewell: {min: 1, max: 1}
+  Contract Review Assistant: {min: 1, max: 1}
+
+# Applied one step at a time until the CV fits.
+cut_order:
+  - shorten_wrapping
+  - drop_line: "Interests"
+  - drop_line: "Research paper"
+  - drop_line: "Thesis"
+  - drop_bullets: {block: Stridewell, keep: 0}
+  - drop_bullets: {block: last_subproject, keep: 1}
+  - drop_bullets: {block: Claims Portal, keep: 2}
+
+role_types:
+  swe:
+    subprojects: [Claims Portal, Document Parsing Pipeline, Permit Tracking Application, Event Integration Hub]
+    skills_lead: {"Languages & Frameworks": [TypeScript, Python, Java, React]}
+  ml_ai:
+    subprojects: [Document Parsing Pipeline, Permit Tracking Application, Claims Portal, Event Integration Hub]
+    projects_under_education: true
+    never_cut: [exp.nws.5, exp.nws.6, exp.nws.7]
+  healthcare:
+    subprojects: [Event Integration Hub, Claims Portal, Document Parsing Pipeline, Permit Tracking Application]
+    skills_lead: {"Languages & Frameworks": [Python, TypeScript, React]}
