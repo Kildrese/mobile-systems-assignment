@@ -120,3 +120,69 @@ def body_hash(body: Any) -> str:
     return hashlib.sha256(
         json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     ).hexdigest()
+
+
+# The drafter: one posting plus the applicant's profile in, a tailored CV (and letter) out.
+
+MAX_CV_BYTES = 2 * 1024 * 1024
+MAX_TEXT_BYTES = 200 * 1024
+MAX_CV_B64 = 4 * -(-MAX_CV_BYTES // 3)  # base64 of a 2 MB file
+
+
+class ProfileFiles(_Strict):
+    cv_docx_b64: str = Field(min_length=1, max_length=MAX_CV_B64)
+    fact_bank_yaml: str = Field(min_length=1, max_length=MAX_TEXT_BYTES)
+    rules_md: str = Field(max_length=MAX_TEXT_BYTES)
+    checks_yaml: str = Field(min_length=1, max_length=MAX_TEXT_BYTES)
+
+    @field_validator("fact_bank_yaml", "rules_md", "checks_yaml")
+    @classmethod
+    def utf8_size(cls, value: str) -> str:
+        if len(value.encode()) > MAX_TEXT_BYTES:
+            raise ValueError(f"at most {MAX_TEXT_BYTES} bytes")
+        return value
+
+
+class DraftPayload(_Strict):
+    posting_url: str = Field(min_length=1, max_length=2000)
+    company: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1, max_length=300)
+    cover_letter: bool
+    profile: ProfileFiles
+
+
+class DraftRequest(_Strict):
+    request_id: UUID
+    run_id: UUID
+    time_budget_ms: int = Field(gt=0)
+    budget: Budget
+    payload: DraftPayload
+
+
+class CheckRecord(_Strict):
+    """Something code changed or rejected in the model's plan, shown to the applicant."""
+
+    name: str = Field(max_length=100)
+    outcome: Literal["fallback", "dropped", "refilled", "cut", "rejected", "note"]
+    detail: str = Field(max_length=500)
+
+
+class DraftResult(_Strict):
+    role_type: str | None
+    cv_docx_b64: str | None
+    cover_letter_docx_b64: str | None
+    cover_letter_text: str | None
+    checks: list[CheckRecord]
+
+
+class DraftResponse(_Strict):
+    request_id: UUID
+    run_id: UUID
+    status: Literal["complete", "partial", "failed"]
+    result: DraftResult
+    usage: Usage
+    error: WorkerError | None
+
+    def check_against(self, request: DraftRequest) -> None:
+        if self.request_id != request.request_id or self.run_id != request.run_id:
+            raise ValueError("response is for another request")
