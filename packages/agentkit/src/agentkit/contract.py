@@ -173,6 +173,7 @@ class DraftResult(_Strict):
     cover_letter_docx_b64: str | None
     cover_letter_text: str | None
     checks: list[CheckRecord]
+    model: str | None = None  # the model that planned the draft, when one was called
 
 
 class DraftResponse(_Strict):

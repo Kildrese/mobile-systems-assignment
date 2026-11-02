@@ -77,6 +77,13 @@ class ErrorCode(StrEnum):
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     USERNAME_TAKEN = "USERNAME_TAKEN"
     INVALID_PASSWORD = "INVALID_PASSWORD"
+    NOT_ALLOWED = "NOT_ALLOWED"
+    INVALID_PROFILE = "INVALID_PROFILE"
+    PROFILE_MISSING = "PROFILE_MISSING"
+    DRAFT_IN_PROGRESS = "DRAFT_IN_PROGRESS"
+    DEADLINE_PASSED = "DEADLINE_PASSED"
+    DAILY_LIMIT = "DAILY_LIMIT"
+    DRAFTER_UNAVAILABLE = "DRAFTER_UNAVAILABLE"
     INTERNAL = "INTERNAL"
 
 
@@ -174,6 +181,7 @@ class InternshipOffer(ResponseModel):
     url: str
     compensation: str | None
     deadline: str | None
+    deadline_passed: bool = Field(description="The deadline is a date before today (UTC).")
     work_authorization_quote: str | None = Field(
         description="The posting's own words, quoted. Never a judgment."
     )
@@ -237,6 +245,51 @@ class TrackerArticleList(ResponseModel):
     articles: list[TrackerArticle] = Field(description="In fetch order.")
 
 
+class ProfileFile(ResponseModel):
+    name: Literal["cv.docx", "fact_bank.yaml", "rules.md", "checks.yaml"]
+    size: int = Field(description="In bytes.")
+    sha256: str
+
+
+class Profile(ResponseModel):
+    """The caller's own applicant profile: file names, sizes and hashes, never contents."""
+
+    files: list[ProfileFile] = Field(description="Empty until a profile is uploaded.")
+    uploaded_at: datetime | None
+    can_draft: bool = Field(description="Whether this account may upload a profile and draft.")
+
+
+class DraftCheck(ResponseModel):
+    """Something code changed or rejected in the model's plan. Show as text."""
+
+    name: str
+    outcome: Literal["fallback", "dropped", "refilled", "cut", "rejected", "note"]
+    detail: str
+
+
+class Draft(ResponseModel):
+    """A tailored CV (and cover letter) for one offer, by its owner."""
+
+    id: uuid.UUID
+    opportunity_id: int
+    owner: str = Field(description="The owner's username.")
+    mine: bool = Field(description="False for a draft shared with you by its owner.")
+    status: Literal["pending", "ready", "partial", "failed"]
+    cover_letter: bool = Field(description="Whether a cover letter was asked for.")
+    has_cv: bool
+    has_letter: bool
+    letter_text: str | None
+    role_type: str | None
+    checks: list[DraftCheck]
+    error: str | None = Field(description="Why the draft is partial or failed.")
+    profile_outdated: bool = Field(description="Made with an older profile than the owner's.")
+    created_at: datetime
+
+
+class DraftList(ResponseModel):
+    drafts: list[Draft] = Field(description="Yours and those shared with you, newest first.")
+
+
 # ---------------------------------------------------------------------------
 # Requests
 #
@@ -274,3 +327,8 @@ class UpdateUserBody(ApiModel):
 class ChangePasswordBody(ApiModel):
     current_password: CurrentPassword
     new_password: NewPassword
+
+
+class CreateDraftBody(ApiModel):
+    opportunity_id: int
+    cover_letter: bool = False

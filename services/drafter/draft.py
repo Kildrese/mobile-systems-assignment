@@ -73,6 +73,7 @@ def draft(
         "cv_docx_b64": None,
         "cover_letter_docx_b64": None,
         "cover_letter_text": None,
+        "model": None,
     }
 
     def finish(code: str | None = None, message: str = "") -> DraftResponse:
@@ -154,6 +155,7 @@ def draft(
     )
     if raw is None:
         return finish(code or "model_output_invalid", "no CV plan")
+    result["model"] = model.MODEL
     try:
         proposed = ModelPlan.model_validate_json(raw)
     except ValidationError:

@@ -20,12 +20,12 @@
 
 ## 4. Backend (applicant-profile, application-drafts)
 
-- [ ] 4.1 An Alembic migration for `applicant_profiles` and `application_drafts` (design D8), plus models and schemas
-- [ ] 4.2 `DRAFTING_USERS` and the daily cap as one dependency used by upload, `POST /api/drafts` and `draft_new`. Tests: "Not allowlisted", "Daily cap", "Unset allowlist"
-- [ ] 4.3 `/api/profile`: upload (multipart, all four files or nothing), validation with `agentkit.cv` (the same parsers the drafter uses), and `GET` for the owner. Tests: "First upload", "Partial upload", "Duplicate fact id", "Unknown CV layout", "Another user"
-- [ ] 4.4 `app/drafts.py`: the drafter client (retries like the verifier client) and `POST /api/drafts`, `GET /api/drafts`, the three downloads. Tests with a fake drafter: "Draft again", "No profile", a concurrent click gets 409, "Owner downloads", "Stranger", "nyugrader reads a draft", "Not shared"
-- [ ] 4.5 `python -m app.draft_new` (reads the published run and the tracker state's posting text) and `python -m app.share_drafts`. Tests: "New top-K offer", "Past deadline", "Drafter down", and the cover-letter trigger
-- [ ] 4.6 Regenerate `openapi/openapi.json`
+- [x] 4.1 An Alembic migration for `applicant_profiles` and `application_drafts` (design D8), plus models and schemas
+- [x] 4.2 `DRAFTING_USERS` and the daily cap as one dependency used by upload, `POST /api/drafts` and `draft_new`. Tests: "Not allowlisted", "Daily cap", "Unset allowlist"
+- [x] 4.3 `/api/profile`: upload (multipart, all four files or nothing), validation with `agentkit.cv` (the same parsers the drafter uses), and `GET` for the owner. Tests: "First upload", "Partial upload", "Duplicate fact id", "Unknown CV layout", "Another user"
+- [x] 4.4 `app/drafts.py`: the drafter client (retries like the verifier client) and `POST /api/drafts`, `GET /api/drafts`, the three downloads. Tests with a fake drafter: "Draft again", "No profile", a concurrent click gets 409, "Owner downloads", "Stranger", "nyugrader reads a draft", "Not shared"
+- [x] 4.5 `python -m app.draft_new` (reads the published run and the tracker state's posting text) and `python -m app.share_drafts`. Tests: "New top-K offer", "Past deadline", "Drafter down", and the cover-letter trigger
+- [x] 4.6 Regenerate `openapi/openapi.json`
 
 ## 5. Frontend
 

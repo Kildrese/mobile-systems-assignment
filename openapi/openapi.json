@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Mobile Systems API",
-    "description": "JSON API for accounts, users and the daily internship report. Log in with `POST /api/auth/login`, then send the token as `Authorization: Bearer <token>`.",
+    "description": "JSON API for accounts, users, the daily internship report and application drafts. Log in with `POST /api/auth/login`, then send the token as `Authorization: Bearer <token>`.",
     "version": "0.1.0"
   },
   "paths": {
@@ -867,10 +867,581 @@
           }
         }
       }
+    },
+    "/api/profile": {
+      "get": {
+        "tags": [
+          "Drafts"
+        ],
+        "summary": "Your applicant profile",
+        "operationId": "getProfile",
+        "responses": {
+          "200": {
+            "description": "The stored files' names, sizes and hashes; never their contents.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, unknown or expired token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Drafts"
+        ],
+        "summary": "Upload your applicant profile",
+        "operationId": "uploadProfile",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_uploadProfile"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The profile as stored. All four files replace any earlier upload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A file is missing, too large or fails its checks; the message names it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, unknown or expired token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "This account may not upload a profile or draft (`DRAFTING_USERS`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/drafts": {
+      "post": {
+        "tags": [
+          "Drafts"
+        ],
+        "summary": "Draft an application for an offer",
+        "operationId": "createDraft",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDraftBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored draft: ready, partial (with the reason) or failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Draft"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON or fails validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, unknown or expired token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "This account may not upload a profile or draft (`DRAFTING_USERS`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No published offer with this opportunity id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No profile yet, a draft for this offer is in progress, or its deadline passed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "You started 20 drafts today (UTC).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The drafter is not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Drafts"
+        ],
+        "summary": "Drafts you may read",
+        "operationId": "listDrafts",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "opportunityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this offer's drafts.",
+              "title": "Opportunityid"
+            },
+            "description": "Only this offer's drafts."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Your drafts and those shared with you, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON or fails validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, unknown or expired token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/drafts/{id}/cv.docx": {
+      "get": {
+        "tags": [
+          "Drafts"
+        ],
+        "summary": "Download a draft's CV",
+        "operationId": "downloadDraftCv",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, unknown or expired token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No draft with this id that you may read, or it has no such file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/drafts/{id}/cover-letter.docx": {
+      "get": {
+        "tags": [
+          "Drafts"
+        ],
+        "summary": "Download a draft's cover letter",
+        "operationId": "downloadDraftLetter",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, unknown or expired token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No draft with this id that you may read, or it has no such file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/drafts/{id}/cover-letter.txt": {
+      "get": {
+        "tags": [
+          "Drafts"
+        ],
+        "summary": "Download a draft's cover letter as text",
+        "operationId": "downloadDraftLetterText",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, unknown or expired token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No draft with this id that you may read, or it has no such file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "Body_uploadProfile": {
+        "properties": {
+          "cvDocx": {
+            "anyOf": [
+              {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvdocx",
+            "description": "cv.docx"
+          },
+          "factBank": {
+            "anyOf": [
+              {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Factbank",
+            "description": "fact_bank.yaml"
+          },
+          "rulesMd": {
+            "anyOf": [
+              {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rulesmd",
+            "description": "rules.md"
+          },
+          "checksYaml": {
+            "anyOf": [
+              {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checksyaml",
+            "description": "checks.yaml"
+          }
+        },
+        "type": "object",
+        "title": "Body_uploadProfile"
+      },
       "ChangePasswordBody": {
         "properties": {
           "currentPassword": {
@@ -947,6 +1518,172 @@
         "title": "Claim",
         "description": "One checked fact about a top-K offer. Text and evidence came from the web: show them\nas text, never as HTML."
       },
+      "CreateDraftBody": {
+        "properties": {
+          "opportunityId": {
+            "type": "integer"
+          },
+          "coverLetter": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "opportunityId"
+        ],
+        "title": "CreateDraftBody"
+      },
+      "Draft": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "opportunityId": {
+            "type": "integer"
+          },
+          "owner": {
+            "type": "string",
+            "description": "The owner's username."
+          },
+          "mine": {
+            "type": "boolean",
+            "description": "False for a draft shared with you by its owner."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "ready",
+              "partial",
+              "failed"
+            ]
+          },
+          "coverLetter": {
+            "type": "boolean",
+            "description": "Whether a cover letter was asked for."
+          },
+          "hasCv": {
+            "type": "boolean"
+          },
+          "hasLetter": {
+            "type": "boolean"
+          },
+          "letterText": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "roleType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/DraftCheck"
+            },
+            "type": "array"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the draft is partial or failed."
+          },
+          "profileOutdated": {
+            "type": "boolean",
+            "description": "Made with an older profile than the owner's."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "opportunityId",
+          "owner",
+          "mine",
+          "status",
+          "coverLetter",
+          "hasCv",
+          "hasLetter",
+          "letterText",
+          "roleType",
+          "checks",
+          "error",
+          "profileOutdated",
+          "createdAt"
+        ],
+        "title": "Draft",
+        "description": "A tailored CV (and cover letter) for one offer, by its owner."
+      },
+      "DraftCheck": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "fallback",
+              "dropped",
+              "refilled",
+              "cut",
+              "rejected",
+              "note"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "outcome",
+          "detail"
+        ],
+        "title": "DraftCheck",
+        "description": "Something code changed or rejected in the model's plan. Show as text."
+      },
+      "DraftList": {
+        "properties": {
+          "drafts": {
+            "items": {
+              "$ref": "#/components/schemas/Draft"
+            },
+            "type": "array",
+            "description": "Yours and those shared with you, newest first."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "drafts"
+        ],
+        "title": "DraftList"
+      },
       "Error": {
         "properties": {
           "error": {
@@ -993,6 +1730,13 @@
           "METHOD_NOT_ALLOWED",
           "USERNAME_TAKEN",
           "INVALID_PASSWORD",
+          "NOT_ALLOWED",
+          "INVALID_PROFILE",
+          "PROFILE_MISSING",
+          "DRAFT_IN_PROGRESS",
+          "DEADLINE_PASSED",
+          "DAILY_LIMIT",
+          "DRAFTER_UNAVAILABLE",
           "INTERNAL"
         ],
         "title": "ErrorCode"
@@ -1110,6 +1854,10 @@
               }
             ]
           },
+          "deadlinePassed": {
+            "type": "boolean",
+            "description": "The deadline is a date before today (UTC)."
+          },
           "workAuthorizationQuote": {
             "anyOf": [
               {
@@ -1207,6 +1955,7 @@
           "url",
           "compensation",
           "deadline",
+          "deadlinePassed",
           "workAuthorizationQuote",
           "summary",
           "fitScore",
@@ -1286,6 +2035,69 @@
           "user"
         ],
         "title": "LoginResponse"
+      },
+      "Profile": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileFile"
+            },
+            "type": "array",
+            "description": "Empty until a profile is uploaded."
+          },
+          "uploadedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canDraft": {
+            "type": "boolean",
+            "description": "Whether this account may upload a profile and draft."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "files",
+          "uploadedAt",
+          "canDraft"
+        ],
+        "title": "Profile",
+        "description": "The caller's own applicant profile: file names, sizes and hashes, never contents."
+      },
+      "ProfileFile": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "cv.docx",
+              "fact_bank.yaml",
+              "rules.md",
+              "checks.yaml"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "description": "In bytes."
+          },
+          "sha256": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "size",
+          "sha256"
+        ],
+        "title": "ProfileFile"
       },
       "RegisterBody": {
         "properties": {
@@ -1671,6 +2483,9 @@
     },
     {
       "name": "Internships"
+    },
+    {
+      "name": "Drafts"
     }
   ]
 }

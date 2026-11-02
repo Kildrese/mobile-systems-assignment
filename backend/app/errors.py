@@ -30,6 +30,16 @@ INVALID_CREDENTIALS = ApiError(401, ErrorCode.INVALID_CREDENTIALS, "Invalid user
 # the current password shouldn't sign the user out.
 INVALID_PASSWORD = ApiError(403, ErrorCode.INVALID_PASSWORD, "Current password is incorrect")
 USERNAME_TAKEN = ApiError(409, ErrorCode.USERNAME_TAKEN, "Username is already taken")
+NOT_ALLOWED = ApiError(403, ErrorCode.NOT_ALLOWED, "Drafting is not enabled for this account")
+PROFILE_MISSING = ApiError(409, ErrorCode.PROFILE_MISSING, "Upload your profile first")
+DRAFT_IN_PROGRESS = ApiError(
+    409, ErrorCode.DRAFT_IN_PROGRESS, "A draft for this offer is already in progress"
+)
+DEADLINE_PASSED = ApiError(409, ErrorCode.DEADLINE_PASSED, "This offer's deadline has passed")
+DAILY_LIMIT = ApiError(429, ErrorCode.DAILY_LIMIT, "Daily draft limit reached; try tomorrow")
+DRAFTER_UNAVAILABLE = ApiError(
+    503, ErrorCode.DRAFTER_UNAVAILABLE, "The drafter is not configured or not reachable"
+)
 
 
 def error_response(

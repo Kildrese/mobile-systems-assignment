@@ -8,10 +8,10 @@ from fastapi.openapi.utils import get_openapi
 
 from app.config import get_settings
 from app.errors import install_error_handlers
-from app.routers import auth, health, internal, internships, users
+from app.routers import auth, drafts, health, internal, internships, users
 
 DESCRIPTION = (
-    "JSON API for accounts, users and the daily internship report. Log in with "
+    "JSON API for accounts, users, the daily internship report and application drafts. Log in with "
     "`POST /api/auth/login`, then send the token as `Authorization: Bearer <token>`."
 )
 
@@ -54,6 +54,7 @@ def create_app() -> FastAPI:
             {"name": "Auth"},
             {"name": "Users"},
             {"name": "Internships"},
+            {"name": "Drafts"},
         ],
         separate_input_output_schemas=False,
     )
@@ -61,6 +62,8 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(internships.router)
+    app.include_router(drafts.profile_router)
+    app.include_router(drafts.router)
     app.include_router(internal.router)
     app.openapi = lambda: _openapi(app)
 
@@ -81,7 +84,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
         allow_credentials=False,
     )
