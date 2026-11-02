@@ -7,6 +7,8 @@ checked again. Time is bounded by connect and read timeouts plus an overall dead
 and size by a streamed byte cap.
 """
 
+import email.utils
+import json
 import re
 import socket
 import time
@@ -17,9 +19,24 @@ from urllib.parse import urljoin
 import httpx
 from bs4 import BeautifulSoup
 
-from tracker.config import FetchSettings
-from tracker.errors import parse_retry_after
-from tracker.guard import Resolver, check
+from agentkit.guard import Resolver, check
+from agentkit.settings import FetchSettings
+
+
+def parse_retry_after(headers: Mapping[str, str]) -> float | None:
+    value = headers.get("retry-after")
+    if value is None:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        pass
+    try:
+        when = email.utils.parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, when.timestamp() - time.time())
+
 
 ALLOWED_TYPES = {"text/html", "application/xhtml+xml", "text/plain", "application/json"}
 DROPPED_TAGS = ("script", "style", "noscript", "nav", "footer", "form", "svg", "iframe", "template")
@@ -67,10 +84,29 @@ def extract(html: bytes | str, charset: str | None = None) -> tuple[str, str]:
         og = soup.find("meta", attrs={"property": "og:title"})
         if og and og.get("content"):
             title = str(og["content"])
+    # Pages that render with JavaScript (Ashby) still carry the posting as JSON-LD.
+    postings = [
+        _job_posting_text(tag.string or "") for tag in soup("script", type="application/ld+json")
+    ]
     for tag in soup(DROPPED_TAGS):
         tag.decompose()
-    lines = (re.sub(r"\s+", " ", line).strip() for line in soup.get_text("\n").splitlines())
+    text = "\n".join([soup.get_text("\n"), *filter(None, postings)])
+    lines = (re.sub(r"\s+", " ", line).strip() for line in text.splitlines())
     return " ".join(title.split()), "\n".join(line for line in lines if line)
+
+
+def _job_posting_text(raw: str) -> str:
+    """The description of a schema.org JobPosting block, as text; empty for anything else."""
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return ""
+    if not isinstance(data, dict) or data.get("@type") != "JobPosting":
+        return ""
+    description = data.get("description")
+    if not isinstance(description, str):
+        return ""
+    return BeautifulSoup(description, "html.parser").get_text("\n")
 
 
 def _media_type(header: str) -> tuple[str, str | None]:

@@ -4,7 +4,7 @@ What the tracker does each day, then how its agents work underneath. For setup, 
 
 ## The tracker in one picture
 
-Every morning the tracker looks for Summer 2027 software and ML internships at NYC startups, keeps what it finds, and tells you what changed since yesterday. Four AI agents do the work that needs judgment. Plain code does everything that can be checked: reading job boards, deciding what is still open, and ranking.
+Every morning the tracker looks for Summer 2027 software and ML internships at NYC startups, keeps what it finds, and tells you what changed since yesterday. Four AI agents do the work that needs judgment, and a fifth, the verifier, runs as its own service and double-checks the top K. Plain code does everything that can be checked: reading job boards, deciding what is still open, and ranking.
 
 ```mermaid
 flowchart TD
@@ -16,16 +16,22 @@ flowchart TD
         liveness["4. Liveness (code)<br/>decides what is still open<br/>and what has closed"]
         assess["5. Assess (agent)<br/>rates each new internship's fit<br/>with your profile, once"]
         rank["6. Rank (code)<br/>scores every open internship<br/>and picks the top K"]
-        edit["7. Edit (agent)<br/>writes a short summary<br/>for the ones you will read"]
-        report["8. Report<br/>New · Still in top K · Dropped · Also open"]
-        scout --> collect --> curate --> liveness --> assess --> rank --> edit --> report
+        verify["7. Verify (code + remote agent)<br/>sends each top-K internship's claims<br/>to the verifier, then ranks again"]
+        edit["8. Edit (agent)<br/>writes a short summary<br/>for the ones you will read"]
+        report["9. Report<br/>New · Still in top K · Dropped · Also open<br/>+ each top-K claim with its verdict"]
+        scout --> collect --> curate --> liveness --> assess --> rank --> verify --> edit --> report
     end
+    verifier["Verifier (separate Vercel service)<br/>gets only claim text + URL,<br/>fetches the page itself"]
+    verify -. "HTTPS + bearer token<br/>POST /verify, retried" .-> verifier
+    verifier -. "verdicts, checked by code" .-> verify
+    verify -- "verifier down or invalid answer:<br/>claims stay unverified, run is partial" --> edit
     memory[("State file<br/>boards, postings, internships,<br/>past ranks: the tracker's memory")]
     collect <--> memory
     curate <--> memory
     liveness <--> memory
     assess <--> memory
     rank <--> memory
+    verify <--> memory
     report --> publish["Publish to the database"] --> app(["/internships page in the app"])
 ```
 
@@ -37,10 +43,11 @@ What each step adds:
 4. **Liveness** compares today's boards with the stored internships. One that is gone from every board it was on is closed; if a board could not be read, nothing on it changes.
 5. **Assess** rates how well each internship not yet rated fits a short profile of the candidate, 0 to 3 with a one-sentence reason. Code checks each rating and keeps it, so the same internship has the same fit every day.
 6. **Rank** scores every open internship (role, term, location, freshness, fit) and marks the top K (5 by default). The same inputs always give the same order.
-7. **Edit** writes a short summary (at most three sentences) for each internship the report shows in full. Code rejects a summary that mentions a number or month that is not in the record.
-8. **Report** compares today's top K with the last run's: what is new, what stayed in the top K, what dropped out (closed or outranked), and everything else still open.
+7. **Verify** turns each known field of a top-K internship into one claim, a sentence written by code, and sends the claims to the [verifier](../services/verifier/) over HTTP. The verifier sees only the claim and the posting URL, never the Curator's quote or page. It fetches the page itself, a model proposes a verdict and an excerpt, and code keeps `supported` only when the excerpt is really on the page. A field the verifier finds `unsupported` then ranks as unknown. If the verifier is down, the run goes on: the claims show as `unverified` and the report names the verifier.
+8. **Edit** writes a short summary (at most three sentences) for each internship the report shows in full. Code rejects a summary that mentions a number or month that is not in the record.
+9. **Report** compares today's top K with the last run's: what is new, what stayed in the top K, what dropped out (closed or outranked), and everything else still open. It lists each top-K claim with its verdict and, when supported, the evidence.
 
-The steps never talk to each other directly: each one reads what it needs from the state file and writes back what it found. That is also how a run remembers yesterday. Every agent has its own budget (steps, tokens, searches, fetches), and the whole run has one too. If an agent runs out, or a provider fails, the run still ends with a report that says what was skipped and why.
+The steps never talk to each other directly: each one reads what it needs from the state file and writes back what it found. The one exception is the verifier, which is a separate service: it gets claims over HTTP and has no access to the state file at all. That is also how a run remembers yesterday. Every agent has its own budget (steps, tokens, searches, fetches), and the whole run has one too. If an agent runs out, or a provider fails, the run still ends with a report that says what was skipped and why.
 
 The rest of this page explains how one agent works inside its step.
 

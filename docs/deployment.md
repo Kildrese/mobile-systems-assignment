@@ -8,6 +8,7 @@ Production runs on Vercel as two projects on separate origins, with a Neon Postg
 | --- | --- | --- |
 | `mobile-systems-api` | `backend/` | FastAPI, detected from `app/main.py`. Env: `DATABASE_URL` (Neon pooled), `DATABASE_URL_UNPOOLED` (direct), `CORS_ORIGINS` (the frontend's URL) |
 | `mobile-systems-assignment` | `frontend/` | Vite static site. Env: `VITE_API_URL` (the backend's URL). `vercel.json` adds the SPA rewrite and security headers |
+| `mobile-systems-verifier` | `services/verifier/` | FastAPI, detected from `main.py`. Env: `VERIFIER_TOKEN`, `GROQ_API_KEY` (optional `VERIFIER_MODEL`). No database. Connected to the GitHub repo: a push to `master` deploys production, other branches get previews. Installs `packages/agentkit` from outside its root, so "Include files outside the root directory" must stay on |
 
 The design and rollout history is in `openspec/changes/archive/2026-09-24-split-fastapi-vite/`.
 
@@ -25,7 +26,7 @@ Order matters. When a migration drops something the running code still reads (su
 
 `.github/workflows/tracker.yml` runs the tracker once a day, then `python -m app.publish_report` copies the latest finished run into Neon: one `tracker_runs` row (status, times, the Markdown report), one `internship_offers` row per offer in the report, with its section (`new`, `top_k`, `dropped`, `open`), rank and fields, and one `tracker_articles` row per document the run tried to read. The API serves them read-only (`/api/internships/latest`, `/runs`, `/runs/:id`, `/runs/:id/articles`), and no user can start a run. A manual run is "Run workflow" on the Actions tab.
 
-It needs the repository secrets `GROQ_API_KEY`, `TAVILY_API_KEY` and `DATABASE_URL` (Neon, pooled), and the tracker migrations (`tracker_runs`, `tracker_articles`) applied to production first (`./scripts/db-migrate-neon.sh`). The tracker's SQLite state is carried between days in the Actions cache; if the cache is evicted, the next run starts fresh and lists every open offer as new once. Reports and traces are kept as run artifacts for 14 days.
+It needs the repository secrets `GROQ_API_KEY`, `TAVILY_API_KEY`, `DATABASE_URL` (Neon, pooled), `VERIFIER_URL` (the verifier project's production URL) and `VERIFIER_TOKEN` (the same value as in the verifier project; without them the Verify stage fails soft and every claim shows as unverified), and the tracker migrations (`tracker_runs`, `tracker_articles`) applied to production first (`./scripts/db-migrate-neon.sh`). The tracker's SQLite state is carried between days in the Actions cache; if the cache is evicted, the next run starts fresh and lists every open offer as new once. Reports and traces are kept as run artifacts for 14 days.
 
 ### What starts the daily run
 
@@ -59,6 +60,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and every
 
 - **backend:** ruff lint and format, the OpenAPI check, migrations and `alembic check` against a Postgres 17 service container, then the pytest suite (in its own `app_test` database on that server);
 - **tracker:** ruff lint and format, then the tracker's tests (`pytest tests_tracker`) with no services and no network: every provider is faked;
+- **verifier:** ruff lint and format, then `services/verifier`'s tests, with fetches and the model faked;
 - **frontend:** the API client check, typecheck, Vitest, lint and build.
 
 To run the same checks locally, see [development.md](development.md#checks).

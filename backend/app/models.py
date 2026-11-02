@@ -16,7 +16,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # Postgres's own default names, so constraint names are predictable (the
@@ -88,6 +90,10 @@ class TrackerRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     report_markdown: Mapped[str] = mapped_column(Text)
+    # Worker services that failed in this run (e.g. ["verifier"]); empty when none did.
+    failed_services: Mapped[list[str]] = mapped_column(
+        ARRAY(String), server_default=text("'{}'::text[]")
+    )
     published_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -132,6 +138,9 @@ class InternshipOffer(Base):
     status_evidence: Mapped[str | None] = mapped_column(Text)
     # Checked open in this run (false: its board could not be read).
     verified: Mapped[bool] = mapped_column(Boolean)
+    # Top K only: [{field, text, verdict, evidence}], verdict supported, unsupported,
+    # unreachable or unverified. Claim text and evidence came from the web: untrusted text.
+    claims: Mapped[list[dict]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

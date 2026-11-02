@@ -1,0 +1,14 @@
+[project]
+name = "agentkit"
+version = "0.1.0"
+description = "What the tracker and the verifier share: fetch guardrails, text checks and the wire contract"
+requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4>=4.15.0",
+    "httpx>=0.28.1",
+    "pydantic>=2.11",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

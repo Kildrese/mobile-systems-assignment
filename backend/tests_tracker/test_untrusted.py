@@ -1,6 +1,6 @@
 """Retrieved text is data: fenced blocks and the injection signal."""
 
-from tracker.untrusted import CLOSE, OPEN, injection_suspected, wrap
+from agentkit.untrusted import CLOSE, OPEN, injection_suspected, wrap
 
 
 def test_block_cannot_be_closed_from_inside():

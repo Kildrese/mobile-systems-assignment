@@ -6,7 +6,6 @@ a wait, or terminal, which stops the run with a message saying what to fix.
 `send_with_retries()` applies that decision to one HTTP request.
 """
 
-import email.utils
 import random
 import re
 import time
@@ -15,6 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import httpx
+from agentkit.fetch import parse_retry_after
 
 if TYPE_CHECKING:
     from tracker.config import RetryPolicy
@@ -68,21 +68,6 @@ class Terminal:
 def backoff(attempt: int, retry: "RetryPolicy", rng: Callable[[], float] = random.random) -> float:
     """Exponential backoff for the given 0-based attempt, capped, with 50-100% jitter."""
     return min(retry.max_wait_seconds, retry.base_seconds * 2**attempt) * (0.5 + rng() / 2)
-
-
-def parse_retry_after(headers: Mapping[str, str]) -> float | None:
-    value = headers.get("retry-after")
-    if value is None:
-        return None
-    try:
-        return max(0.0, float(value))
-    except ValueError:
-        pass
-    try:
-        when = email.utils.parsedate_to_datetime(value)
-    except (TypeError, ValueError):
-        return None
-    return max(0.0, when.timestamp() - time.time())
 
 
 _RESET_HINT = re.compile(r"try again in ([0-9hms.]+)", re.IGNORECASE)

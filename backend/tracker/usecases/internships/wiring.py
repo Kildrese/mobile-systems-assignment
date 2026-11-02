@@ -3,7 +3,8 @@
 The only module of the use case that knows about agents, stages and the tool
 registry. It registers the use case's tools, validates its `options`, and builds the
 fixed pipeline: Scout (agent), Collect (code, required), Curate (agent), Liveness
-(code), Assess (agent, optional), Rank (code, required), Edit (agent). The conductor
+(code), Assess (agent, optional), Rank (code, required), Verify (remote verifier,
+optional), Edit (agent). The conductor
 writes the report with `report_writer` once every stage has run.
 """
 
@@ -13,6 +14,8 @@ from collections import Counter
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
+from agentkit.guard import host_allowed
+from agentkit.untrusted import injection_suspected, wrap
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from tracker import conductor
@@ -20,12 +23,10 @@ from tracker.agents import Stop
 from tracker.conductor import StageContext, StageOutcome
 from tracker.config import Policy
 from tracker.errors import PolicyError
-from tracker.guard import host_allowed
 from tracker.report import ReportMeta
 from tracker.state import fetch_status, log_fetch
 from tracker.tools import Toolbox, ToolOutcome, ToolSpec, register, validation_message
 from tracker.trace import Trace
-from tracker.untrusted import injection_suspected, wrap
 from tracker.usecases.internships import (
     assessing,
     curation,
@@ -33,6 +34,7 @@ from tracker.usecases.internships import (
     lifecycle,
     ranking,
     sources,
+    verifying,
 )
 from tracker.usecases.internships import report as internship_report
 from tracker.usecases.internships.http import GuardedHttp
@@ -63,6 +65,8 @@ class InternshipOptions(BaseModel):
     simplify_max_age_days: int = Field(default=14, gt=0)
     # The candidate and the internship they want, for the Assessor. Empty: no Assess stage.
     profile: str = ""
+    # The remote verifier. None: no Verify stage, and every claim shows as unverified.
+    verifier: verifying.VerifierSettings | None = None
 
 
 def fit_enabled(policy: Policy) -> bool:
@@ -110,6 +114,21 @@ def validate(policy: Policy) -> InternshipOptions:
             + ", ".join(blocked)
         )
     _agent_option(policy, "scout", "max_new_sources", DEFAULT_MAX_NEW_SOURCES)
+    if (v := opts.verifier) is not None:
+        enabled = [p for p in policy.agents.values() if p.enabled]
+        over = []
+        for limit, share in (
+            ("max_steps", v.max_steps),
+            ("max_tokens", v.max_tokens),
+            ("max_fetches", v.max_fetches),
+        ):
+            total = sum(getattr(p.limits, limit) or 0 for p in enabled) + v.max_requests * share
+            if total > (cap := getattr(policy.limits, limit)):
+                over.append(
+                    f"limits.{limit}: agents and verifier add up to {total:,}, more than {cap:,}"
+                )
+        if over:
+            raise PolicyError("Invalid policy:\n  " + "\n  ".join(over))
     return opts
 
 
@@ -768,6 +787,73 @@ class RankStage:
 
 
 @dataclass
+class VerifyStage:
+    """Send the top K's claims to the verifier, store its verdicts, and rank again.
+
+    Never fails the run: a verifier that is down, slow or wrong leaves claims unverified,
+    marks the stage partial, and records `verifier` as the failed service.
+    """
+
+    name: str = "verify"
+    agent: None = None
+    required: bool = False
+    kind: str = "code"
+    providers: frozenset = field(default_factory=frozenset)
+
+    def run(self, ctx: StageContext) -> StageOutcome:
+        settings = options(ctx.policy).verifier
+        assert settings is not None
+        store = OpportunityStore(ctx.state)
+        keys = ctx.clients.keys
+        if not keys.verifier_url or not keys.verifier_token:
+            return self._failed(
+                ctx, store, "not_configured", "VERIFIER_URL or VERIFIER_TOKEN is not set"
+            )
+        top_k = [o for o in self._ranked(ctx, store) if o["top_k"]]
+        client = verifying.Client(
+            keys.verifier_url,
+            keys.verifier_token,
+            settings,
+            ctx.trace,
+            transport=ctx.clients.service_transport,
+            sleep=ctx.clients.sleep,
+        )
+        result = verifying.verify_top_k(store, ctx.run_id, top_k, client, settings, ctx.budget)
+        self._ranked(ctx, store)  # unsupported fields now count as unknown
+        usage = {
+            "requests": result.requests,
+            "verdicts": result.verdicts,
+            "skipped_for_budget": result.skipped_for_budget,
+        }
+        if result.failure is not None:
+            outcome = self._failed(ctx, store, result.failure.reason, result.failure.detail)
+            outcome.usage = usage
+            return outcome
+        if result.skipped_for_budget:
+            return StageOutcome("partial", "max_requests", usage=usage)
+        return StageOutcome("complete", usage=usage)
+
+    @staticmethod
+    def _ranked(ctx: StageContext, store: OpportunityStore) -> list[dict[str, Any]]:
+        return ranking.rank_open(
+            store,
+            ctx.run_id,
+            options(ctx.policy).ranking,
+            ctx.policy.k,
+            use_fit=fit_enabled(ctx.policy),
+        )
+
+    @staticmethod
+    def _failed(
+        ctx: StageContext, store: OpportunityStore, reason: str, detail: str
+    ) -> StageOutcome:
+        store.fail_service(ctx.run_id, verifying.SERVICE, f"{reason}: {detail}"[:300])
+        return StageOutcome(
+            "partial", f"service:{verifying.SERVICE}", f"verifier failed ({reason}): {detail}"
+        )
+
+
+@dataclass
 class EditStage:
     name: str = "edit"
     agent: str = "editor"
@@ -818,6 +904,7 @@ def stages(policy: Policy) -> list[conductor.Stage]:
         LivenessStage(),
         *assess,
         RankStage(),
+        *([VerifyStage()] if options(policy).verifier is not None else []),
         EditStage(),
     ]
 
@@ -836,4 +923,5 @@ def report_writer(ctx: StageContext, outcomes: list[StageOutcome], meta: ReportM
         stages=stage_rows,
         note=note,
         show_fit=fit_enabled(ctx.policy),
+        show_claims=options(ctx.policy).verifier is not None,
     )

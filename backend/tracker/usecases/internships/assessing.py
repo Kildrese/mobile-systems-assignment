@@ -11,10 +11,10 @@ import hashlib
 import json
 from typing import Any
 
+from agentkit.untrusted import wrap
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from tracker.tools import ToolOutcome, validation_message
-from tracker.untrusted import wrap
 from tracker.usecases.internships.curation import posting_text
 from tracker.usecases.internships.editing import summary_problem
 from tracker.usecases.internships.store import OpportunityStore

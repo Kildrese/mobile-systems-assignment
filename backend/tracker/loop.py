@@ -16,19 +16,19 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from agentkit.guard import Resolver
+from agentkit.untrusted import DATA_RULES, wrap
 
 from tracker import report
 from tracker.agents import AgentLoop, Stop
 from tracker.budget import Budget
 from tracker.config import AgentProfile, Policy, TrackerSecrets
 from tracker.errors import TerminalError, WallClockExceeded
-from tracker.guard import Resolver
 from tracker.llm import ChatClient, ModelOutputError
 from tracker.search import SearchClient
 from tracker.state import StateStore
 from tracker.tools import Toolbox, validate_finish
 from tracker.trace import Trace
-from tracker.untrusted import DATA_RULES, wrap
 
 NUDGE = (
     "You did not call a tool. Call search_web or fetch_article to gather evidence, "

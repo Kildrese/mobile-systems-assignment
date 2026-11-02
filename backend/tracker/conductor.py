@@ -15,13 +15,13 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 import httpx
+from agentkit.guard import Resolver
 
 from tracker import report
 from tracker.agents import AgentLoop, DoneCheck, FinishHandler, Stop
 from tracker.budget import Budget
 from tracker.config import AgentProfile, ModelSettings, Policy, TrackerSecrets
 from tracker.errors import PolicyError, TerminalError
-from tracker.guard import Resolver
 from tracker.llm import ChatClient
 from tracker.loop import RunResult, new_run_id
 from tracker.search import SearchClient
@@ -75,6 +75,7 @@ class Clients:
         chat_transport: httpx.BaseTransport | None = None,
         search_transport: httpx.BaseTransport | None = None,
         fetch_transport: httpx.BaseTransport | None = None,
+        service_transport: httpx.BaseTransport | None = None,
         resolver: Resolver = socket.getaddrinfo,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -84,6 +85,8 @@ class Clients:
         self.chat_transport = chat_transport
         self.search_transport = search_transport
         self.fetch_transport = fetch_transport
+        # Calls to our own worker services (the verifier).
+        self.service_transport = service_transport
         self.resolver = resolver
         self.sleep = sleep
         self._http: dict[str, httpx.Client] = {}
@@ -239,6 +242,7 @@ def run(
     chat_transport: httpx.BaseTransport | None = None,
     search_transport: httpx.BaseTransport | None = None,
     fetch_transport: httpx.BaseTransport | None = None,
+    service_transport: httpx.BaseTransport | None = None,
     resolver: Resolver = socket.getaddrinfo,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
@@ -264,6 +268,7 @@ def run(
         chat_transport=chat_transport,
         search_transport=search_transport,
         fetch_transport=fetch_transport,
+        service_transport=service_transport,
         resolver=resolver,
         sleep=sleep,
     )

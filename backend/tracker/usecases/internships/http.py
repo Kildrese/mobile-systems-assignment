@@ -12,11 +12,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import httpx
+from agentkit.fetch import FetchError, fetch_page
+from agentkit.guard import Blocked, Resolver
 
 from tracker.config import FetchSettings, RetryPolicy
 from tracker.errors import backoff
-from tracker.fetch import FetchError, fetch_page
-from tracker.guard import Blocked, Resolver
 
 TRANSIENT_REASONS = {"timeout", "connection_error"}
 TRANSIENT_STATUS = {408, 429, 500, 502, 503, 504}

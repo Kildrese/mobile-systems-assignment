@@ -5,6 +5,7 @@ The use case versions its own schema in `component_versions`, separate from the 
 file from the core upgrades in place.
 """
 
+import hashlib
 import json
 import sqlite3
 from collections.abc import Iterable, Sequence
@@ -120,6 +121,27 @@ MIGRATIONS: list[str] = [
     # A list source (Simplify) names the company per posting; boards leave it NULL.
     """
     ALTER TABLE raw_postings ADD COLUMN listed_company TEXT;
+    """,
+    # The verifier's verdict per claim, tagged with the record it checked; and which
+    # services failed in a run.
+    """
+    CREATE TABLE claim_verdicts (
+        opportunity_id INTEGER NOT NULL REFERENCES opportunities(id),
+        field TEXT NOT NULL,
+        record_hash TEXT NOT NULL,
+        text TEXT NOT NULL,
+        verdict TEXT NOT NULL CHECK (verdict IN ('supported', 'unsupported', 'unreachable')),
+        evidence TEXT,
+        run_id TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        PRIMARY KEY (opportunity_id, field, record_hash)
+    );
+    CREATE TABLE failed_services (
+        run_id TEXT NOT NULL,
+        service TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        PRIMARY KEY (run_id, service)
+    );
     """,
 ]
 
@@ -525,6 +547,54 @@ class OpportunityStore:
             (profile_hash,),
         )
         return [_decode_opportunity(r) for r in rows]
+
+    # Claim verdicts
+
+    @staticmethod
+    def record_hash(opp: dict[str, Any]) -> str:
+        """Identifies the version of a record a verdict checked: its URL and fields."""
+        data = json.dumps([opp["url"], opp["fields"]], sort_keys=True)
+        return hashlib.sha256(data.encode()).hexdigest()[:16]
+
+    def unsupported_fields(self) -> dict[int, set[str]]:
+        """opportunity id -> fields verified unsupported, for each record's current version."""
+        out: dict[int, set[str]] = {}
+        current = {o["id"]: self.record_hash(o) for o in self.opportunities(("open",))}
+        rows = self.db.execute("SELECT * FROM claim_verdicts WHERE verdict = 'unsupported'")
+        for r in rows:
+            if current.get(r["opportunity_id"]) == r["record_hash"]:
+                out.setdefault(r["opportunity_id"], set()).add(r["field"])
+        return out
+
+    def put_verdicts(self, rows: Sequence[dict[str, Any]]) -> None:
+        with self.db:
+            self.db.executemany(
+                "INSERT OR REPLACE INTO claim_verdicts (opportunity_id, field, record_hash, "
+                "text, verdict, evidence, run_id, request_id) VALUES (:opportunity_id, :field, "
+                ":record_hash, :text, :verdict, :evidence, :run_id, :request_id)",
+                rows,
+            )
+
+    def verdicts(self, opportunity_id: int, record_hash: str) -> dict[str, dict[str, Any]]:
+        """field -> stored verdict for this version of the record."""
+        rows = self.db.execute(
+            "SELECT * FROM claim_verdicts WHERE opportunity_id = ? AND record_hash = ?",
+            (opportunity_id, record_hash),
+        )
+        return {r["field"]: dict(r) for r in rows}
+
+    def fail_service(self, run_id: str, service: str, reason: str) -> None:
+        with self.db:
+            self.db.execute(
+                "INSERT OR REPLACE INTO failed_services (run_id, service, reason) VALUES (?, ?, ?)",
+                (run_id, service, reason),
+            )
+
+    def failed_services(self, run_id: str) -> list[str]:
+        rows = self.db.execute(
+            "SELECT service FROM failed_services WHERE run_id = ? ORDER BY service", (run_id,)
+        )
+        return [r["service"] for r in rows]
 
 
 def _decode_opportunity(row: sqlite3.Row) -> dict[str, Any]:

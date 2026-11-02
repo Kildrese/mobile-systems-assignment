@@ -127,9 +127,27 @@ class TrackerRun(ResponseModel):
     topic: str
     status: Literal["complete", "partial", "failed"]
     stop_reason: str | None
+    failed_services: list[str] = Field(
+        description="Worker services that failed in the run, e.g. `verifier`. Empty if none."
+    )
     started_at: datetime
     ended_at: datetime | None
     report_markdown: str = Field(description="The run's full Markdown report.")
+
+
+class Claim(ResponseModel):
+    """One checked fact about a top-K offer. Text and evidence came from the web: show them
+    as text, never as HTML."""
+
+    field: str = Field(description="The record field the claim states, e.g. `compensation`.")
+    text: str
+    verdict: Literal["supported", "unsupported", "unreachable", "unverified"] = Field(
+        description="The verifier's verdict, checked by code; `unverified` when it was not "
+        "checked (the verifier failed or was not configured)."
+    )
+    evidence: str | None = Field(
+        description="On `supported` claims: an excerpt of at most 300 characters from the page."
+    )
 
 
 class InternshipOffer(ResponseModel):
@@ -167,6 +185,7 @@ class InternshipOffer(ResponseModel):
     status: Literal["open", "unknown", "closed"]
     status_evidence: str | None
     verified: bool = Field(description="Checked open in this run.")
+    claims: list[Claim] = Field(description="Top-K offers only: each checked claim.")
     first_seen_at: datetime
 
 
@@ -182,6 +201,9 @@ class TrackerRunSummary(ResponseModel):
     topic: str
     status: Literal["complete", "partial", "failed"]
     stop_reason: str | None
+    failed_services: list[str] = Field(
+        description="Worker services that failed in the run, e.g. `verifier`. Empty if none."
+    )
     started_at: datetime
     ended_at: datetime | None
     sections: dict[str, int] = Field(
