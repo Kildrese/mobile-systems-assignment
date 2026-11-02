@@ -34,7 +34,7 @@
 
 ## 6. Workflow, docs, deploy
 
-- [ ] 6.1 `tracker.yml`: a `draft_new` step after publishing, with `continue-on-error`, and `DRAFTER_URL` and `DRAFTER_TOKEN` passed in. Add every new variable to `.env.example`
-- [ ] 6.2 Docs: `docs/architecture.md` (the drafter, where personal data lives, sharing), `docs/api.md` (profile and drafts routes, tables), `docs/deployment.md` (the drafter project and secrets), `docs/agent-loop.md` (a drafter node in the flowchart), `README.md`
+- [x] 6.1 `tracker.yml`: a `draft_new` step after publishing, with `continue-on-error`, and `DRAFTER_URL` and `DRAFTER_TOKEN` passed in. Add every new variable to `.env.example`
+- [x] 6.2 Docs: `docs/architecture.md` (the drafter, where personal data lives, sharing), `docs/api.md` (profile and drafts routes, tables), `docs/deployment.md` (the drafter project and secrets), `docs/agent-loop.md` (a drafter node in the flowchart), `README.md`
 - [ ] 6.3 Deploy: create `mobile-systems-drafter` (root `services/drafter`, connected to git), set `DRAFTER_TOKEN` and `ANTHROPIC_API_KEY` (Kilian adds the key himself), set `DRAFTER_URL`, `DRAFTER_TOKEN` and `DRAFTING_USERS=kiliandresse` on the backend project and `DRAFTER_URL`, `DRAFTER_TOKEN` and `DRAFTING_USERS` in GitHub, and run the migration on Neon
 - [ ] 6.4 Kilian uploads his profile, run `python -m app.share_drafts kiliandresse nyugrader` against production, draft one real offer, and check the `.docx` in Word: one page, layout unchanged

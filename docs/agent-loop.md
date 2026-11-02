@@ -33,6 +33,11 @@ flowchart TD
     rank <--> memory
     verify <--> memory
     report --> publish["Publish to the database"] --> app(["/internships page in the app"])
+    publish --> draftnew["Draft (code)<br/>new top-K offers, for allowlisted<br/>users with a profile"]
+    drafter["Drafter (separate Vercel service)<br/>gets the posting URL + profile,<br/>plans with a model, code builds the CV"]
+    draftnew -. "HTTPS + bearer token<br/>POST /draft, retried" .-> drafter
+    drafter -. "CV .docx (+ letter), checked by code" .-> draftnew
+    draftnew --> app
 ```
 
 What each step adds:
@@ -48,6 +53,8 @@ What each step adds:
 9. **Report** compares today's top K with the last run's: what is new, what stayed in the top K, what dropped out (closed or outranked), and everything else still open. It lists each top-K claim with its verdict and, when supported, the evidence.
 
 The steps never talk to each other directly: each one reads what it needs from the state file and writes back what it found. The one exception is the verifier, which is a separate service: it gets claims over HTTP and has no access to the state file at all. That is also how a run remembers yesterday. Every agent has its own budget (steps, tokens, searches, fetches), and the whole run has one too. If an agent runs out, or a provider fails, the run still ends with a report that says what was skipped and why.
+
+After the report is published, the daily job asks a second service, the [drafter](../services/drafter/), for a one-page CV tailored to each new top-K offer. Its model only proposes which approved facts to use and how to word them; code checks every bullet against the fact bank and builds the `.docx` from the applicant's master. See [architecture.md](architecture.md#worker-services).
 
 The rest of this page explains how one agent works inside its step.
 
