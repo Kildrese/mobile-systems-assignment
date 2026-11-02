@@ -16,7 +16,7 @@ from sqlalchemy import event
 from app import drafts
 from app.config import get_settings
 from app.db import get_engine, get_sessionmaker
-from app.draft_new import draft_new, new_top_k
+from app.draft_new import draft_new, top_k_rows
 from app.publish_report import publish
 from app.share_drafts import share
 from tests.conftest import Account, assert_error
@@ -394,7 +394,7 @@ def _tracker(tmp_path, texts, deadlines):
         )
         ranked.append((opp, 10.0 - n, True))
     store.put_ranks(RUN1, ranked)
-    rows = new_top_k(store, RUN1)
+    rows = top_k_rows(store, RUN1)
     state.close()
     return rows
 
@@ -457,3 +457,19 @@ def test_drafter_down_fails_rows_not_the_job(tmp_path, client, kilian, drafter, 
     statuses = sql.rows("select status, error from application_drafts order by company")
     assert [s for s, _ in statuses] == ["failed", "failed"]
     assert all(e.startswith("no_answer") for _, e in statuses)
+
+
+def test_failed_drafts_are_retried_on_the_next_run(tmp_path, client, kilian, drafter, sql):
+    drafter.down = True
+    rows = _tracker(tmp_path, ["One.", "Two.", "Three."], [None, None, None])
+    with get_sessionmaker()() as db:
+        draft_new(db, rows[:2], drafts.drafter_client(4))
+    drafter.down = False
+    drafter.calls.clear()
+    # The next run: the two offers are still in the top K but no longer new, and a third
+    # top-K offer that was never drafted isn't new either (it predates drafting).
+    later = [{**row, "section": "top_k"} for row in rows]
+    with get_sessionmaker()() as db:
+        draft_new(db, later, drafts.drafter_client(4))
+    assert len(drafter.calls) == 2
+    assert [s for (s,) in sql.rows("select status from application_drafts")] == ["ready", "ready"]

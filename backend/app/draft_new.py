@@ -1,4 +1,4 @@
-"""Draft applications for the latest run's new top-K offers:
+"""Draft applications for the latest run's new top-K offers (and retry failed ones):
 
     uv run python -m app.draft_new
 
@@ -36,12 +36,13 @@ def asks_for_letter(store: OpportunityStore, opportunity_id: int) -> bool:
     return "cover letter" in " ".join(texts).lower()
 
 
-def new_top_k(store: OpportunityStore, run_id: str) -> list[dict[str, Any]]:
-    """The run's new top-K offers, each with whether its posting asks for a letter."""
+def top_k_rows(store: OpportunityStore, run_id: str) -> list[dict[str, Any]]:
+    """The run's top-K offers, each with whether its posting asks for a letter. `draft_new`
+    drafts the new ones and retries the ones whose draft failed."""
     return [
         {**row, "letter": asks_for_letter(store, row["opportunity_id"])}
         for row in offers(store, run_id)
-        if row["section"] == "new" and row["top_k"]
+        if row["top_k"]
     ]
 
 
@@ -57,13 +58,17 @@ def draft_new(db: Session, rows: list[dict[str, Any]], client: DrafterClient) ->
             continue
         for row in rows:
             label = f"{user.username}: {row['company']} ({row['opportunity_id']})"
-            exists = db.scalar(
-                select(models.ApplicationDraft.id).where(
+            status = db.scalar(
+                select(models.ApplicationDraft.status).where(
                     models.ApplicationDraft.user_id == user.id,
                     models.ApplicationDraft.opportunity_id == row["opportunity_id"],
                 )
             )
-            if exists:
+            # New offers are drafted once; a failed draft (drafter or provider down) is tried
+            # again on the next run while the offer stays in the top K.
+            if status is None and row["section"] != "new":
+                continue
+            if status is not None and status != "failed":
                 out.append(f"{label}: already drafted")
                 continue
             if models.deadline_passed(row["deadline"]):
@@ -103,11 +108,11 @@ def main() -> int:
         if run is None:
             print("The state file has no finished run: nothing to draft.")
             return 0
-        rows = new_top_k(OpportunityStore(state), run["id"])
+        rows = top_k_rows(OpportunityStore(state), run["id"])
     with get_sessionmaker()() as db:
         for line in draft_new(db, rows, client):
             print(line)
-    print(f"Run {run['id']}: {len(rows)} new top-K offers.")
+    print(f"Run {run['id']}: {len(rows)} top-K offers.")
     return 0
 
 
