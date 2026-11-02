@@ -8,7 +8,7 @@ Production runs on Vercel as two projects on separate origins, with a Neon Postg
 | --- | --- | --- |
 | `mobile-systems-api` | `backend/` | FastAPI, detected from `app/main.py`. Env: `DATABASE_URL` (Neon pooled), `DATABASE_URL_UNPOOLED` (direct), `CORS_ORIGINS` (the frontend's URL) |
 | `mobile-systems-assignment` | `frontend/` | Vite static site. Env: `VITE_API_URL` (the backend's URL). `vercel.json` adds the SPA rewrite and security headers |
-| `mobile-systems-verifier` | `services/verifier/` | FastAPI, detected from `main.py`. Env: `VERIFIER_TOKEN`, `GROQ_API_KEY` (optional `VERIFIER_MODEL`). No database. Installs `packages/agentkit` from outside its root, so "Include files outside the root directory" must stay on |
+| `mobile-systems-verifier` | `services/verifier/` | FastAPI, detected from `main.py`. Env: `VERIFIER_TOKEN`, `GROQ_API_KEY` (optional `VERIFIER_MODEL`). No database. Connected to the GitHub repo: a push to `master` deploys production, other branches get previews. Installs `packages/agentkit` from outside its root, so "Include files outside the root directory" must stay on |
 
 The design and rollout history is in `openspec/changes/archive/2026-09-24-split-fastapi-vite/`.
 
