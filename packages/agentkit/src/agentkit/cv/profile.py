@@ -149,7 +149,10 @@ def parse_checks(text: str, facts: dict[str, Fact]) -> Checks:
         return frozenset(found)
 
     bounds: dict[str, tuple[int, int]] = {}
-    for block, b in (data.get("bullet_bounds") or {}).items():
+    bounds_raw = data.get("bullet_bounds") or {}
+    if not isinstance(bounds_raw, dict):
+        raise ProfileError(file, "bullet_bounds must map a block name to {min, max}")
+    for block, b in bounds_raw.items():
         if not (
             isinstance(b, dict)
             and isinstance(b.get("min"), int)
@@ -171,12 +174,16 @@ def parse_checks(text: str, facts: dict[str, Fact]) -> Checks:
         lead = row.get("skills_lead") or {}
         if not isinstance(lead, dict):
             raise ProfileError(file, f"role_types.{name}.skills_lead must map a label to a list")
+        if not isinstance(row.get("projects_under_education", False), bool):
+            raise ProfileError(
+                file, f"role_types.{name}.projects_under_education must be true or false"
+            )
         roles[str(name)] = RoleType(
             subprojects=_strings(file, f"role_types.{name}.subprojects", row.get("subprojects")),
             skills_lead={
                 str(k): _strings(file, f"role_types.{name}.skills_lead", v) for k, v in lead.items()
             },
-            projects_under_education=bool(row.get("projects_under_education", False)),
+            projects_under_education=row.get("projects_under_education", False),
             never_cut=ids(f"role_types.{name}.never_cut", row.get("never_cut")),
         )
 

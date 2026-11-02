@@ -3,11 +3,12 @@ import zipfile
 from dataclasses import replace
 
 import pytest
-from agentkit.cv.layout import Bullet, LayoutError, Master, paragraph_texts
+from agentkit.cv.layout import Block, Bullet, LayoutError, Master, paragraph_texts
+from agentkit.cv.profile import Fact
 from docx import Document
 from docx.oxml.ns import qn
 
-from budget import BULLET_CHARS, fit, lines
+from budget import BULLET_CHARS, _cut, fit, lines
 
 MASTER_LINES = 62  # re-measure in Word if the master changes, then update this
 
@@ -197,6 +198,30 @@ def test_never_cut_ids_survive(profile):
     assert all("exp.cardly.1" not in c.detail for c in cuts)
     if doc is not None:
         assert profile.facts["exp.cardly.1"].text in texts
+
+
+def test_last_subproject_cut_uses_the_rendered_order(profile):
+    m = profile.master
+    step = next(s for s in profile.checks.cut_order if s.block == "last_subproject")
+    plan = m.master_plan()
+    plan.subprojects = []  # a role row without sub-projects: the master's order renders
+    _cut(step, plan, m, profile.facts, profile.checks, frozenset())
+    assert len(plan.bullets["Event Integration Hub"]) == 1
+    plan = m.master_plan()
+    plan.subprojects = ["Event Integration Hub", "Claims Portal"]  # the rest follow, in master order
+    _cut(step, plan, m, profile.facts, profile.checks, frozenset())
+    assert len(plan.bullets["Permit Tracking Application"]) == 1
+    assert len(plan.bullets["Claims Portal"]) == 3
+
+
+def test_longest_block_name_wins(profile):
+    m = Master(profile.cv)
+    m.blocks = {
+        "Search": Block("Search", "Org", "experience", True, ("b",)),
+        "Search Ranking": Block("Search Ranking", "Org", "experience", True, ("b",)),
+    }
+    fact = Fact("x", "experience", "Org: Consultant, Search Ranking (2024)", "Built it", (), False, True)
+    assert m.block_of(fact) == "Search Ranking"
 
 
 def test_does_not_fit(profile):

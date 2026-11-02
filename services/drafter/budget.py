@@ -82,7 +82,13 @@ def _cut(
             return [step.line]
         return []
     if step.action == "drop_bullets":
-        block = plan.subprojects[-1] if step.block == "last_subproject" else step.block
+        if step.block == "last_subproject":  # the one rendered last, if the CV has any
+            rendered = master.subproject_order(plan.subprojects)
+            if not rendered:
+                return []
+            block = rendered[-1]
+        else:
+            block = step.block
         bullets = plan.bullets.get(block, [])
         out = []
         for b in reversed(list(bullets)):

@@ -27,7 +27,7 @@ from agentkit.cv.layout import LayoutError, Master
 from agentkit.cv.profile import ProfileError, parse_checks, parse_fact_bank
 from agentkit.fetch import parse_retry_after
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -236,6 +236,8 @@ def claim(
     """Mark the user's draft for this offer pending (replacing any earlier one) and count
     it toward today's cap. 409 while another draft for it runs; 429 over the cap."""
     now = datetime.now(UTC)
+    # One claim per user at a time, so two drafts of different offers can't both pass the cap.
+    db.execute(text("select pg_advisory_xact_lock(hashtext(:u))"), {"u": str(user.id)})
     row = db.scalars(
         select(models.ApplicationDraft)
         .where(

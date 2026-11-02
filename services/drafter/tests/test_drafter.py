@@ -9,6 +9,7 @@ import httpx2
 import pytest
 from agentkit.cv.layout import paragraph_texts
 from agentkit.fetch import FetchError, Page
+from agentkit.service import ProviderBusy, ProviderFailed
 from conftest import FIXTURES, Profile
 from docx import Document
 from fastapi.testclient import TestClient
@@ -205,6 +206,48 @@ def test_letter_with_visa_is_sent_back_once_then_dropped(fakes):
     assert "mentions visa" in fakes.calls[2][1]
     assert res["cover_letter_text"] is None and res["cv_docx_b64"]
     assert any(c["name"] == "letter_rejected" and c["outcome"] == "rejected" for c in res["checks"])
+    # Asked for and missing: partial, so the card doesn't say "Draft ready".
+    assert r.json()["status"] == "partial" and r.json()["error"]["code"] == "letter_rejected"
+
+
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [(ProviderBusy(30), "provider_busy"), (ProviderFailed("bad key"), "provider_failed")],
+)
+def test_provider_error_on_the_letter_keeps_the_cv(fakes, error, code):
+    fakes.letters = [error]
+    r = post(body(cover_letter=True))
+    assert r.status_code == 200
+    res = r.json()["result"]
+    assert res["cv_docx_b64"] and res["cover_letter_text"] is None
+    assert (r.json()["status"], r.json()["error"]["code"]) == ("partial", code)
+    assert {"name": "letter_skipped", "outcome": "note", "detail": code} in res["checks"]
+
+
+def test_out_of_range_plan_fields_keep_the_cv(fakes):
+    def oversize(reply):
+        reply["role_type"] = "x" * 80
+        cardly = next(b for b in reply["blocks"] if b["block"] == "cardly")
+        cardly["bullets"] = cardly["bullets"] * 4  # 8 bullets, more than any bound
+        cardly["bullets"].append({"fact_ids": ["exp.cardly.1", "exp.cardly.2", "exp.cardly.4"], "text": "x"})
+        reply["blocks"].append({"block": "Kubernetes", "bullets": []})
+
+    fakes.plans = [master_reply(edit=oversize)]
+    r = post(body())
+    assert r.json()["status"] == "complete" and r.json()["result"]["cv_docx_b64"]
+    names = {c["name"] for c in r.json()["result"]["checks"]}
+    assert {"fact_ids_count", "block_unknown", "role_type_unknown"} <= names
+    assert len(r.json()["result"]["role_type"]) == 50
+
+
+def test_letter_with_an_empty_name_line():
+    from datetime import date
+    from types import SimpleNamespace
+
+    import draft
+
+    _, text = draft.letter(SimpleNamespace(name="", contact="c"), "Co", "T", ["p"], date(2026, 11, 2))
+    assert "Dear Hiring Team," in text
 
 
 def test_letter_passes_on_the_retry(fakes):

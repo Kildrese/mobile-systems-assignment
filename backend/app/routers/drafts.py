@@ -94,7 +94,10 @@ def _view(
     owner: str,
     me: uuid.UUID,
     current_hash: str | None,
+    has_cv: bool,
+    has_letter: bool,
 ) -> dict:
+    # The files are deferred columns: callers pass whether they exist, never load them.
     return {
         "id": draft.id,
         "opportunity_id": draft.opportunity_id,
@@ -102,8 +105,8 @@ def _view(
         "mine": draft.user_id == me,
         "status": draft.status,
         "cover_letter": draft.cover_letter,
-        "has_cv": draft.cv_docx is not None,
-        "has_letter": draft.letter_docx is not None,
+        "has_cv": has_cv,
+        "has_letter": has_letter,
         "letter_text": draft.letter_text,
         "role_type": draft.role_type,
         "checks": draft.checks,
@@ -145,7 +148,9 @@ def create_draft(db: Db, user: DraftingUser, body: schemas.CreateDraftBody):
     if models.deadline_passed(offer.deadline):
         raise DEADLINE_PASSED
     draft = drafts.run_draft(db, user, profile, offer, body.cover_letter, client)
-    return _view(draft, user.username, user.id, drafts.profile_hash(profile))
+    # run_draft just set the files, so reading them costs no query.
+    has_cv, has_letter = draft.cv_docx is not None, draft.letter_docx is not None
+    return _view(draft, user.username, user.id, drafts.profile_hash(profile), has_cv, has_letter)
 
 
 @router.get(
@@ -165,7 +170,12 @@ def list_drafts(
 ):
     owners = drafts.owners_visible_to(db, user.id)
     query = (
-        select(models.ApplicationDraft, models.User.username)
+        select(
+            models.ApplicationDraft,
+            models.User.username,
+            models.ApplicationDraft.cv_docx.is_not(None),
+            models.ApplicationDraft.letter_docx.is_not(None),
+        )
         .join(models.User, models.User.id == models.ApplicationDraft.user_id)
         .where(models.ApplicationDraft.user_id.in_(owners))
         .order_by(models.ApplicationDraft.created_at.desc())
@@ -180,7 +190,8 @@ def list_drafts(
     }
     return {
         "drafts": [
-            _view(d, owner, user.id, hashes.get(d.user_id)) for d, owner in db.execute(query)
+            _view(d, owner, user.id, hashes.get(d.user_id), has_cv, has_letter)
+            for d, owner, has_cv, has_letter in db.execute(query)
         ]
     }
 

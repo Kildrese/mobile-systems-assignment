@@ -23,6 +23,7 @@ from agentkit.cv.layout import LayoutError, Master
 from agentkit.cv.profile import ProfileError, parse_checks, parse_fact_bank
 from agentkit.fetch import FetchError, Page
 from agentkit.guard import Blocked
+from agentkit.service import ProviderBusy, ProviderFailed
 from agentkit.settings import FetchSettings
 from docx import Document
 from pydantic import ValidationError
@@ -178,13 +179,19 @@ def draft(
     )
     task = "Write the cover letter."
     for attempt in (1, 2):
-        raw, code = ask(
-            model.LETTER_INSTRUCTIONS,
-            model.posting_message(posting, p.company, p.title, task),
-            model.LETTER_SCHEMA,
-            model.LETTER_MAX_TOKENS,
-            "letter",
-        )
+        try:
+            raw, code = ask(
+                model.LETTER_INSTRUCTIONS,
+                model.posting_message(posting, p.company, p.title, task),
+                model.LETTER_SCHEMA,
+                model.LETTER_MAX_TOKENS,
+                "letter",
+            )
+        except (ProviderBusy, ProviderFailed) as err:
+            # The CV is done: keep it rather than fail the request and re-spend the plan.
+            reason = "provider_busy" if isinstance(err, ProviderBusy) else "provider_failed"
+            records.append(CheckRecord(name="letter_skipped", outcome="note", detail=reason))
+            return finish(reason, "the model provider failed during the cover letter")
         if raw is None and code:
             records.append(CheckRecord(name="letter_skipped", outcome="note", detail=code))
             return finish(code, "no budget left for the cover letter")
@@ -210,7 +217,8 @@ def draft(
             + "; ".join(problems)
             + ". Fix every one."
         )
-    return finish()
+    # A letter was asked for and none passed: the draft is partial, so the card says so.
+    return finish("letter_rejected", "no cover letter passed the checks; see checks")
 
 
 def letter(master: Master, company: str, title: str, paragraphs: list[str], day: date) -> tuple[bytes, str]:
@@ -234,7 +242,8 @@ def letter(master: Master, company: str, title: str, paragraphs: list[str], day:
     doc = Document()
     for line in lines:
         doc.add_paragraph(line)
-    doc.paragraphs[0].runs[0].bold = True
+    if doc.paragraphs[0].runs:  # an empty name line has no run to bold
+        doc.paragraphs[0].runs[0].bold = True
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue(), "\n".join(lines) + "\n"

@@ -214,10 +214,10 @@ class ApplicantProfile(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey(User.id, ondelete="CASCADE"), primary_key=True
     )
-    cv_docx: Mapped[bytes] = mapped_column(LargeBinary)
-    fact_bank: Mapped[str] = mapped_column(Text)
-    rules_md: Mapped[str] = mapped_column(Text)
-    checks_yaml: Mapped[str] = mapped_column(Text)
+    cv_docx: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    fact_bank: Mapped[str] = mapped_column(Text, deferred=True)
+    rules_md: Mapped[str] = mapped_column(Text, deferred=True)
+    checks_yaml: Mapped[str] = mapped_column(Text, deferred=True)
     # {file name: {"size": bytes, "sha256": hex}} for the four files.
     files: Mapped[dict] = mapped_column(JSONB)
     # Users who may read (only) this user's drafts. Set by `python -m app.share_drafts`.
@@ -245,8 +245,8 @@ class ApplicationDraft(Base):
     title: Mapped[str] = mapped_column(String)
     cover_letter: Mapped[bool] = mapped_column(Boolean)
     status: Mapped[str] = mapped_column(String)
-    cv_docx: Mapped[bytes | None] = mapped_column(LargeBinary)
-    letter_docx: Mapped[bytes | None] = mapped_column(LargeBinary)
+    cv_docx: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    letter_docx: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
     letter_text: Mapped[str | None] = mapped_column(Text)
     role_type: Mapped[str | None] = mapped_column(String)
     # [{name, outcome, detail}]: what code changed or rejected in the model's plan.

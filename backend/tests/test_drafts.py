@@ -4,16 +4,18 @@ fake drafter, sharing, downloads, and the daily step."""
 import base64
 import io
 import json
+import re
 from datetime import UTC, date, datetime
 from pathlib import Path
 
 import httpx
 import pytest
 from docx import Document
+from sqlalchemy import event
 
 from app import drafts
 from app.config import get_settings
-from app.db import get_sessionmaker
+from app.db import get_engine, get_sessionmaker
 from app.draft_new import draft_new, new_top_k
 from app.publish_report import publish
 from app.share_drafts import share
@@ -422,6 +424,29 @@ def test_past_deadline_is_not_drafted(tmp_path, client, kilian, drafter):
     assert drafts.models.deadline_passed("2026-10-23", date(2026, 11, 2))
     assert not drafts.models.deadline_passed("rolling", date(2026, 11, 2))
     assert drafts.models.deadline_passed("October 23, 2026", date(2026, 11, 2))
+
+
+def test_listing_never_loads_the_files(client, kilian):
+    client.post(
+        "/api/drafts", json={"opportunityId": 7, "coverLetter": True}, headers=kilian.headers
+    )
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, *args):
+        statements.append(statement)
+
+    event.listen(get_engine(), "before_cursor_execute", record)
+    try:
+        listed = client.get("/api/drafts", headers=kilian.headers).json()["drafts"]
+        client.get("/api/profile", headers=kilian.headers)
+    finally:
+        event.remove(get_engine(), "before_cursor_execute", record)
+    assert (listed[0]["hasCv"], listed[0]["hasLetter"]) == (True, True)
+    loaded = re.compile(
+        r"application_drafts\.(cv_docx|letter_docx)(?! IS NOT NULL)"
+        r"|applicant_profiles\.(cv_docx|fact_bank|rules_md|checks_yaml)"
+    )
+    assert not [s for s in statements if loaded.search(s)]
 
 
 def test_drafter_down_fails_rows_not_the_job(tmp_path, client, kilian, drafter, sql):

@@ -1,7 +1,7 @@
 import pytest
 from agentkit.cv.profile import ProfileError, parse_checks, parse_fact_bank
 
-from checks import ModelPlan, apply_plan, letter_problems, reword_problem
+from checks import ModelPlan, apply_plan, letter_problems, names, reword_problem
 
 SCOPE_SRC = "Helped move the message bus to Azure and set code standards for the integration team"
 NUMBER_SRC = "Wrote a Python pipeline on Azure OpenAI that migrated ~400 legacy documents to a new store"
@@ -219,3 +219,37 @@ def test_checks_name_unknown_ids(profile):
         )
     with pytest.raises(ProfileError, match="lacks role_types"):
         parse_checks("banned_words: []\nscope_words: []\ncut_order: []\nnever_on_cv: []", profile.facts)
+
+
+def test_bad_checks_shapes_are_profile_errors(profile):
+    listed = "bullet_bounds: [1]\n" + profile.checks_yaml.replace("bullet_bounds:", "old_bounds:")
+    with pytest.raises(ProfileError, match="bullet_bounds must map"):
+        parse_checks(listed, profile.facts)
+    text = profile.checks_yaml.replace("projects_under_education: true", "projects_under_education: maybe")
+    with pytest.raises(ProfileError, match="projects_under_education must be true or false"):
+        parse_checks(text, profile.facts)
+
+
+# A capitalized word first in a sentence is still a name.
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Kafka pipelines in Python processing 2M rows",
+        "Python jobs processing 2M rows; Kafka handled the rest",
+    ],
+)
+def test_invented_name_first_in_a_sentence(profile, text):
+    source = "Wrote Python jobs processing 2M rows"
+    assert reword_problem(source, text, profile.checks) == ("fact_changed", "adds kafka")
+
+
+def test_ordinary_openers_are_not_names():
+    assert names("Built the app. Building more. Led it; helped it. The end.") == set()
+    assert names("Kafka pipelines in Python processing 2M rows") == {"kafka", "python", "2m"}
+
+
+def test_letter_sentence_opening_with_an_unknown_name(profile):
+    problems = letter_problems(_letter(". Google taught me to ship."), KNOWN, profile.checks)
+    assert "names what the fact bank and posting don't: google" in problems

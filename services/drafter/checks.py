@@ -25,27 +25,33 @@ _TOKEN = re.compile(r"[~$€]?[A-Za-z0-9](?:[A-Za-z0-9+#&/.,]*[A-Za-z0-9+#])?")
 _SENTENCE = re.compile(r"(?<=[.!?:;])\s+|\n+")
 
 
+# No size limits here on purpose: one oversized field must not throw away the whole plan.
+# `apply_plan` drops or cuts what's out of range and records it.
 class PlanBullet(BaseModel):
-    fact_ids: list[str] = Field(min_length=1, max_length=2)
-    text: str = Field(min_length=1, max_length=400)
+    fact_ids: list[str]
+    text: str
 
 
 class PlanBlock(BaseModel):
     block: str
-    bullets: list[PlanBullet] = Field(max_length=6)
+    bullets: list[PlanBullet]
 
 
 class PlanSkills(BaseModel):
     label: str
-    items: list[str] = Field(max_length=20)
+    items: list[str]
 
 
 class ModelPlan(BaseModel):
     """What the model returns for the CV."""
 
-    role_type: str = Field(max_length=50)
-    blocks: list[PlanBlock] = Field(max_length=20)
-    skills: list[PlanSkills] = Field(default_factory=list, max_length=6)
+    role_type: str
+    blocks: list[PlanBlock]
+    skills: list[PlanSkills] = Field(default_factory=list)
+
+
+MAX_ROLE_CHARS = 50
+MAX_IDS = 2  # a bullet may merge two facts of its entry, no more
 
 
 class ModelLetter(BaseModel):
@@ -60,12 +66,42 @@ def words(text: str) -> set[str]:
     return {t.lower() for t in tokens(text)}
 
 
+# Words that open a sentence with a capital without being a name. Any other capitalized
+# word counts as a name, even first in a sentence, so "Kafka pipelines..." can't slip in.
+# ponytail: a fixed list plus -ed/-ing/-ly; a rejected rewording falls back to approved
+# text, so a word missing here costs wording, never a wrong fact. Add openers as they show up.
+OPENERS = set(
+    """
+    i a an the my our we this that these those in at on for with as after before while when
+    since during dear thank thanks best over across from to then it its each every both most
+    many some one two three your you what why how there here now today by of and but so also
+    not all more less because if until through between within without about beyond along
+    being having he she they their his her co too still even just only such yet again
+    instead together overall first second third finally next last later earlier once
+    though although whether either neither nor or no yes please sincerely hello hi other
+    another any much few very well like unlike given toward towards under above below into
+    onto upon against among around behind near per via where which who whom whose outside
+    besides alongside regardless
+    built led wrote ran set made took grew won sold kept found began cut put got gave held met
+    paid saw spent taught brought drove rebuilt oversaw undertook
+    """.split()  # noqa: SIM905 (a word list is easier to edit)
+)
+
+
+def _opener(word: str) -> bool:
+    w = word.lower()
+    return w in OPENERS or w.endswith(("ed", "ing", "ly"))
+
+
 def names(text: str) -> set[str]:
-    """Numbers, dates and capitalized names, without the capital that starts a sentence."""
+    """Numbers, dates and capitalized names. A sentence's first word counts too, unless it's
+    an ordinary opener (a function word or a verb such as "Built" or "Building")."""
     out = set()
     for sentence in _SENTENCE.split(text):
         for n, t in enumerate(tokens(sentence)):
-            if any(c.isdigit() for c in t) or (t[0].isupper() and not (n == 0 and t.isalpha())):
+            if any(c.isdigit() for c in t) or (
+                t[0].isupper() and not (n == 0 and t.isalpha() and _opener(t))
+            ):
                 out.add(t.lower())
     return out
 
@@ -103,7 +139,7 @@ def apply_plan(
     proposed: ModelPlan, master: Master, facts: dict[str, Fact], checks: Checks, record: Record
 ) -> tuple[Plan, str]:
     """The model's plan, checked against the fact bank, as a plan code can build."""
-    role = proposed.role_type
+    role = proposed.role_type.strip()[:MAX_ROLE_CHARS]
     if role not in checks.role_types:
         record(CheckRecord(name="role_type_unknown", outcome="note", detail=f"{role}: SWE order used"))
     row = checks.role(role)
@@ -112,7 +148,7 @@ def apply_plan(
     by_block = {b.block: b.bullets for b in proposed.blocks}
     for name in by_block:
         if name not in master.blocks:
-            record(CheckRecord(name="block_unknown", outcome="dropped", detail=name))
+            record(CheckRecord(name="block_unknown", outcome="dropped", detail=name[:100]))
 
     def allowed(f: Fact) -> bool:
         return f.approved and f.id not in checks.never_on_cv
@@ -123,6 +159,15 @@ def apply_plan(
         kept: list[Bullet] = []
         for b in by_block.get(name, []):
             ids = list(dict.fromkeys(b.fact_ids))
+            if not 1 <= len(ids) <= MAX_IDS:
+                record(
+                    CheckRecord(
+                        name="fact_ids_count",
+                        outcome="dropped",
+                        detail=f"{len(ids)} ids under {name}; 1 or 2 allowed",
+                    )
+                )
+                continue
             reason = None
             for i in ids:
                 f = facts.get(i)

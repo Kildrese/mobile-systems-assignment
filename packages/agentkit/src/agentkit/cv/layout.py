@@ -336,14 +336,21 @@ class Master:
         """The block a fact's bullet belongs under, or None (a heading line, or no block)."""
         if fact.text.strip() in self._other_lines:
             return None
-        for b in self.blocks.values():
-            if (
-                b.section == fact.section
-                and fact.entry.startswith(b.org + ":")
-                and (not b.subproject or b.name in fact.entry)
-            ):
-                return b.name
-        return None
+        matches = [
+            b
+            for b in self.blocks.values()
+            if b.section == fact.section
+            and fact.entry.startswith(b.org + ":")
+            and (not b.subproject or b.name in fact.entry)
+        ]
+        # The longest name wins, so "Search" never takes the facts of "Search Ranking".
+        return max(matches, key=lambda b: len(b.name)).name if matches else None
+
+    def subproject_order(self, order: list[str]) -> list[str]:
+        """The order sub-projects render in: `order`'s known names, then the rest as in
+        the master."""
+        names = [n for n in order if n in self.subprojects]
+        return names + [n for n in self.subprojects if n not in names]
 
     def master_plan(self) -> Plan:
         return Plan(
@@ -387,8 +394,7 @@ class Master:
     def _regroup(self, parts: _Parts, order: list[str]) -> None:
         """Rebuild the sub-project rows: per sub-project one row for its line and one for its
         bullets, a spacer row between sub-projects, in the plan's order."""
-        names = [n for n in order if n in parts.sub_lines]
-        names += [n for n in parts.sub_lines if n not in names]
+        names = self.subproject_order(order)
         template = parts.sub_rows[0]
         # The bullets now sit right after their line, wherever the master put them.
         groups = {}

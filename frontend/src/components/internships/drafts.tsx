@@ -9,6 +9,7 @@ import { downloadDraftCv, downloadDraftLetter } from "@/api/sdk.gen";
 import type { Draft, InternshipOffer } from "@/api/types.gen";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { saveFile } from "@/lib/download";
 import { errorMessage } from "@/lib/forms";
 
 const STATUS = {
@@ -30,12 +31,7 @@ async function save(draft: Draft, offer: InternshipOffer, kind: "cv" | "letter")
     toast.error("The file couldn't be downloaded.");
     return;
   }
-  const url = URL.createObjectURL(data);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${safe(offer.company)}_${safe(offer.title)}_${kind === "cv" ? "CV" : "Cover_Letter"}.docx`;
-  link.click();
-  URL.revokeObjectURL(url);
+  saveFile(data, `${safe(offer.company)}_${safe(offer.title)}_${kind === "cv" ? "CV" : "Cover_Letter"}.docx`);
 }
 
 function DraftRow({ draft, offer }: { draft: Draft; offer: InternshipOffer }) {

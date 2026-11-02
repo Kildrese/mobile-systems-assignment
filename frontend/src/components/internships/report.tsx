@@ -24,6 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { saveFile } from "@/lib/download";
 import { formatRunTime } from "@/lib/run-id";
 import { webUrl } from "@/lib/web-url";
 
@@ -220,12 +221,7 @@ async function downloadReport(runId: string) {
     toast.error("The report couldn't be exported.");
     return;
   }
-  const url = URL.createObjectURL(new Blob([data], { type: "text/markdown" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `internships-${runId}.md`;
-  link.click();
-  URL.revokeObjectURL(url);
+  saveFile(new Blob([data], { type: "text/markdown" }), `internships-${runId}.md`);
 }
 
 const RUN_STATUS = {
