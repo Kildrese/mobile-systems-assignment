@@ -21,17 +21,17 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from agentkit.fetch import FetchError, fetch_page
+from agentkit.guard import Blocked, Resolver, check
+from agentkit.untrusted import injection_suspected
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from tracker import report
 from tracker.config import USE_CASES, Policy, TrackerSecrets, load_policy, load_use_case
 from tracker.errors import PolicyError, StateLocked, TerminalError
-from tracker.fetch import FetchError, fetch_page
-from tracker.guard import Blocked, Resolver, check
 from tracker.search import SearchClient, SearchResult
 from tracker.state import StateStore, canonicalize, fetch_status, log_fetch
 from tracker.trace import Trace
-from tracker.untrusted import injection_suspected
 
 MAX_QUERY_CHARS = 400
 

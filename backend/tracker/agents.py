@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from agentkit.untrusted import DATA_RULES, wrap
 from pydantic import ValidationError
 
 from tracker.budget import Budget
@@ -19,7 +20,6 @@ from tracker.errors import TerminalError, WallClockExceeded
 from tracker.llm import ChatClient, ModelOutputError
 from tracker.tools import REGISTRY, Toolbox, ToolOutcome, validate_finish, validation_message
 from tracker.trace import Trace
-from tracker.untrusted import DATA_RULES, wrap
 
 # Older tool results are shortened before each model call, to stay within per-minute
 # token limits; the newest ones keep their full text.

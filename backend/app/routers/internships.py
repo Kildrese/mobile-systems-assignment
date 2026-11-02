@@ -97,6 +97,7 @@ def list_runs(
                 "topic": run.topic,
                 "status": run.status,
                 "stop_reason": run.stop_reason,
+                "failed_services": run.failed_services,
                 "started_at": run.started_at,
                 "ended_at": run.ended_at,
                 "sections": sections[run.id],

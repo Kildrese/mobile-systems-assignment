@@ -64,6 +64,8 @@ function RunCard({ run, latest }: { run: TrackerRunSummary; latest: boolean }) {
             <p className="text-muted-foreground">
               {summarize(run.sections, SECTION_LABELS, "No offers reported")}
               {run.stopReason && ` · stopped at ${run.stopReason}`}
+              {run.failedServices.length > 0 &&
+                ` · ${run.failedServices.join(", ")} failed`}
             </p>
             <p className="text-muted-foreground">
               {summarize(run.articles, ARTICLE_LABELS, "No articles recorded")}

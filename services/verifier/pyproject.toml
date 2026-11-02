@@ -1,0 +1,31 @@
+[project]
+name = "verifier"
+version = "0.1.0"
+description = "Checks claims against the pages they cite"
+requires-python = ">=3.12"
+dependencies = [
+    "agentkit",
+    "fastapi[standard]>=0.141.1",
+    "httpx>=0.28.1",
+]
+
+[tool.uv.sources]
+agentkit = { path = "../../packages/agentkit" }
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.16.0",
+    "pytest>=9.1.1",
+    "ruff>=0.16.8",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+addopts = ["--strict-markers", "-ra"]
+pythonpath = ["."]

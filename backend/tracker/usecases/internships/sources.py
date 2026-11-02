@@ -18,6 +18,7 @@ from typing import Any, Literal
 from urllib.parse import quote
 
 import yaml
+from agentkit.fetch import extract
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -27,7 +28,6 @@ from pydantic import (
     field_validator,
 )
 
-from tracker.fetch import extract
 from tracker.state import canonicalize, fetch_status, log_fetch
 from tracker.tools import ToolOutcome
 from tracker.trace import Trace

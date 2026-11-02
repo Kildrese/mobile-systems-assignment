@@ -10,6 +10,15 @@ The frontend (<http://localhost:5173>) and the backend (<http://localhost:8000>)
 
 A token in `localStorage` can be read by any script running on the page, so XSS is the main risk to it. React's escaping, the ban on `dangerouslySetInnerHTML` and the strict `script-src` are the defence, and a stolen token can be revoked on the server by logging out or changing the password. A cookie set by the backend would be a cross-site cookie (`SameSite=None`), which browsers increasingly block.
 
+## Worker services
+
+The verifier ([`services/verifier/`](../services/verifier/)) is the first agent that runs as its own service. It is a separate Vercel project with its own environment: `VERIFIER_TOKEN` and `GROQ_API_KEY`, and no database URL. The tracker reaches it only through `POST /verify`, so a bug in it, or a page that fools its model, can't reach any state.
+
+- **Shared code, not shared state.** [`packages/agentkit/`](../packages/agentkit/) holds what both sides need: the wire contract (`contract.py`, validated in both directions), the fetch guardrails (`fetch.py`, `guard.py`), the quote and evidence normalizer (`text.py`), the untrusted-data wrapper and the cross-service log line (`wire_log.py`). Neither service imports the other.
+- **One token per worker.** `/verify` needs `Authorization: Bearer $VERIFIER_TOKEN`, compared in constant time, and checked before the body is parsed, so an unauthenticated caller learns nothing about the schema. A future worker gets its own token, so one that leaks unlocks only that worker.
+- **Idempotent by `request_id`.** The same id with the same body (SHA-256 of the sorted-key JSON) returns the stored response with no new fetch or model call; with another body it gets `409`; while the first copy runs, `503` with `Retry-After`. Stored responses live in the instance's memory: a new instance starts empty, and a retry that lands there does the work again.
+- **Code decides the verdict.** The model proposes `supported` with an excerpt, or `unsupported`. Code keeps `supported` only when the excerpt is at most 300 characters and is found in the page the verifier fetched itself, after decoding HTML entities, NFKC, mapping curly quotes, primes, dashes and the no-break space to ASCII, collapsing whitespace and lowercasing. Only code says `unreachable`.
+
 ## Security decisions
 
 1. **Passwords are hashed with argon2id** ([pwdlib](https://github.com/frankie567/pwdlib), argon2-cffi's defaults: 64 MiB, 3 iterations, 4 lanes, above OWASP's minimums), with a random salt per hash. Hashes live only in `user_passwords`, never on `users`. A login for an unknown user still verifies the password against a dummy hash, so response times don't reveal which accounts exist.

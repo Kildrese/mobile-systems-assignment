@@ -5,7 +5,7 @@ run that has ranks). Every opportunity appears in at most one section, the first
 applies. "Also open" accumulates across runs: an opportunity is new once, then stays
 listed until it closes. Fields come from verified records; a summary appears only if the
 Editor's summary passed its checks. Fit appears only when the run has a profile to rate
-against.
+against, and claims only when the run has a verifier.
 """
 
 from dataclasses import dataclass, field
@@ -13,6 +13,7 @@ from typing import Any
 
 from tracker.report import ReportMeta, describe_stop
 from tracker.usecases.internships.store import OpportunityStore
+from tracker.usecases.internships.verifying import claims_view
 
 
 @dataclass
@@ -154,6 +155,21 @@ def _full_entry(opp: dict[str, Any], summary: str | None, number: int, show_fit:
     return lines
 
 
+def _claims_section(top: list[dict[str, Any]], store: OpportunityStore) -> list[str]:
+    """Each top-K claim with its verdict; supported ones quote their evidence."""
+    lines = ["## Claims checked (top K)", ""]
+    if not top:
+        return [*lines, "Nothing in the top K.", ""]
+    for opp in sorted(top, key=lambda o: o["rank"] or 10**9):
+        lines += [f"### #{opp['rank']} {_one_line(opp['title'])}, {_one_line(opp['company'])}", ""]
+        for claim in claims_view(store, opp):
+            lines.append(f"- **{claim['verdict']}:** {_one_line(claim['text'])}")
+            if claim["evidence"]:
+                lines.append(f"  > {_one_line(claim['evidence'])}")
+        lines.append("")
+    return lines
+
+
 def render(
     meta: ReportMeta,
     store: OpportunityStore,
@@ -161,11 +177,14 @@ def render(
     stages: list[dict[str, Any]] | None = None,
     note: str | None = None,
     show_fit: bool = False,
+    show_claims: bool = False,
 ) -> str:
     s = sections(store, meta.run_id)
     fit_head, fit_rule = (" Fit |", " --- |") if show_fit else ("", "")
     summaries = store.summaries(meta.run_id)
     lines = _header(meta, stages or [])
+    if failed := store.failed_services(meta.run_id):
+        lines += [f"**Failed services:** {', '.join(failed)}. Their results are missing below.", ""]
     if waiting := len(store.pending_postings(meta.run_id)):
         lines += [
             f"**Waiting for review:** {waiting} posting{'s' if waiting != 1 else ''} listed "
@@ -251,6 +270,9 @@ def render(
                 f"`{opp['first_seen_run']}` | <{opp['url']}> |"
             )
         lines.append("")
+
+    if show_claims:
+        lines += _claims_section([o for o in (*s.new, *s.top_k) if o["top_k"]], store)
 
     if note:
         lines += ["## Note", "", note.strip(), ""]

@@ -45,7 +45,7 @@ Ctrl-C stops both servers. The database keeps running; stop it with `./scripts/d
 
 ## Tracker
 
-Hand-written agents that track Summer 2027 software and ML internships at NYC startups: a Scout finds job boards, code reads them, a Curator turns postings into quote-verified records, code decides what is still open and ranks it, and an Editor writes short summaries. Each run writes a cumulative report (New since last run, Still in top K, Dropped, Also open) to `reports/`, with a trace in `traces/`. It needs only Python, uv and two free API keys, no Docker or Postgres.
+Hand-written agents that track Summer 2027 software and ML internships at NYC startups: a Scout finds job boards, code reads them, a Curator turns postings into quote-verified records, code decides what is still open and ranks it, a separate verifier service checks the top K's facts against the postings it fetches itself, and an Editor writes short summaries. Each run writes a cumulative report (New since last run, Still in top K, Dropped, Also open) to `reports/`, with a trace in `traces/`. It needs only Python, uv and two free API keys, no Docker or Postgres.
 
 ```bash
 cd backend
@@ -63,6 +63,14 @@ uv run python -m tracker.tools fetch_article https://example.com/
 uv run python -m tracker.tools finish report.json
 ```
 
+The verifier is its own service in [`services/verifier/`](services/verifier/), sharing code with the tracker only through [`packages/agentkit/`](packages/agentkit/). Set `VERIFIER_URL` and `VERIFIER_TOKEN` in `backend/.env` to use it; without them every claim shows as unverified. To run it locally:
+
+```bash
+cd services/verifier
+uv sync
+VERIFIER_TOKEN=dev-token GROQ_API_KEY=... uv run fastapi dev main.py --port 8001
+```
+
 The topic, agents, models, tools, budgets, watchlist and allowed hosts are all in [`config.yaml`](config.yaml). The app shows each run's report, the run history and the articles each run fetched at `/internships`; the endpoints and tables behind it are in [docs/api.md](docs/api.md#tracker-tables). See [docs/tracker.md](docs/tracker.md) for the policy fields, budgets, failure handling, fetch guardrails, state and trace format.
 
 ## Documentation
@@ -71,7 +79,7 @@ The topic, agents, models, tools, budgets, watchlist and allowed hosts are all i
 | --- | --- |
 | [docs/development.md](docs/development.md) | Individual scripts, running without the scripts, configuration, checks, changing the schema or the API, project layout, OpenSpec |
 | [docs/api.md](docs/api.md) | Endpoints, request/response conventions, error format, web UI routes |
-| [docs/architecture.md](docs/architecture.md) | Two-origin setup, CORS, token handling, CSP, and the security decisions |
+| [docs/architecture.md](docs/architecture.md) | Two-origin setup, CORS, token handling, CSP, the verifier service, and the security decisions |
 | [docs/deployment.md](docs/deployment.md) | Production on Vercel and Neon, production migrations, CI |
 | [docs/tracker.md](docs/tracker.md) | The agentic tracker: setup, policy, budgets, failure handling, guardrails, state and traces |
 | [docs/agent-loop.md](docs/agent-loop.md) | What the tracker does each run, as one flow, then how the agent loop works: model calls, tool dispatch, budgets, finishing and partial reports |

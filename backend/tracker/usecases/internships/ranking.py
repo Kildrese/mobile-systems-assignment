@@ -5,14 +5,16 @@ Each criterion scores 1 for a match, 0 for a mismatch and 0.5 when the record sa
 wording is never an input. `focus` scores the title against the kind of role the search
 is for (software, ML, data), so a design or sales internship ranks below them. `fit` is
 the stored fit rating over 3, counted only when the run has a profile to rate against.
+A field the verifier found unsupported counts as `unknown`.
 """
 
 from datetime import UTC, datetime
 from typing import Any
 
+from agentkit.text import normalize
 from pydantic import BaseModel, ConfigDict, Field
 
-from tracker.usecases.internships.curation import UNKNOWN, normalize
+from tracker.usecases.internships.curation import UNKNOWN
 from tracker.usecases.internships.sources import keyword
 from tracker.usecases.internships.store import OpportunityStore
 
@@ -110,6 +112,19 @@ def score(
     return round(total, 6)
 
 
+def as_checked(opp: dict[str, Any], unsupported: set[str]) -> dict[str, Any]:
+    """The opportunity as ranking sees it: a field the verifier didn't find is unknown."""
+    if not unsupported:
+        return opp
+    opp = dict(opp)
+    for name in ("role_type", "term", "remote"):
+        if name in unsupported:
+            opp[name] = UNKNOWN
+    if "locations" in unsupported:
+        opp["locations"] = []
+    return opp
+
+
 def rank_open(
     store: OpportunityStore,
     run_id: str,
@@ -122,7 +137,11 @@ def rank_open(
     """The Rank stage: score every live opportunity, store ranks, return them in order."""
     now = now or datetime.now(UTC)
     fits = store.fits() if use_fit else None
-    scored = [(score(opp, settings, now, fits), opp) for opp in store.opportunities(("open",))]
+    unsupported = store.unsupported_fields()
+    scored = [
+        (score(as_checked(opp, unsupported.get(opp["id"], set())), settings, now, fits), opp)
+        for opp in store.opportunities(("open",))
+    ]
     scored.sort(
         key=lambda pair: (-pair[0], pair[1]["first_seen_at"], pair[1]["company"], pair[1]["id"])
     )

@@ -15,8 +15,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from agentkit.guard import DEFAULT_PORTS
+
 from tracker.errors import StateLocked
-from tracker.guard import DEFAULT_PORTS
 
 TRACKING_PARAMS = {"gclid", "fbclid", "ref", "mc_cid", "mc_eid"}
 

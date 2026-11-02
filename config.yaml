@@ -38,10 +38,10 @@ search:
 
 # Hard caps for the whole run. The agents' own limits below must fit inside them.
 limits:
-  max_steps: 60
+  max_steps: 70  # agents 59, verifier 5 requests x 2
   max_searches: 6
-  max_fetches: 40
-  max_tokens: 175000
+  max_fetches: 70  # agents 30, verifier 5 requests x 6 (redirect hops count)
+  max_tokens: 235000  # agents 170,000, verifier 5 requests x 12,000
   reserve_tokens: 5000
   max_cost_usd: 0.50
   max_wall_seconds: 1500  # Groq free tier: much of a run is waiting on per-minute limits
@@ -124,6 +124,16 @@ agents:
 #   profile     the candidate and the internship they want, for the assessor. Committed,
 #               so it leaves out employers and anything private.
 options:
+  # The remote verifier (services/verifier). Its URL and token come from VERIFIER_URL and
+  # VERIFIER_TOKEN; without them the Verify stage fails soft and claims show unverified.
+  verifier:
+    max_requests: 5        # one per top-K opportunity whose record changed
+    time_budget_ms: 60000  # the verifier's clock, from when it receives the request
+    max_steps: 2           # model calls per request
+    max_fetches: 6         # one page plus up to five redirect hops
+    max_tokens: 12000
+    cold_start_ms: 15000   # added to the client timeout: a cold start happens before the clock
+    max_attempts: 4
   profile: |
     An experienced engineer, not a typical intern: about three years of full-time
     fullstack and integration work (Java/Spring, TypeScript, PostgreSQL, Kafka,

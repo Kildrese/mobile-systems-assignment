@@ -87,6 +87,58 @@ def test_publish_and_read(tmp_path, client, ada, sql):
     assert [o["fitScore"] for o in body["offers"]] == [2, None]
 
 
+def test_claims_and_failed_services_published(tmp_path, client, ada):
+    state, store = _state(tmp_path)
+    beta = next(o for o in store.opportunities() if o["company"] == "Beta")
+    store.put_verdicts(
+        [
+            {
+                "opportunity_id": beta["id"],
+                "field": "compensation",
+                "record_hash": store.record_hash(beta),
+                "text": "pay claim",
+                "verdict": "supported",
+                "evidence": "Pay: $45/hour",
+                "run_id": RUN2,
+                "request_id": "r1",
+            },
+            {
+                "opportunity_id": beta["id"],
+                "field": "term",
+                "record_hash": store.record_hash(beta),
+                "text": "term claim",
+                "verdict": "unreachable",
+                "evidence": None,
+                "run_id": RUN2,
+                "request_id": "r1",
+            },
+        ]
+    )
+    store.fail_service(RUN2, "verifier", "no_answer")
+    rows = offers(store, RUN2)
+    run = {
+        **dict(state.db.execute("SELECT * FROM runs WHERE id = ?", (RUN2,)).fetchone()),
+        "failed_services": store.failed_services(RUN2),
+    }
+    state.close()
+
+    beta_row, acme_row = rows
+    claims = {c["field"]: c for c in beta_row["claims"]}
+    assert claims["compensation"]["verdict"] == "supported"
+    assert claims["compensation"]["evidence"] == "Pay: $45/hour"
+    assert (claims["term"]["verdict"], claims["term"]["evidence"]) == ("unreachable", None)
+    assert claims["title"]["verdict"] == "unverified"
+    assert acme_row["claims"] == []  # outside the top K
+
+    with get_sessionmaker()() as db:
+        publish(db, run, rows, "# report")
+    body = client.get("/api/internships/latest", headers=ada.headers).json()
+    assert body["run"]["failedServices"] == ["verifier"]
+    assert body["offers"][0]["claims"][0]["verdict"] in {"supported", "unreachable", "unverified"}
+    history = client.get("/api/internships/runs", headers=ada.headers).json()
+    assert history["runs"][0]["failedServices"] == ["verifier"]
+
+
 def test_empty_before_first_run(client, ada):
     response = client.get("/api/internships/latest", headers=ada.headers)
     assert response.status_code == 200

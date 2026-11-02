@@ -68,6 +68,36 @@ function where(offer: InternshipOffer): string {
     : `${places} (${offer.remote})`;
 }
 
+const VERDICT = {
+  supported: { label: "Supported", variant: "secondary" },
+  unsupported: { label: "Unsupported", variant: "destructive" },
+  unreachable: { label: "Unreachable", variant: "outline" },
+  unverified: { label: "Unverified", variant: "outline" },
+} as const;
+
+// Claim text and evidence came from the web: React renders them as text, never HTML.
+function Claims({ claims }: { claims: InternshipOffer["claims"] }) {
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {claims.map((claim) => (
+        <li key={claim.field} className="flex flex-col gap-0.5">
+          <span>
+            <Badge variant={VERDICT[claim.verdict].variant} className="mr-2">
+              {VERDICT[claim.verdict].label}
+            </Badge>
+            {claim.text}
+          </span>
+          {claim.evidence && (
+            <blockquote className="border-l-2 pl-2 text-muted-foreground">
+              “{claim.evidence}”
+            </blockquote>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Offer({ offer }: { offer: InternshipOffer }) {
   const closed = offer.status === "closed";
   const href = webUrl(offer.url);
@@ -122,6 +152,7 @@ function Offer({ offer }: { offer: InternshipOffer }) {
         offer.fitScore !== null ||
         offer.workAuthorizationQuote ||
         offer.dropReason ||
+        offer.claims.length > 0 ||
         !offer.verified) && (
         <CardContent className="flex flex-col gap-2">
           {offer.summary && <p>{offer.summary}</p>}
@@ -151,6 +182,7 @@ function Offer({ offer }: { offer: InternshipOffer }) {
               Outranked, now #{offer.rank}
             </p>
           )}
+          {offer.claims.length > 0 && <Claims claims={offer.claims} />}
           {!closed && !offer.verified && (
             <p className="text-muted-foreground">
               Could not be checked in this run.
@@ -227,6 +259,11 @@ export function InternshipReport({ runId }: { runId?: string }) {
           <RunStatus status={run.status} />
           {run.stopReason && (
             <span className="text-muted-foreground">stopped at {run.stopReason}</span>
+          )}
+          {run.failedServices.length > 0 && (
+            <span className="text-muted-foreground">
+              {run.failedServices.join(", ")} failed: its claims show as unverified
+            </span>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">

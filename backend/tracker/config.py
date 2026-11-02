@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
+from agentkit.settings import FetchSettings, host_patterns
 from dotenv import dotenv_values
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
@@ -24,7 +25,6 @@ BACKEND_DIR = PACKAGE_DIR.parent
 ENV_FILE = BACKEND_DIR / ".env"
 CONFIG_NAME = "config.yaml"
 
-SAFE_SCHEMES = {"http", "https"}
 AGENT_NAME = re.compile(r"[a-z][a-z0-9_]*")
 # Use cases the tracker can run: name -> module. Fixed in code, never a free-form import
 # path. A use case module registers its tools on import and defines `stages(policy)` and,
@@ -87,45 +87,9 @@ class RetryPolicy(_Strict):
     max_wait_seconds: float = Field(gt=0)
 
 
-class FetchSettings(_Strict):
-    allowed_schemes: tuple[str, ...]
-    allowed_hosts: tuple[str, ...]
-    connect_timeout: float = Field(gt=0)
-    read_timeout: float = Field(gt=0)
-    deadline_seconds: float = Field(gt=0)
-    max_bytes: int = Field(gt=0)
-    max_redirects: int = Field(default=5, ge=0, le=20)
-    max_chars_for_model: int = Field(gt=0)
-
-    @field_validator("allowed_schemes")
-    @classmethod
-    def only_http(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        value = tuple(s.lower() for s in value)
-        if not value:
-            raise ValueError("at least one scheme is required")
-        if unsafe := [s for s in value if s not in SAFE_SCHEMES]:
-            raise ValueError(f"only http and https may be allowed, got {', '.join(unsafe)}")
-        return value
-
-    @field_validator("allowed_hosts")
-    @classmethod
-    def host_patterns(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        return _host_patterns(value)
-
-
-def _host_patterns(value: tuple[str, ...]) -> tuple[str, ...]:
-    if not value:
-        raise ValueError("at least one host pattern is required (use '*' for any)")
-    for pattern in value:
-        bare = pattern.removeprefix("*.")
-        if pattern != "*" and (not bare or "*" in bare or "/" in bare):
-            raise ValueError(f"'{pattern}' is not an exact host, '*.domain' or '*'")
-    return tuple(p.lower().rstrip(".") for p in value)
-
-
 def _covers(allowed: tuple[str, ...], pattern: str) -> bool:
     """Whether every host `pattern` matches is also matched by `allowed`."""
-    from tracker.guard import host_allowed
+    from agentkit.guard import host_allowed
 
     if not pattern.startswith("*."):
         return host_allowed(pattern, allowed)  # an exact host, or "*" (only "*" covers it)
@@ -167,8 +131,8 @@ class AgentProfile(_Strict):
 
     @field_validator("fetch_hosts")
     @classmethod
-    def fetch_host_patterns(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
-        return None if value is None else _host_patterns(value)
+    def fetchhost_patterns(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
+        return None if value is None else host_patterns(value)
 
     @model_validator(mode="after")
     def tool_limits(self) -> "AgentProfile":
@@ -400,6 +364,9 @@ class TrackerSecrets:
     search_key: str
     # Keys of agent providers other than the top-level model's, by provider name.
     provider_keys: dict[str, str] = field(default_factory=dict)
+    # The verifier's URL and token, when set. Optional: without them, Verify fails soft.
+    verifier_url: str | None = None
+    verifier_token: str | None = None
 
     @classmethod
     def load(
@@ -431,10 +398,17 @@ class TrackerSecrets:
             for role, value in values.items()
             if role not in (main, "search") and value is not None
         }
-        return cls(values.get(main) or "", values.get("search") or "", others)
+        return cls(
+            values.get(main) or "",
+            values.get("search") or "",
+            others,
+            read("VERIFIER_URL"),
+            read("VERIFIER_TOKEN"),
+        )
 
     def key_for(self, provider: str) -> str:
         return self.provider_keys.get(provider, self.model_key)
 
     def values(self) -> list[str]:
-        return [v for v in (self.model_key, self.search_key, *self.provider_keys.values()) if v]
+        keys = (self.model_key, self.search_key, *self.provider_keys.values(), self.verifier_token)
+        return [v for v in keys if v]

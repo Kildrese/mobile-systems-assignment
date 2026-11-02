@@ -67,6 +67,24 @@ jobs:
       # No services and no secrets: the tracker needs neither Postgres nor network.
       - run: uv run pytest tests_tracker
 
+  verifier:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/verifier
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - run: uv sync --locked
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      # Fetches and the model are faked: no network, no secrets.
+      - run: uv run pytest
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

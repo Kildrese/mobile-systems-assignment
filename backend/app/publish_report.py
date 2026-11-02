@@ -25,6 +25,7 @@ from tracker.errors import PolicyError
 from tracker.state import StateStore
 from tracker.usecases.internships.report import _quote, _value, sections
 from tracker.usecases.internships.store import OpportunityStore
+from tracker.usecases.internships.verifying import claims_view
 
 
 def _known(opp: dict[str, Any], name: str) -> str | None:
@@ -68,6 +69,7 @@ def offers(store: OpportunityStore, run_id: str) -> list[dict[str, Any]]:
             "status": opp["status"],
             "status_evidence": opp["status_evidence"],
             "verified": opp["verified"],
+            "claims": claims_view(store, opp) if opp["top_k"] else [],
             "first_seen_at": datetime.fromisoformat(opp["first_seen_at"]),
         }
         for section, opps in (
@@ -110,6 +112,7 @@ def publish(
             started_at=datetime.fromisoformat(run["started_at"]),
             ended_at=datetime.fromisoformat(run["ended_at"]) if run["ended_at"] else None,
             report_markdown=markdown,
+            failed_services=list(run.get("failed_services") or []),
         )
     )
     db.flush()
@@ -133,8 +136,9 @@ def main() -> int:
         if run is None:
             print("The state file has no finished run: nothing to publish.", file=sys.stderr)
             return 1
-        run = dict(run)
-        rows = offers(OpportunityStore(state), run["id"])
+        store = OpportunityStore(state)
+        run = {**dict(run), "failed_services": store.failed_services(run["id"])}
+        rows = offers(store, run["id"])
         fetched = articles(state, run["id"])
 
     report = policy.reports_path / f"{run['id']}.md"

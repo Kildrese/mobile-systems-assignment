@@ -3,10 +3,10 @@
 import httpx
 import pytest
 import respx
+from agentkit.fetch import FetchError, extract, fetch_page
+from agentkit.guard import Blocked
 
 from tests_tracker.conftest import PUBLIC_IP, resolver_for
-from tracker.fetch import FetchError, extract, fetch_page
-from tracker.guard import Blocked
 
 PAGE = b"""<!doctype html><html><head><title> Robot Model Released </title>
 <style>body { color: red }</style><script>alert('x')</script></head>
@@ -188,3 +188,15 @@ def test_http_error_carries_status(policy):
         fetch("https://news.example.com/gone", policy)
     assert err.value.reason == "http_error"
     assert err.value.status == 410
+
+
+def test_extract_keeps_json_ld_job_posting():
+    page = """<html><head><title>Intern @ Acme</title>
+    <script type="application/ld+json">{"@type": "JobPosting",
+      "description": "<p>Pay: <strong>$55/hour</strong></p><p>Summer 2027</p>"}</script>
+    <script type="application/ld+json">{"@type": "Organization", "description": "skip me"}</script>
+    <script>var secret = "never";</script></head><body><div id="root"></div></body></html>"""
+    title, text = extract(page)
+    assert title == "Intern @ Acme"
+    assert "$55/hour" in text and "Summer 2027" in text
+    assert "skip me" not in text and "never" not in text

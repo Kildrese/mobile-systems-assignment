@@ -905,6 +905,48 @@
         ],
         "title": "ChangePasswordResponse"
       },
+      "Claim": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "The record field the claim states, e.g. `compensation`."
+          },
+          "text": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "supported",
+              "unsupported",
+              "unreachable",
+              "unverified"
+            ],
+            "description": "The verifier's verdict, checked by code; `unverified` when it was not checked (the verifier failed or was not configured)."
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On `supported` claims: an excerpt of at most 300 characters from the page."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field",
+          "text",
+          "verdict",
+          "evidence"
+        ],
+        "title": "Claim",
+        "description": "One checked fact about a top-K offer. Text and evidence came from the web: show them\nas text, never as HTML."
+      },
       "Error": {
         "properties": {
           "error": {
@@ -1135,6 +1177,13 @@
             "type": "boolean",
             "description": "Checked open in this run."
           },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/Claim"
+            },
+            "type": "array",
+            "description": "Top-K offers only: each checked claim."
+          },
           "firstSeenAt": {
             "type": "string",
             "format": "date-time"
@@ -1165,6 +1214,7 @@
           "status",
           "statusEvidence",
           "verified",
+          "claims",
           "firstSeenAt"
         ],
         "title": "InternshipOffer",
@@ -1372,6 +1422,13 @@
               }
             ]
           },
+          "failedServices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "description": "Worker services that failed in the run, e.g. `verifier`. Empty if none."
+          },
           "startedAt": {
             "type": "string",
             "format": "date-time"
@@ -1399,6 +1456,7 @@
           "topic",
           "status",
           "stopReason",
+          "failedServices",
           "startedAt",
           "endedAt",
           "reportMarkdown"
@@ -1449,6 +1507,13 @@
               }
             ]
           },
+          "failedServices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "description": "Worker services that failed in the run, e.g. `verifier`. Empty if none."
+          },
           "startedAt": {
             "type": "string",
             "format": "date-time"
@@ -1486,6 +1551,7 @@
           "topic",
           "status",
           "stopReason",
+          "failedServices",
           "startedAt",
           "endedAt",
           "sections",

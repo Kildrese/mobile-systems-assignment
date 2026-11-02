@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from urllib.parse import SplitResult, urlsplit
 
-from tracker.config import FetchSettings
+from agentkit.settings import FetchSettings
 
 MAX_URL_LENGTH = 2048
 DEFAULT_PORTS = {"http": 80, "https": 443}

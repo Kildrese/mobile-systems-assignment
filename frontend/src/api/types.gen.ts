@@ -23,6 +23,28 @@ export type ChangePasswordResponse = {
 };
 
 /**
+ * Claim
+ *
+ * One checked fact about a top-K offer. Text and evidence came from the web: show them
+ * as text, never as HTML.
+ */
+export type Claim = {
+    /**
+     * The record field the claim states, e.g. `compensation`.
+     */
+    field: string;
+    text: string;
+    /**
+     * The verifier's verdict, checked by code; `unverified` when it was not checked (the verifier failed or was not configured).
+     */
+    verdict: 'supported' | 'unsupported' | 'unreachable' | 'unverified';
+    /**
+     * On `supported` claims: an excerpt of at most 300 characters from the page.
+     */
+    evidence: string | null;
+};
+
+/**
  * Error
  */
 export type Error = {
@@ -103,6 +125,10 @@ export type InternshipOffer = {
      * Checked open in this run.
      */
     verified: boolean;
+    /**
+     * Top-K offers only: each checked claim.
+     */
+    claims: Array<Claim>;
     firstSeenAt: string;
 };
 
@@ -200,6 +226,10 @@ export type TrackerRun = {
     topic: string;
     status: 'complete' | 'partial' | 'failed';
     stopReason: string | null;
+    /**
+     * Worker services that failed in the run, e.g. `verifier`. Empty if none.
+     */
+    failedServices: Array<string>;
     startedAt: string;
     endedAt: string | null;
     /**
@@ -228,6 +258,10 @@ export type TrackerRunSummary = {
     topic: string;
     status: 'complete' | 'partial' | 'failed';
     stopReason: string | null;
+    /**
+     * Worker services that failed in the run, e.g. `verifier`. Empty if none.
+     */
+    failedServices: Array<string>;
     startedAt: string;
     endedAt: string | null;
     /**

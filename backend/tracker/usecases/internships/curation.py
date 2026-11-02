@@ -10,10 +10,10 @@ matches, and by the Curator (`mark_same`) only between postings of the same comp
 import copy
 import json
 import re
-import unicodedata
 from typing import Any
 from urllib.parse import urlsplit
 
+from agentkit.text import normalize, quote_found
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from tracker.state import canonicalize
@@ -22,7 +22,6 @@ from tracker.usecases.internships.http import GuardedHttp, HttpFailure
 from tracker.usecases.internships.store import OpportunityStore
 
 UNKNOWN = "unknown"
-MIN_QUOTE_CHARS = 3
 TITLE_FILLER = set(
     [
         "intern",
@@ -44,26 +43,6 @@ TITLE_FILLER = set(
     ]
 )
 COMPANY_SUFFIXES = re.compile(r"\b(inc|llc|ltd|corp|corporation|co|company|hq)\b")
-# Curly quotes, primes, dashes and the no-break space, by code point.
-_QUOTES = str.maketrans(
-    {
-        **dict.fromkeys((0x2018, 0x2019, 0x201A, 0x201B, 0x2032), "'"),
-        **dict.fromkeys((0x201C, 0x201D, 0x201E, 0x2033), '"'),
-        **dict.fromkeys((0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2212), "-"),
-        0x00A0: " ",
-    }
-)
-
-
-def normalize(text: str) -> str:
-    """NFKC, straight quotes and dashes, lowercase, single spaces."""
-    text = unicodedata.normalize("NFKC", text).translate(_QUOTES).lower()
-    return " ".join(text.split())
-
-
-def quote_found(quote: str, haystack: str) -> bool:
-    q = normalize(quote)
-    return len(q) >= MIN_QUOTE_CHARS and q in normalize(haystack)
 
 
 def normalize_company(name: str) -> str:

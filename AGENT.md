@@ -1,10 +1,15 @@
 # AGENT.md
 
-The tracker follows Summer 2027 software and ML internships at NYC startups (K = 5). It is a fixed pipeline of four hand-written agents and four code stages:
+The tracker follows Summer 2027 software and ML internships at NYC startups (K = 5). It is a fixed pipeline of four hand-written agents and five code stages, plus a verifier agent that runs as its own service and is reached only over HTTP:
 
 ```
-Scout (agent) -> Collect (code) -> Curate (agent) -> Liveness (code) -> Assess (agent) -> Rank (code) -> Edit (agent) -> report
+Scout (agent) -> Collect (code) -> Curate (agent) -> Liveness (code) -> Assess (agent) -> Rank (code) -> Verify (code) -> Edit (agent) -> report
+                                                                                                          |  POST /verify (claim text + URL only)
+                                                                                                          v
+                                                                                                     Verifier (agent, separate Vercel service)
 ```
+
+The runs below predate the verifier. Their numbers describe the pipeline without the Verify stage.
 
 Unless a number says otherwise, it is from run 1, `20261005T170512Z-2187` ([report](reports/run1.md), [trace](traces/20261005T170512Z-2187.jsonl)). It was the first production run after the tracker's tables and state were reset, started by hand from the daily workflow with empty state. Run 2, `20261006T110639Z-da8c` ([report](reports/run2.md), [trace](traces/20261006T110639Z-da8c.jsonl)), is the next production run, 18 hours later, started the same way on top of run 1's state. Where run 2 differs, it shows what a day of carried-over state changes.
 
@@ -17,12 +22,14 @@ Unless a number says otherwise, it is from run 1, `20261005T170512Z-2187` ([repo
 | **Curator:** whether two postings from the same company are the same role (`mark_same`), or whether a posting is unclear (`flag_unclear`) | Reading every board, with `If-None-Match`/`If-Modified-Since` (`sources.py`) |
 | **Editor:** the wording of each summary | Which postings reach the Curator: the title and location prefilter |
 | **Assessor:** each opportunity's fit with the profile (0–3) and a one-sentence reason | Whether a rating is kept: an id in the batch, fit 0–3, a reason of at most 200 characters that passes the summary check; and when to rate again (only after a profile change) |
+| **Verifier:** for each claim, `supported` with an excerpt from the page, or `unsupported` | Whether a `supported` verdict is kept: an excerpt of at most 300 characters found in the page the verifier fetched itself (`services/verifier/verify.py`); `unreachable` (only code says it); the claim's text (a fixed sentence per field) |
 | | Whether a record is accepted: every quote must appear word for word in the posting text (`save_record`) |
 | | Company and URL (always from the board, never from the model) |
 | | Same canonical URL means same opportunity (`link_exact`) |
 | | Open or closed (`lifecycle.py`), the score, the top K (`ranking.py`), the report section |
 | | Whether a summary is kept: at most 3 sentences, and no number or month that isn't in the record |
-| | Every budget, retry and guardrail |
+| | What an `unsupported` field does to the score (counts as `unknown`), and when to re-verify (only after the record changes) |
+| | Every budget, retry and guardrail, including the verifier's share and the retries to it |
 
 **The decision we moved out of the model is ranking.** The single-agent tracker (`examples/single-agent.yaml`) lets the model order the items in `finish`. In the internship pipeline, `ranking.py` scores each open opportunity with weights from config: role 3, term 3, location 2, recency 1, focus 3, fit 3. A criterion scores 1 for a match, 0 for a mismatch and 0.5 for `unknown`.
 

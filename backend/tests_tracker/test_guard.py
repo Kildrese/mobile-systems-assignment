@@ -1,9 +1,9 @@
 """fetch-guardrails: URL checks before any connection."""
 
 import pytest
+from agentkit.guard import Blocked, check, host_allowed, is_public, literal_ip
 
 from tests_tracker.conftest import PUBLIC_IP, resolver_for
-from tracker.guard import Blocked, check, host_allowed, is_public, literal_ip
 
 
 def never_resolve(*_args, **_kwargs):
