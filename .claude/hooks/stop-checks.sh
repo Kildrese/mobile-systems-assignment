@@ -9,7 +9,7 @@ changed=$(git status --porcelain --untracked-files=all | cut -c4-)
 [ -n "$changed" ] || exit 0
 
 fail="" out=""
-for proj in backend services/verifier; do
+for proj in backend services/*; do
   grep -Eq "^$proj/.*\.py$" <<<"$changed" || continue
   r=$(cd "$proj" && uv run --quiet ruff check 2>&1 && uv run --quiet ruff format --check 2>&1) \
     || { fail+=" $proj(ruff)"; out+=$'\n'$(tail -30 <<<"$r"); }

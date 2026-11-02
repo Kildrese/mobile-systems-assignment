@@ -1,13 +1,13 @@
 # CLAUDE.md
 
-FastAPI backend (`backend/app`), agentic tracker (`backend/tracker`), verifier service (`services/verifier`), Vite/React frontend (`frontend`). Deployed on Vercel with Neon Postgres. Setup and layout: [docs/development.md](docs/development.md). The tracker's design: [AGENT.md](AGENT.md).
+FastAPI backend (`backend/app`), agentic tracker (`backend/tracker`), verifier and CV/cover-letter drafter services (`services/verifier`, `services/drafter`), Vite/React frontend (`frontend`). Deployed on Vercel with Neon Postgres. Setup and layout: [docs/development.md](docs/development.md). The tracker's design: [AGENT.md](AGENT.md).
 
 ## Commands (the same ones CI runs, see `.github/workflows/ci.yml`)
 
 ```bash
-# backend/ and services/verifier/
+# backend/ and services/*/
 uv run ruff check && uv run ruff format --check
-uv run pytest                     # backend: needs Postgres (./scripts/db-up.sh); verifier: none
+uv run pytest                     # backend: needs Postgres (./scripts/db-up.sh); services: none
 uv run pytest tests_tracker       # backend/: tracker, no Postgres, no network
 uv run python -m app.openapi --check
 uv run alembic check              # needs Postgres
@@ -20,7 +20,8 @@ npm run api:check && npm run typecheck && npm test && npm run lint
 1. Features start as an OpenSpec change (`/opsx:propose`) after a grilling round; no code before it's reviewed. Small fixes skip this.
 2. Work on a feature branch (or worktree), never on `master`. PR against `master`; titles say what changed in plain words ("Read the SimplifyJobs list as an internship source").
 3. Before the PR: the `checker` agent runs CI's commands, then the `reviewer` (correctness vs. the OpenSpec change, plus over-engineering) and, when the diff touches auth, prompts, fetching, secrets or paid API calls, the `security-reviewer`.
-4. After merge: `/opsx:archive`.
+4. Shipping is `/ship <PR>` in the main session, never a subagent: migration order, secrets, merge, post-deploy checks. Production migrations, GitHub secrets and the merge are the user's steps.
+5. After it's live: `/opsx:archive`.
 
 ## Gotchas
 
