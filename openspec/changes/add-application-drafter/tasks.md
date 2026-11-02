@@ -29,8 +29,8 @@
 
 ## 5. Frontend
 
-- [ ] 5.1 A profile section on `/account`: four file pickers, upload, and the stored files' names, sizes and time
-- [ ] 5.2 The offer card: the draft status, downloads, "Copy letter text", "Checks", "Draft application"/"Draft again" with "Include cover letter", "Deadline passed" and "made with an older profile". Regenerate the client
+- [x] 5.1 A profile section on `/account`: four file pickers, upload, and the stored files' names, sizes and time
+- [x] 5.2 The offer card: the draft status, downloads, "Copy letter text", "Checks", "Draft application"/"Draft again" with "Include cover letter", "Deadline passed" and "made with an older profile". Regenerate the client
 
 ## 6. Workflow, docs, deploy
 

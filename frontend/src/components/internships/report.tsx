@@ -7,9 +7,12 @@ import { toast } from "sonner";
 import {
   getInternshipRunOptions,
   getLatestInternshipReportOptions,
+  getProfileOptions,
+  listDraftsOptions,
 } from "@/api/@tanstack/react-query.gen";
 import { exportInternshipReport } from "@/api/sdk.gen";
-import type { InternshipOffer, TrackerRun } from "@/api/types.gen";
+import type { Draft, InternshipOffer, TrackerRun } from "@/api/types.gen";
+import { OfferDrafts } from "@/components/internships/drafts";
 import { QueryFallback } from "@/components/query-fallback";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -98,7 +101,15 @@ function Claims({ claims }: { claims: InternshipOffer["claims"] }) {
   );
 }
 
-function Offer({ offer }: { offer: InternshipOffer }) {
+function Offer({
+  offer,
+  drafts,
+  canDraft,
+}: {
+  offer: InternshipOffer;
+  drafts: Draft[];
+  canDraft: boolean;
+}) {
   const closed = offer.status === "closed";
   const href = webUrl(offer.url);
   const facts = [
@@ -190,6 +201,11 @@ function Offer({ offer }: { offer: InternshipOffer }) {
           )}
         </CardContent>
       )}
+      {!closed && (
+        <CardContent>
+          <OfferDrafts offer={offer} drafts={drafts} canDraft={canDraft} />
+        </CardContent>
+      )}
     </Card>
   );
 }
@@ -234,6 +250,12 @@ export function InternshipReport({ runId }: { runId?: string }) {
     enabled: !!runId,
   });
   const query = runId ? one : latest;
+  // Drafts are extras on the cards: the report shows without them if they fail.
+  const drafts = useQuery(listDraftsOptions());
+  const profile = useQuery(getProfileOptions());
+  const canDraft = profile.data?.canDraft ?? false;
+  const draftsFor = (id: number) =>
+    drafts.data?.drafts.filter((d) => d.opportunityId === id) ?? [];
 
   if (!query.isSuccess) return <QueryFallback query={query} what="report" />;
 
@@ -301,7 +323,14 @@ export function InternshipReport({ runId }: { runId?: string }) {
                 {comparesRuns && firstRun ? NO_PREVIOUS : empty}
               </p>
             ) : (
-              list.map((o) => <Offer key={o.opportunityId} offer={o} />)
+              list.map((o) => (
+                <Offer
+                  key={o.opportunityId}
+                  offer={o}
+                  drafts={draftsFor(o.opportunityId)}
+                  canDraft={canDraft}
+                />
+              ))
             )}
           </section>
         );
