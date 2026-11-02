@@ -47,6 +47,6 @@
 
 ## 7. Deploy and rollout
 
-- [ ] 7.1 Create the verifier's Vercel project (root `services/verifier`), set `VERIFIER_TOKEN` and `GROQ_API_KEY`, deploy, and check `/healthz` plus the A2 test table against the deployed URL (401, 400, duplicate, 409, 503, metadata URL, tiny budget)
+- [x] 7.1 Create the verifier's Vercel project (root `services/verifier`), set `VERIFIER_TOKEN` and `GROQ_API_KEY`, deploy, and check `/healthz` plus the A2 test table against the deployed URL (401, 400, duplicate, 409, 503, metadata URL, tiny budget)
 - [ ] 7.2 Add the `VERIFIER_URL` and `VERIFIER_TOKEN` GitHub Actions secrets and pass them in `tracker.yml`
 - [ ] 7.3 Before merging, apply the migration to production with `./scripts/db-migrate-neon.sh`
