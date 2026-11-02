@@ -260,7 +260,7 @@ def test_letter_passes_on_the_retry(fakes):
     assert r.json()["status"] == "complete" and r.json()["usage"]["steps"] == 3
 
 
-def _rate_limited_client(status=429, headers=None):
+def _rate_limited_client(status=429, headers=None, error_body=None):
     class Messages:
         def create(self, **kw):
             response = httpx2.Response(
@@ -271,7 +271,7 @@ def _rate_limited_client(status=429, headers=None):
                 401: anthropic.AuthenticationError,
                 529: anthropic.InternalServerError,
             }.get(status, anthropic.APIStatusError)
-            raise cls("error", response=response, body=None)
+            raise cls("error", response=response, body=error_body)
 
     class Fake:
         def with_options(self, **kw):
@@ -304,6 +304,19 @@ def test_other_provider_errors(fakes, monkeypatch, status, code):
     assert r.status_code == code
     if code == 500:
         assert r.json()["status"] == "failed" and r.json()["error"]["retryable"] is False
+
+
+def test_anthropic_400_says_why(fakes, monkeypatch):
+    reason = "Your credit balance is too low to access the Anthropic API."
+    error = {"type": "error", "error": {"type": "invalid_request_error", "message": reason}}
+    monkeypatch.setattr(
+        main,
+        "_caller",
+        lambda: model.anthropic_caller("k", client=_rate_limited_client(400, error_body=error)),
+    )
+    r = post(body())
+    assert r.status_code == 500
+    assert r.json()["error"]["message"] == f"Anthropic rejected the request (HTTP 400): {reason}"
 
 
 # 3.6 the whole draft

@@ -157,13 +157,19 @@ def anthropic_caller(api_key: str, model: str = MODEL, client: anthropic.Anthrop
         except anthropic.RateLimitError as err:
             raise ProviderBusy(_retry_after(err) or 20) from None
         except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as err:
-            raise ProviderFailed(f"Anthropic refused the key (HTTP {err.status_code})") from None
+            raise ProviderFailed(
+                f"Anthropic refused the key (HTTP {err.status_code}){_reason(err)}"
+            ) from None
         except anthropic.APIStatusError as err:
             if err.status_code == 402 or getattr(err, "type", None) == "billing_error":
-                raise ProviderFailed("Anthropic billing or spend cap reached (HTTP 402)") from None
+                raise ProviderFailed(
+                    f"Anthropic billing or spend cap reached (HTTP 402){_reason(err)}"
+                ) from None
             if err.status_code >= 500:  # 529 overloaded included
                 raise ProviderBusy(_retry_after(err) or 10) from None
-            raise ProviderFailed(f"Anthropic rejected the request (HTTP {err.status_code})") from None
+            raise ProviderFailed(
+                f"Anthropic rejected the request (HTTP {err.status_code}){_reason(err)}"
+            ) from None
         except anthropic.APIConnectionError:  # timeouts included
             raise ProviderBusy(10) from None
         u = r.usage
@@ -181,6 +187,14 @@ def anthropic_caller(api_key: str, model: str = MODEL, client: anthropic.Anthrop
         return next((b.text for b in r.content if b.type == "text"), None), tokens
 
     return call
+
+
+def _reason(err: anthropic.APIStatusError) -> str:
+    """Anthropic's own error message (e.g. "Your credit balance is too low..."), so a failed
+    draft says why. It describes the request, never echoes the profile."""
+    body = err.body if isinstance(err.body, dict) else {}
+    message = (body.get("error") or {}).get("message") if isinstance(body.get("error"), dict) else None
+    return f": {str(message)[:300]}" if message else ""
 
 
 def _retry_after(err: anthropic.APIStatusError) -> float | None:
