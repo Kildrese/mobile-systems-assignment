@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Fixed stage order
-The pipeline SHALL run, in this order: Scout (agent `scout`), Collect (code, required), Curate (agent `curator`), Liveness (code), Assess (agent `assessor`, only with an `assessor` profile and `options.profile`), Rank (code, required), Verify (remote verifier, only with a `verifier` section in policy), Edit (agent `editor`), Report (code, required). Verify SHALL rank again after storing verdicts, so Edit and Report see the final order. The Scout, Curate, Assess and Edit stages MAY be disabled through their profile's `enabled`, and Verify through `verifier.enabled`.
+The pipeline SHALL run, in this order: Scout (agent `scout`), Collect (code, required), Curate (agent `curator`), Liveness (code), Assess (agent `assessor`, only with an `assessor` profile and `options.profile`), Rank (code, required), Verify (remote verifier, only with a `verifier` section in policy), Edit (agent `editor`), Report (code, required). Verify SHALL rank again after storing verdicts, so Edit and Report see the final order. The Scout, Curate, Assess and Edit stages MAY be disabled through their profile's `enabled`, and Verify by leaving out `options.verifier`.
 
 #### Scenario: Scout disabled
 - **WHEN** `agents.scout.enabled` is false

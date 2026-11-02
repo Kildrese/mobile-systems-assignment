@@ -45,7 +45,6 @@ The constraints: it runs on Groq's free tier (8,000 tokens per minute per model)
 **9. Budget.** `config.yaml` gains:
 ```yaml
 verifier:
-  enabled: true
   url_env: VERIFIER_URL
   max_requests: 5
   time_budget_ms: 60000
@@ -75,7 +74,7 @@ Policy validation checks that `max_requests × budget` fits within the run's rem
 3. Run the Alembic migration. Existing rows get `claims = []` and `failed_services = []`.
 4. Enable `verifier` in `config.yaml`.
 
-Rollback: set `verifier.enabled: false`. Ranking and the report behave as before, and claims show `unverified`.
+Rollback: remove `options.verifier` from `config.yaml`. Ranking and the report behave as before, and claims show `unverified`.
 
 ## Open Questions
 

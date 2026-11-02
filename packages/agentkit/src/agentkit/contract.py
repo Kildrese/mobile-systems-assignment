@@ -115,10 +115,8 @@ class ModelVerdicts(_Strict):
     verdicts: list[ModelVerdict]
 
 
-def canonical_json(body: Any) -> str:
-    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
 def body_hash(body: Any) -> str:
     """SHA-256 of the parsed JSON body: key order and whitespace don't change it."""
-    return hashlib.sha256(canonical_json(body).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    ).hexdigest()

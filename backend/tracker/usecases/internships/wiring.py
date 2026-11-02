@@ -114,7 +114,7 @@ def validate(policy: Policy) -> InternshipOptions:
             + ", ".join(blocked)
         )
     _agent_option(policy, "scout", "max_new_sources", DEFAULT_MAX_NEW_SOURCES)
-    if (v := opts.verifier) is not None and v.enabled:
+    if (v := opts.verifier) is not None:
         enabled = [p for p in policy.agents.values() if p.enabled]
         over = []
         for limit, share in (
@@ -805,8 +805,6 @@ class VerifyStage:
         assert settings is not None
         store = OpportunityStore(ctx.state)
         keys = ctx.clients.keys
-        if not settings.enabled:
-            return StageOutcome("skipped", "disabled")
         if not keys.verifier_url or not keys.verifier_token:
             return self._failed(
                 ctx, store, "not_configured", "VERIFIER_URL or VERIFIER_TOKEN is not set"
@@ -820,10 +818,7 @@ class VerifyStage:
             transport=ctx.clients.service_transport,
             sleep=ctx.clients.sleep,
         )
-        try:
-            result = verifying.verify_top_k(store, ctx.run_id, top_k, client, settings, ctx.budget)
-        finally:
-            client.close()
+        result = verifying.verify_top_k(store, ctx.run_id, top_k, client, settings, ctx.budget)
         self._ranked(ctx, store)  # unsupported fields now count as unknown
         usage = {
             "requests": result.requests,

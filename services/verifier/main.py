@@ -8,7 +8,6 @@ nothing; with another body it gets 409; while the first copy runs it gets 503.
 import hmac
 import json
 import os
-import socket
 import threading
 import time
 from collections import OrderedDict
@@ -72,8 +71,7 @@ class Store:
 store = Store()
 
 
-def _fetch(url: str, cfg) -> Any:
-    return fetch_page(url, cfg, resolver=socket.getaddrinfo)
+_fetch = fetch_page
 
 
 def _asker():

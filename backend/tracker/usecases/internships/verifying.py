@@ -12,7 +12,7 @@ import random
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -51,7 +51,6 @@ class VerifierSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    enabled: bool = True
     max_requests: int = Field(default=5, gt=0)
     time_budget_ms: int = Field(default=60_000, gt=0)
     max_steps: int = Field(default=2, gt=0)
@@ -61,11 +60,7 @@ class VerifierSettings(BaseModel):
     max_attempts: int = Field(default=4, gt=0, le=10)
 
     def budget(self) -> dict[str, int]:
-        return {
-            "max_steps": self.max_steps,
-            "max_fetches": self.max_fetches,
-            "max_tokens": self.max_tokens,
-        }
+        return self.model_dump(include={"max_steps", "max_fetches", "max_tokens"})
 
 
 # Claims
@@ -102,7 +97,7 @@ def claims_for(opp: dict[str, Any]) -> list[dict[str, str]]:
     claims = []
     for name in FIELDS:
         value = _value(opp, name)
-        if value == UNKNOWN or value == [] or value is None:
+        if value in (UNKNOWN, []):
             continue
         claims.append(
             {
@@ -135,28 +130,30 @@ class Client:
     trace: Trace
     transport: httpx.BaseTransport | None = None
     sleep: Callable[[float], None] = time.sleep
-    rng: Callable[[], float] = random.random
-    _http: httpx.Client | None = field(default=None, init=False)
 
     def send(self, request: VerifyRequest, step: int) -> VerifyResponse:
         """POST one request until it gets a valid answer or a terminal failure. Every
         attempt sends the same bytes with the same `request_id`."""
-        if self._http is None:
-            self._http = httpx.Client(transport=self.transport, trust_env=False)
         body = request.model_dump(mode="json")
         content = json.dumps(body, separators=(",", ":")).encode()
-        timeout = (self.settings.time_budget_ms + self.settings.cold_start_ms) / 1000
         # The verifier's logs carry the wire run id; the trace keeps both.
         ids = {
             "request_id": str(request.request_id),
             "wire_run_id": str(request.run_id),
             "step": step,
         }
+        with httpx.Client(transport=self.transport, trust_env=False) as http:
+            return self._send(http, request, content, ids)
+
+    def _send(
+        self, http: httpx.Client, request: VerifyRequest, content: bytes, ids: dict[str, Any]
+    ) -> VerifyResponse:
+        timeout = (self.settings.time_budget_ms + self.settings.cold_start_ms) / 1000
         for attempt in range(1, self.settings.max_attempts + 1):
             began = time.monotonic()
             wait: float | None = None
             try:
-                r = self._http.post(
+                r = http.post(
                     f"{self.url.rstrip('/')}/verify",
                     content=content,
                     headers={
@@ -192,7 +189,7 @@ class Client:
             if isinstance(status, int) and status not in (502, 503, 504):
                 raise VerifierFailed(f"http_{status}", _error_message(r))
             if attempt < self.settings.max_attempts:
-                backoff = min(2**attempt, 30) * (0.8 + 0.4 * self.rng())
+                backoff = min(2**attempt, 30) * (0.8 + 0.4 * random.random())
                 self.sleep(max(backoff, wait or 0))
         raise VerifierFailed(
             "no_answer", f"no valid answer after {self.settings.max_attempts} attempts"
@@ -212,10 +209,6 @@ class Client:
             tokens=tokens,
             **ids,
         )
-
-    def close(self) -> None:
-        if self._http is not None:
-            self._http.close()
 
 
 def _error_message(r: httpx.Response) -> str:
