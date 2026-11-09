@@ -18,4 +18,4 @@
 
 ## 4. Check in production
 
-- [ ] 4.1 After merging, check the next two scheduled runs: the Scout ends `complete`, and note Curate's outcome and the "Waiting for review" count to decide on making Curate cheaper per posting
+- [x] 4.1 After merging, check the next two scheduled runs: the Scout ends `complete`, and note Curate's outcome and the "Waiting for review" count to decide on making Curate cheaper per posting
