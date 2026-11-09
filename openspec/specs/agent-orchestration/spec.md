@@ -65,7 +65,7 @@ A stage SHALL receive the policy, its own profile, the state store, the trace an
 - **THEN** its first model call contains only its own instructions and task, plus data it reads through its tools, and nothing from an earlier agent's conversation
 
 ### Requirement: Stage and run outcomes
-Each stage SHALL end as `complete`, `partial` (stopped by a budget, or ended early with work left over), `skipped` (disabled, or skipped after a terminal failure), or `failed`. After a terminal failure, later agent stages that need what failed SHALL be skipped: for a daily quota from the stage's own model provider, the stages using that same model, because providers such as Groq count daily quotas per model; for any other terminal failure (bad key, payment, a rejected request, unreachable), every stage using that provider. The run SHALL be:
+Each stage SHALL end as `complete`, `partial` (stopped by a budget with its work unfinished, or ended early with work left over), `skipped` (disabled, or skipped after a terminal failure), or `failed`. After a terminal failure, later agent stages that need what failed SHALL be skipped: for a daily quota from the stage's own model provider, the stages using that same model, because providers such as Groq count daily quotas per model; for any other terminal failure (bad key, payment, a rejected request, unreachable), every stage using that provider. A budget stop SHALL make a stage `partial` unless its use case defines that stop as the end of the stage's work, in which case the stage MAY end `complete` with a reason naming the rule. The run SHALL be:
 - `failed` when a stage marked `required` failed;
 - `partial` when any stage is partial, failed without being marked `required`, or was skipped after a terminal failure;
 - `complete` otherwise.
@@ -83,6 +83,14 @@ The run's stop reason SHALL be that of the first stage with a terminal failure, 
 #### Scenario: Required stage fails
 - **WHEN** a code stage marked `required` raises a terminal error
 - **THEN** the run is `failed`, a report naming the stage and error is written, and the command exits `3`
+
+#### Scenario: Budget stop defined as done
+- **WHEN** a use case defines a budget stop as the end of a stage's work, and that stage stops on that budget
+- **THEN** the stage is `complete` with the use case's reason, and it does not make the run partial
+
+#### Scenario: Budget stop not defined as done
+- **WHEN** a stage whose use case defines no such rule stops on a budget
+- **THEN** the stage is `partial` with the budget's stop reason, as before
 
 ### Requirement: Trace attribution
 Every trace event written during a stage SHALL include `stage`, and events from agent stages SHALL include `agent`. The summary event SHALL include, per stage, the outcome, the reason and usage (steps, tokens, searches, fetches and credits for agent stages; requests for code stages).
