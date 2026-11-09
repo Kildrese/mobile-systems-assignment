@@ -1,7 +1,7 @@
 # tracker-dispatch Specification
 
 ## Purpose
-TBD - created by archiving change tracker-daily-trigger. Update Purpose after archive.
+The internal route the daily Vercel Cron calls to start the tracker workflow through GitHub's `workflow_dispatch`, reachable only with `CRON_SECRET`, and claiming each UTC day at most once in `tracker_dispatches`.
 ## Requirements
 ### Requirement: Cron-only dispatch route
 The backend SHALL serve `GET /api/internal/tracker-dispatch` for Vercel Cron. It SHALL accept a request only when its `Authorization` header is `Bearer <CRON_SECRET>`, compared in constant time. Every other request SHALL get `404` with the same body as an unknown path and SHALL NOT touch the database or GitHub: no header, a user's session token, a wrong secret, or `CRON_SECRET` not set. The route SHALL NOT appear in the OpenAPI document.

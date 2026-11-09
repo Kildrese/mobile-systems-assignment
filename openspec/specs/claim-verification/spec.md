@@ -1,7 +1,7 @@
 # claim-verification Specification
 
 ## Purpose
-TBD - created by archiving change add-claim-verifier. Update Purpose after archive.
+A separate verifier service that fetches each claim's source page itself and returns supported, unsupported or unreachable, with the evidence excerpt checked by code: its contract, auth, idempotency, budget and deadline, fetch rules and log lines.
 ## Requirements
 ### Requirement: Verifier service
 The verifier SHALL be a separate HTTP service, deployed as its own Vercel project, with `GET /healthz` and `POST /verify`. It SHALL have no database and no access to the tracker's state, and it SHALL import nothing from the tracker except through `packages/agentkit`. `GET /healthz` SHALL need no auth and return `{"status": "ok"}`.

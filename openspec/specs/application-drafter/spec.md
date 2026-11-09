@@ -1,7 +1,7 @@
 # application-drafter Specification
 
 ## Purpose
-TBD - created by archiving change add-application-drafter. Update Purpose after archive.
+A separate drafter service that turns a posting and the applicant's profile into a one-page tailored CV and an optional cover letter: the model returns a plan, and code builds the `.docx` and checks every bullet, word and line against the fact bank and rules.
 ## Requirements
 ### Requirement: Drafter service
 The drafter SHALL be a separate HTTP service, deployed as its own Vercel project, with `GET /healthz` and `POST /draft`. It SHALL have no database. It SHALL follow the verifier's contract rules: `Authorization: Bearer <DRAFTER_TOKEN>`, checked before the body and in constant time, with `401` without it; `400` on a body that fails the schema; idempotency by `request_id` and the body's hash (the stored response for the same body, `409` for another body, `503` with `Retry-After` while the first copy runs); and a JSON line per request received and call made, without tokens, keys or file contents.

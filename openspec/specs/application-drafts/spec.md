@@ -1,7 +1,7 @@
 # application-drafts Specification
 
 ## Purpose
-TBD - created by archiving change add-application-drafter. Update Purpose after archive.
+When drafts are made (after each daily publish and on demand), how deadlines and the daily cap apply, storage of the latest draft per user and offer, its API and the offer card's downloads.
 ## Requirements
 ### Requirement: Drafts after each publish
 After the daily workflow publishes a run, `python -m app.draft_new` SHALL request a CV-only draft for each offer in that run's top K that is new since the last run (section `new`), for every user in `DRAFTING_USERS` who has a profile, unless that user already has a draft for that opportunity, and within the same daily cap. A cover letter SHALL be requested only when the posting asks for one: its posting text in the tracker's state mentions "cover letter" (case-insensitive). Requests SHALL be sent one after another, with retries and backoff like the verifier client. A failure SHALL be recorded on the draft row and SHALL NOT fail the workflow.

@@ -1,7 +1,7 @@
 # applicant-profile Specification
 
 ## Purpose
-TBD - created by archiving change add-application-drafter. Update Purpose after archive.
+Each allowlisted user's profile files (master `cv.docx`, `fact_bank.yaml`, `rules.md`, `checks.yaml`): uploading, validating and storing them, owner-only access, and read-only sharing of drafts.
 ## Requirements
 ### Requirement: Only allowlisted users can draft
 `DRAFTING_USERS` (a comma-separated list of usernames in the backend's environment, never in the repo) SHALL decide who may upload a profile and start drafts. Every other signed-in user SHALL get `403` from `PUT /api/profile` and `POST /api/drafts`, before any file is read or any drafter call is made. An empty or unset `DRAFTING_USERS` SHALL allow no one. The backend SHALL also refuse a draft, with `429`, once a user has started 20 drafts in the current UTC day, counted from `application_drafts`, before calling the drafter.
