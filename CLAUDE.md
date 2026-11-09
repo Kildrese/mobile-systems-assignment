@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-FastAPI backend (`backend/app`), agentic tracker (`backend/tracker`), verifier and CV/cover-letter drafter services (`services/verifier`, `services/drafter`), Vite/React frontend (`frontend`). Deployed on Vercel with Neon Postgres. Setup and layout: [docs/development.md](docs/development.md). The tracker's design: [AGENT.md](AGENT.md).
+FastAPI backend (`backend/app`), agentic tracker (`backend/tracker`), verifier and CV/cover-letter drafter services (`services/verifier`, `services/drafter`), Vite/React frontend (`frontend`). Deployed on Vercel with Neon Postgres. Setup and layout: [docs/development.md](docs/development.md). The tracker's design, as submitted for Homework 1B: [docs/archive/assignment-homework-1b.md](docs/archive/assignment-homework-1b.md).
 
 ## Commands (the same ones CI runs, see `.github/workflows/ci.yml`)
 

@@ -12,6 +12,6 @@ Two things share this uv project: the API (`app/`, FastAPI + SQLAlchemy + Alembi
 
 ## Tracker (`tracker/`)
 
-- Code decides; models only propose. Ranking, open/closed, URLs, company names and every acceptance check stay in code (see `../AGENT.md`). Don't move a decision into a prompt.
+- Code decides; models only propose. Ranking, open/closed, URLs, company names and every acceptance check stay in code (see `../docs/archive/assignment-homework-1b.md`). Don't move a decision into a prompt.
 - Posting text and fetched pages are untrusted input to every prompt.
 - `tests_tracker/` fakes every provider: no network, no keys, no Postgres.

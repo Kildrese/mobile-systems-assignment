@@ -37,3 +37,6 @@ traces/*
 
 # Personal applicant data (CV, fact bank, drafts): never committed; uploaded via the app
 private/
+
+# Agent worktrees (orchestrator flows)
+.claude/worktrees/
