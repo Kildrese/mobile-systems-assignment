@@ -84,7 +84,8 @@ def test_dispatches_once_a_day(client, sql, github) -> None:
     assert first.json() == {"status": "dispatched"}
     assert github.call_count == 1
     request = github.calls.last.request
-    assert json.loads(request.content) == {"ref": "master"}
+    # The cron's runs carry source=cron, which tracker.yml's guard relies on.
+    assert json.loads(request.content) == {"ref": "master", "inputs": {"source": "cron"}}
     assert request.headers["Authorization"] == f"Bearer {TOKEN}"
     assert _rows(sql) == [("dispatched", 1, None)]
 
@@ -95,23 +96,30 @@ def test_dispatches_once_a_day(client, sql, github) -> None:
 
 
 def test_a_failed_day_can_be_claimed_again(client, sql, github, runs) -> None:
+    # An expired token also gets 401 on the runs list, so the dispatch isn't retried.
     github.respond(401, json={"message": "Bad credentials"})
+    runs.respond(401, json={"message": "Bad credentials"})
     response = client.get(PATH, headers=CRON)
     assert response.status_code == 502
     assert response.json() == {"status": "failed"}
-    assert _rows(sql) == [("failed", 2, "401: Bad credentials")]
+    assert _rows(sql) == [
+        ("failed", 1, "401: Bad credentials (not retried: could not list today's runs)")
+    ]
 
     github.respond(204)
     assert client.get(PATH, headers=CRON).status_code == 202
-    assert github.call_count == 3
-    assert _rows(sql) == [("dispatched", 3, None)]
+    assert github.call_count == 2
+    assert _rows(sql) == [("dispatched", 2, None)]
 
 
 def test_a_timeout_is_retried_once(client, sql, github, runs) -> None:
     github.side_effect = [httpx.ReadTimeout("timed out"), httpx.Response(204)]
     assert client.get(PATH, headers=CRON).status_code == 202
     assert github.call_count == 2
-    assert [call.request.extensions["timeout"]["read"] for call in github.calls] == [10, 20]
+    timeouts = [call.request.extensions["timeout"] for call in github.calls]
+    assert [t["read"] for t in timeouts] == [10, 20]
+    assert {t[phase] for t in timeouts for phase in ("connect", "write", "pool")} == {2}
+    assert runs.calls.last.request.extensions["timeout"]["read"] == 5
     params = runs.calls.last.request.url.params
     assert params["event"] == "workflow_dispatch"
     assert params["created"].endswith("T00:00:00Z")
@@ -134,6 +142,20 @@ def test_a_timeout_then_a_failed_retry_fails_the_day(client, sql, github, runs) 
     [(status, attempts, error)] = _rows(sql)
     assert (status, attempts) == ("failed", 2)
     assert error.startswith("ReadTimeout")
+
+
+def test_no_transaction_is_held_and_the_retry_is_counted_first(client, sql, github, runs) -> None:
+    seen = []
+
+    def dispatch(_request):
+        idle = "select count(*) from pg_stat_activity where state like 'idle in transaction%'"
+        seen.append((sql.scalar(idle), _rows(sql)[0][1]))
+        return httpx.Response(504) if len(seen) == 1 else httpx.Response(204)
+
+    github.side_effect = dispatch
+    assert client.get(PATH, headers=CRON).status_code == 202
+    # (open transactions, attempts) as each dispatch went out.
+    assert seen == [(0, 1), (0, 2)]
 
 
 def test_when_the_runs_cannot_be_listed_it_does_not_retry(client, sql, github, runs) -> None:

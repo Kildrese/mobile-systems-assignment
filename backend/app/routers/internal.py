@@ -12,7 +12,7 @@ from typing import Annotated
 import httpx
 from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from sqlalchemy import text, update
 
 from app import models
 from app.config import get_settings
@@ -29,9 +29,16 @@ WORKFLOW_URL = (
 DISPATCH_URL = f"{WORKFLOW_URL}/dispatches"
 RUNS_URL = f"{WORKFLOW_URL}/runs"
 # A failed dispatch is retried once in the same request, after a pause that also gives a
-# dispatch GitHub did accept (a timeout proves nothing) time to show up as a run. Worst case
-# 10 s + 5 s + 10 s + 20 s, well inside the function timeout and the 5-minute claim.
+# dispatch GitHub did accept (a timeout proves nothing) time to show up as a run.
 RETRY_WAIT = 5
+# httpx limits each phase (connect, write, read, pool) separately, so a call can take the sum.
+# Connect, write and pool get 2 s each; the read limit is per call. Worst case:
+# dispatch 16 s + wait 5 s + runs list 11 s + retry 26 s = 58 s, under a minute and well
+# inside the function timeout and the 5-minute claim.
+DISPATCH_READ, RUNS_READ, RETRY_READ = 10, 5, 20
+# Marks the cron's runs (shown in the run's name), so tracker.yml can skip a second cron
+# run on one day without ever skipping a run started from the Actions tab.
+DISPATCH_BODY = {"ref": "master", "inputs": {"source": "cron"}}
 
 # One statement, so the lock on the primary key decides which call owns the day: a new day,
 # a failed one, or a claim left by a call that died more than 5 minutes ago (the GitHub call
@@ -64,11 +71,15 @@ def _headers(token: str) -> dict[str, str]:
     }
 
 
-def _dispatch(token: str, timeout: float) -> str | None:
+def _timeout(read: float) -> httpx.Timeout:
+    return httpx.Timeout(2, read=read)
+
+
+def _dispatch(token: str, read: float) -> str | None:
     """Start the workflow on GitHub. None on success, else what went wrong (never the token)."""
     try:
         response = httpx.post(
-            DISPATCH_URL, json={"ref": "master"}, headers=_headers(token), timeout=timeout
+            DISPATCH_URL, json=DISPATCH_BODY, headers=_headers(token), timeout=_timeout(read)
         )
     except httpx.HTTPError as err:
         return f"{type(err).__name__}: {err}"
@@ -92,7 +103,7 @@ def _ran_on(token: str, day: date) -> bool | None:
                 "per_page": 1,
             },
             headers=_headers(token),
-            timeout=10,
+            timeout=_timeout(RUNS_READ),
         )
         response.raise_for_status()
         return response.json()["total_count"] > 0
@@ -110,9 +121,10 @@ def tracker_dispatch(db: Db, authorization: Annotated[str | None, Header()] = No
     if claimed is None:
         return JSONResponse({"status": "already_dispatched"})
 
-    dispatch = db.get_one(models.TrackerDispatch, day)
+    # No transaction stays open across the wait and the GitHub calls.
+    row = update(models.TrackerDispatch).where(models.TrackerDispatch.day == day)
     token = get_settings().github_dispatch_token
-    error = _dispatch(token, timeout=10) if token else "GITHUB_DISPATCH_TOKEN is not set"
+    error = _dispatch(token, DISPATCH_READ) if token else "GITHUB_DISPATCH_TOKEN is not set"
     if error and token:
         # Retry once, but only once GitHub confirms no run started today: a timed-out
         # dispatch may still have been accepted, and a second run spends twice on paid APIs.
@@ -124,10 +136,11 @@ def tracker_dispatch(db: Db, authorization: Annotated[str | None, Header()] = No
         elif ran is None:
             error = f"{error} (not retried: could not list today's runs)"
         else:
-            dispatch.attempts += 1
-            error = _dispatch(token, timeout=20)
-    dispatch.status = "failed" if error else "dispatched"
-    dispatch.error = error
+            # Recorded before the retry, so a call that dies mid-retry still counts it.
+            db.execute(row.values(attempts=models.TrackerDispatch.attempts + 1))
+            db.commit()
+            error = _dispatch(token, RETRY_READ)
+    db.execute(row.values(status="failed" if error else "dispatched", error=error))
     db.commit()
     if error:
         logger.error("Tracker dispatch for %s failed: %s", day, error)

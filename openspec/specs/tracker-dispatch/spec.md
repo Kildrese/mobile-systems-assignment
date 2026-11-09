@@ -46,22 +46,26 @@ A table `tracker_dispatches` SHALL hold at most one row per UTC date (the date i
 - **THEN** it claims the date again and calls GitHub
 
 ### Requirement: Start the workflow on GitHub
-The claiming call SHALL send `POST https://api.github.com/repos/Kildrese/mobile-systems-assignment/actions/workflows/tracker.yml/dispatches` with body `{"ref": "master"}` and `Authorization: Bearer <GITHUB_DISPATCH_TOKEN>`, with a timeout of at most 10 seconds. On `204` it SHALL mark the date `dispatched` and answer `202` with status `dispatched`. When the dispatch and its one retry (next requirement) fail, or `GITHUB_DISPATCH_TOKEN` is missing, it SHALL mark the date `failed` with GitHub's status and message (never the token), log the error, and answer `502`.
+The claiming call SHALL send `POST https://api.github.com/repos/Kildrese/mobile-systems-assignment/actions/workflows/tracker.yml/dispatches` with body `{"ref": "master", "inputs": {"source": "cron"}}` and `Authorization: Bearer <GITHUB_DISPATCH_TOKEN>`, with a read timeout of 10 seconds and 2 seconds for each other phase (connect, write, pool). On `204` it SHALL mark the date `dispatched` and answer `202` with status `dispatched`. When the dispatch and its one retry (next requirement) fail, or `GITHUB_DISPATCH_TOKEN` is missing, it SHALL mark the date `failed` with GitHub's status and message (never the token), log the error, and answer `502`.
 
 #### Scenario: GitHub accepts
 - **WHEN** GitHub answers `204`
 - **THEN** the date's row is `dispatched` and the response is `202`
 
+#### Scenario: Marked as the cron's run
+- **WHEN** the route dispatches
+- **THEN** the body carries the input `source: cron`, which names the run and lets the workflow's guard tell it from a manual run
+
 #### Scenario: Token expired
-- **WHEN** GitHub answers `401` to the dispatch and to its retry
-- **THEN** the date's row is `failed` with `401` and GitHub's message, and the response is `502`
+- **WHEN** GitHub answers `401` to the dispatch, and so to the list of today's runs
+- **THEN** the dispatch is not retried, the date's row is `failed` with 1 attempt, `401` and GitHub's message, and the response is `502`
 
 #### Scenario: Token not configured
 - **WHEN** `GITHUB_DISPATCH_TOKEN` is not set
 - **THEN** GitHub is not called, the date's row is `failed`, and the response is `502`
 
 ### Requirement: Retry a failed dispatch once
-When the dispatch fails (a timeout, a network error or any answer other than `204`) and `GITHUB_DISPATCH_TOKEN` is set, the same request SHALL wait 5 seconds and list the `workflow_dispatch` runs of `tracker.yml` created since 00:00 UTC that day (`GET .../actions/workflows/tracker.yml/runs`, timeout 10 seconds). If one exists, a dispatch went through: the route SHALL mark the date `dispatched` and answer `202` without dispatching again. If none exists, it SHALL add one to the attempts and dispatch once more with a timeout of at most 20 seconds, then record the result as above. If the runs can't be listed, it SHALL NOT retry and SHALL mark the date `failed`. The request SHALL dispatch at most twice and take under a minute. No new cron or schedule is added.
+When the dispatch fails (a timeout, a network error or any answer other than `204`) and `GITHUB_DISPATCH_TOKEN` is set, the same request SHALL wait 5 seconds and list the `workflow_dispatch` runs of `tracker.yml` created since 00:00 UTC that day (`GET .../actions/workflows/tracker.yml/runs`, read timeout 5 seconds). If one exists, a dispatch went through: the route SHALL mark the date `dispatched` and answer `202` without dispatching again. If none exists, it SHALL add one to the attempts and commit it, then dispatch once more with a read timeout of 20 seconds, then record the result as above. If the runs can't be listed, it SHALL NOT retry and SHALL mark the date `failed`. Every GitHub call SHALL limit connect, write and pool to 2 seconds each, so the request takes at most 58 seconds (16 + 5 + 11 + 26) and dispatches at most twice. No database transaction SHALL stay open across the wait or a GitHub call. No new cron or schedule is added. A dispatch GitHub accepted but didn't list yet can still be dispatched again; the workflow's guard (`report-publishing`, "Daily scheduled run") then skips the second run.
 
 #### Scenario: Timeout, then the retry succeeds
 - **WHEN** the dispatch times out, no run exists today, and the retry gets `204`
@@ -74,6 +78,10 @@ When the dispatch fails (a timeout, a network error or any answer other than `20
 #### Scenario: Timeout, then the retry fails
 - **WHEN** the dispatch times out, no run exists today, and the retry times out too
 - **THEN** the row is `failed` with 2 attempts and the retry's error, and the response is `502`
+
+#### Scenario: The retry is counted before it goes out
+- **WHEN** the route dispatches again after a failure
+- **THEN** the row already shows 2 attempts, and no transaction is open while either dispatch is in flight
 
 #### Scenario: Runs can't be listed
 - **WHEN** the dispatch times out and listing today's runs fails

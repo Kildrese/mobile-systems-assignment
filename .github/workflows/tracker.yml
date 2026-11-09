@@ -8,6 +8,11 @@
 # `schedule`: GitHub never started a scheduled run of this workflow, and if it ever did,
 # that run would bypass the once-a-day claim.
 #
+# The route dispatches with `source: cron`. If GitHub accepted a dispatch the route then
+# retried (a timeout proves nothing), the `guard` job of the later cron run sees the earlier
+# one and skips the day's work, so a day never pays for two cron runs. Manual runs are never
+# skipped.
+#
 # Secrets: GROQ_API_KEY, TAVILY_API_KEY, DATABASE_URL (Neon, pooled), VERIFIER_URL and
 # VERIFIER_TOKEN (the verifier service; without them claims show as unverified),
 # DRAFTER_URL, DRAFTER_TOKEN and DRAFTING_USERS (the drafter; without them nothing is drafted).
@@ -15,6 +20,12 @@ name: Internship tracker
 
 on:
   workflow_dispatch:
+    inputs:
+      source:
+        description: Who started the run (the daily cron sends `cron`)
+        default: manual
+
+run-name: Internship tracker (${{ inputs.source }})
 
 # Never two runs at once: they share the state file.
 concurrency:
@@ -25,7 +36,34 @@ permissions:
   contents: read
 
 jobs:
+  # Another cron run already started today, earlier than this one: skip. Run numbers only
+  # grow, so of two cron runs created together exactly one goes on. If GitHub can't be
+  # asked, the job fails and nothing runs (never risk a second paid run).
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - id: check
+        if: inputs.source == 'cron'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          earlier=$(gh api -X GET "repos/$REPO/actions/workflows/tracker.yml/runs" \
+            -f event=workflow_dispatch -f created=">=$(date -u +%F)" -F per_page=100 \
+            --jq "[.workflow_runs[] | select(.display_title | endswith(\"(cron)\"))
+                   | select(.run_number < $RUN_NUMBER)] | length")
+          echo "Earlier cron runs today: $earlier"
+          echo "skip=$([ "$earlier" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
   run:
+    needs: guard
+    if: needs.guard.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
