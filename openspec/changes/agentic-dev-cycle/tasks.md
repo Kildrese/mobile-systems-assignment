@@ -18,4 +18,4 @@
 
 ## 4. Check
 
-- [ ] 4.1 First real orchestrator run on a small feature: `decisions.md` gets grilling entries with `landed:`, an implementer stops on a `mine` choice, the reviewer runs Pass 3. Note what broke in this change's `decisions.md`.
+- [ ] 4.1 First real orchestrator run on a small feature: `decisions.md` gets grilling entries with `landed:`, an implementer stops on a `mine` choice, the reviewer runs Pass 3. Also confirm with one real payload that the frontmatter hook fires in `--agent` main-thread mode and that its payload has no `agent_id`. Note what broke in this change's `decisions.md`.

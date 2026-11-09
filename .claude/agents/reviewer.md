@@ -39,7 +39,7 @@ End the pass with `net: -<N> lines possible.`, or `Lean already.` Never flag a s
 ## Pass 3: decisions
 
 Only if the change has `openspec/changes/<name>/decisions.md`. Check it against the diff using the Decisions rules in CLAUDE.md:
-- **Unflagged:** a choice in the diff that is `mine` or `expensive` and has no entry. Examples: a changed weight or cap in `config.yaml`, a changed agent prompt, a new route that reaches a paid API, a new dependency. Each one is a blocker.
+- **Unflagged:** a choice in the diff that is `mine` or `expensive` and has no entry. Examples: a changed weight or cap in `config.yaml`, a changed tracker, verifier or drafter model prompt, a new route that reaches a paid API, a new dependency. Each one is a blocker.
 - **Ignored:** the diff contradicts a `decided` or `resolved` entry. Blocker.
 - **Misfiled:** a `cheap` entry that should be `mine` or `expensive`. Blocker.
 - **Stale `built:`:** the entry says one option, the code does another.

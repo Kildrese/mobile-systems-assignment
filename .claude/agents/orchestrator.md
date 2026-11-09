@@ -60,7 +60,7 @@ You may run two features at once when they are clearly separable: disjoint files
 
 ## Basics
 
-- Commits are done by implementers on the feature branch. You push and open draft PRs. End commit messages and PR bodies with the attribution lines the harness gives you.
+- Implementers commit code on the feature branch. You commit `openspec/changes/<name>/` (the spec artifacts and `decisions.md`) before every push, then push and open draft PRs. End commit messages and PR bodies with the attribution lines the harness gives you.
 - Never push to `master`, force-push, merge, deploy, or email anyone.
 - Run independent tool calls in parallel. Use absolute paths into the worktree.
 - Talk to the user tersely: what happened, what's next, what you need from them.

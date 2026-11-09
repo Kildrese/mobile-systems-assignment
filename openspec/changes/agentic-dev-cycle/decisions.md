@@ -91,3 +91,13 @@ Port of the trademark repo's orchestrator flow. Grilling on 2026-11-08.
 - built: A
 - decision: implementer, 2026-11-08: A.
 - landed: .claude/agents/spec-writer.md:6
+
+## D10 Review fixes
+- class: cheap
+- source: reviewer
+- status: resolved
+- question: Three should-fixes: "agent prompts" in the mine list is ambiguous; nobody commits the change folder; proposal Impact is stale.
+- options: A fix all three as the reviewer suggested
+- built: A
+- decision: orchestrator (main session), 2026-11-09: A. Claude Code agent prompts are not `mine`; the orchestrator commits the change folder before each push; Impact updated. Unverified hook behaviour in --agent mode moved into task 4.1.
+- landed: CLAUDE.md (Decisions); .claude/agents/reviewer.md (Pass 3); .claude/agents/orchestrator.md (Basics); proposal.md#Impact; tasks.md 4.1

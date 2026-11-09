@@ -26,6 +26,6 @@ None.
 ## Impact
 
 - **New files:** `.claude/agents/orchestrator.md`, `spec-writer.md`, `implementer.md`; `.claude/hooks/orchestrator-writes.sh` and `test-orchestrator-writes.sh`.
-- **Changed:** `.claude/agents/reviewer.md` (decisions pass), `CLAUDE.md` (Workflow line, Decisions section).
-- **No change** to application code, CI, `settings.json`, the Stop hook, `checker`, `security-reviewer` or `/ship`.
-- Already landed on this branch: `AGENT.md` moved to `docs/archive/assignment-homework-1b.md`, and `.claude/worktrees/` ignored.
+- **Changed:** `.claude/agents/reviewer.md` (decisions pass), `CLAUDE.md` (Workflow line, Decisions section); `checker.md`, `reviewer.md` and `security-reviewer.md` run in the worktree their prompt names (D8).
+- **No change** to application code, CI, `settings.json`, the Stop hook or `/ship`.
+- Also on this branch: `AGENT.md` moved to `docs/archive/assignment-homework-1b.md`, with its references in `CLAUDE.md`, `backend/CLAUDE.md` and a comment in `backend/tests_tracker/test_clients.py` updated; `.claude/worktrees/` ignored.

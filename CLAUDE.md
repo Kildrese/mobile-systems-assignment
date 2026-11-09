@@ -30,7 +30,7 @@ npm run api:check && npm run typecheck && npm test && npm run lint
 Every decision on a change goes in `openspec/changes/<name>/decisions.md` (for a small fix, `openspec/changes/fix-<topic>/decisions.md` alone): the user's grilling answers, choices the spec-writer made, and flags raised during implementation or review. Subagents read it before working and append to it; nothing about a decision lives only in a chat.
 
 **The user's decisions (class `mine`).** Never defaulted by a subagent:
-- Anything that changes what the tracker ranks or reports: ranking weights, K, budgets, caps and thresholds in `config.yaml`, agent prompts, the profile.
+- Anything that changes what the tracker ranks or reports: ranking weights, K, budgets, caps and thresholds in `config.yaml`, the tracker's, verifier's and drafter's model prompts, the profile. (Claude Code's `.claude/agents/` are not in this list.)
 - Who can trigger a paid API call (Groq, Tavily, Anthropic), and any new path to one.
 - A new pip or npm dependency, data source, job board or external service.
 - Production: Neon migrations, Vercel projects and env vars, GitHub secrets and workflows' triggers, deploys, merges, emailing anyone. (Commits, pushing `feat/*`/`fix/*` and draft PRs are fine.)
