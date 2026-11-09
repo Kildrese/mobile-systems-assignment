@@ -46,17 +46,35 @@ A table `tracker_dispatches` SHALL hold at most one row per UTC date (the date i
 - **THEN** it claims the date again and calls GitHub
 
 ### Requirement: Start the workflow on GitHub
-The claiming call SHALL send `POST https://api.github.com/repos/Kildrese/mobile-systems-assignment/actions/workflows/tracker.yml/dispatches` with body `{"ref": "master"}` and `Authorization: Bearer <GITHUB_DISPATCH_TOKEN>`, with a timeout of at most 10 seconds. On `204` it SHALL mark the date `dispatched` and answer `202` with status `dispatched`. On any other answer, a timeout, or a missing `GITHUB_DISPATCH_TOKEN`, it SHALL mark the date `failed` with GitHub's status and message (never the token), log the error, and answer `502`.
+The claiming call SHALL send `POST https://api.github.com/repos/Kildrese/mobile-systems-assignment/actions/workflows/tracker.yml/dispatches` with body `{"ref": "master"}` and `Authorization: Bearer <GITHUB_DISPATCH_TOKEN>`, with a timeout of at most 10 seconds. On `204` it SHALL mark the date `dispatched` and answer `202` with status `dispatched`. When the dispatch and its one retry (next requirement) fail, or `GITHUB_DISPATCH_TOKEN` is missing, it SHALL mark the date `failed` with GitHub's status and message (never the token), log the error, and answer `502`.
 
 #### Scenario: GitHub accepts
 - **WHEN** GitHub answers `204`
 - **THEN** the date's row is `dispatched` and the response is `202`
 
 #### Scenario: Token expired
-- **WHEN** GitHub answers `401`
+- **WHEN** GitHub answers `401` to the dispatch and to its retry
 - **THEN** the date's row is `failed` with `401` and GitHub's message, and the response is `502`
 
 #### Scenario: Token not configured
 - **WHEN** `GITHUB_DISPATCH_TOKEN` is not set
 - **THEN** GitHub is not called, the date's row is `failed`, and the response is `502`
 
+### Requirement: Retry a failed dispatch once
+When the dispatch fails (a timeout, a network error or any answer other than `204`) and `GITHUB_DISPATCH_TOKEN` is set, the same request SHALL wait 5 seconds and list the `workflow_dispatch` runs of `tracker.yml` created since 00:00 UTC that day (`GET .../actions/workflows/tracker.yml/runs`, timeout 10 seconds). If one exists, a dispatch went through: the route SHALL mark the date `dispatched` and answer `202` without dispatching again. If none exists, it SHALL add one to the attempts and dispatch once more with a timeout of at most 20 seconds, then record the result as above. If the runs can't be listed, it SHALL NOT retry and SHALL mark the date `failed`. The request SHALL dispatch at most twice and take under a minute. No new cron or schedule is added.
+
+#### Scenario: Timeout, then the retry succeeds
+- **WHEN** the dispatch times out, no run exists today, and the retry gets `204`
+- **THEN** GitHub got two dispatches, the row is `dispatched` with 2 attempts, and the response is `202`
+
+#### Scenario: Timeout, but the run started
+- **WHEN** the dispatch times out and a `workflow_dispatch` run of `tracker.yml` already exists today
+- **THEN** there is no second dispatch, the row is `dispatched` with 1 attempt, and the response is `202`
+
+#### Scenario: Timeout, then the retry fails
+- **WHEN** the dispatch times out, no run exists today, and the retry times out too
+- **THEN** the row is `failed` with 2 attempts and the retry's error, and the response is `502`
+
+#### Scenario: Runs can't be listed
+- **WHEN** the dispatch times out and listing today's runs fails
+- **THEN** there is no second dispatch, the row is `failed` with 1 attempt, and the response is `502`

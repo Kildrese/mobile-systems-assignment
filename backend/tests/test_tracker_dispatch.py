@@ -11,7 +11,8 @@ import respx
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
-from app.routers.internal import DISPATCH_URL
+from app.routers import internal
+from app.routers.internal import DISPATCH_URL, RUNS_URL
 from tests.conftest import Account, assert_error, auth
 
 PATH = "/api/internal/tracker-dispatch"
@@ -24,12 +25,24 @@ CRON = auth(SECRET)
 def _settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(get_settings(), "cron_secret", SECRET)
     monkeypatch.setattr(get_settings(), "github_dispatch_token", TOKEN)
+    monkeypatch.setattr(internal, "RETRY_WAIT", 0)
 
 
 @pytest.fixture
-def github():
+def mock_github():
     with respx.mock(assert_all_called=False) as mock:
-        yield mock.post(DISPATCH_URL)
+        yield mock
+
+
+@pytest.fixture
+def github(mock_github):
+    return mock_github.post(DISPATCH_URL)
+
+
+@pytest.fixture
+def runs(mock_github):
+    """Today's tracker runs, which the route lists before it retries. None by default."""
+    return mock_github.get(url__startswith=RUNS_URL).respond(json={"total_count": 0})
 
 
 def _rows(sql) -> list:
@@ -81,33 +94,64 @@ def test_dispatches_once_a_day(client, sql, github) -> None:
     assert github.call_count == 1
 
 
-def test_a_failed_day_can_be_claimed_again(client, sql, github) -> None:
+def test_a_failed_day_can_be_claimed_again(client, sql, github, runs) -> None:
     github.respond(401, json={"message": "Bad credentials"})
     response = client.get(PATH, headers=CRON)
     assert response.status_code == 502
     assert response.json() == {"status": "failed"}
-    assert _rows(sql) == [("failed", 1, "401: Bad credentials")]
+    assert _rows(sql) == [("failed", 2, "401: Bad credentials")]
 
     github.respond(204)
     assert client.get(PATH, headers=CRON).status_code == 202
+    assert github.call_count == 3
+    assert _rows(sql) == [("dispatched", 3, None)]
+
+
+def test_a_timeout_is_retried_once(client, sql, github, runs) -> None:
+    github.side_effect = [httpx.ReadTimeout("timed out"), httpx.Response(204)]
+    assert client.get(PATH, headers=CRON).status_code == 202
     assert github.call_count == 2
+    assert [call.request.extensions["timeout"]["read"] for call in github.calls] == [10, 20]
+    params = runs.calls.last.request.url.params
+    assert params["event"] == "workflow_dispatch"
+    assert params["created"].endswith("T00:00:00Z")
+    assert runs.calls.last.request.headers["Authorization"] == f"Bearer {TOKEN}"
     assert _rows(sql) == [("dispatched", 2, None)]
 
 
-def test_an_unreachable_github_fails_the_day(client, sql, github) -> None:
-    github.side_effect = httpx.ConnectTimeout("timed out")
+def test_a_timeout_with_a_run_today_is_not_dispatched_again(client, sql, github, runs) -> None:
+    github.side_effect = httpx.ReadTimeout("timed out")
+    runs.respond(json={"total_count": 1})
+    assert client.get(PATH, headers=CRON).status_code == 202
+    assert github.call_count == 1
+    assert _rows(sql) == [("dispatched", 1, None)]
+
+
+def test_a_timeout_then_a_failed_retry_fails_the_day(client, sql, github, runs) -> None:
+    github.side_effect = httpx.ReadTimeout("timed out")
     assert client.get(PATH, headers=CRON).status_code == 502
-    [(status, _, error)] = _rows(sql)
-    assert status == "failed"
-    assert error.startswith("ConnectTimeout")
+    assert github.call_count == 2
+    [(status, attempts, error)] = _rows(sql)
+    assert (status, attempts) == ("failed", 2)
+    assert error.startswith("ReadTimeout")
+
+
+def test_when_the_runs_cannot_be_listed_it_does_not_retry(client, sql, github, runs) -> None:
+    github.side_effect = httpx.ReadTimeout("timed out")
+    runs.side_effect = httpx.ReadTimeout("timed out")
+    assert client.get(PATH, headers=CRON).status_code == 502
+    assert github.call_count == 1
+    [(status, attempts, error)] = _rows(sql)
+    assert (status, attempts) == ("failed", 1)
+    assert error.endswith("(not retried: could not list today's runs)")
 
 
 def test_without_a_token_the_day_fails_and_github_is_not_called(
-    client, sql, github, monkeypatch
+    client, sql, mock_github, monkeypatch
 ) -> None:
     monkeypatch.setattr(get_settings(), "github_dispatch_token", None)
     assert client.get(PATH, headers=CRON).status_code == 502
-    assert not github.called
+    assert not mock_github.calls
     assert _rows(sql) == [("failed", 1, "GITHUB_DISPATCH_TOKEN is not set")]
 
 

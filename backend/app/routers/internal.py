@@ -5,7 +5,8 @@ document."""
 
 import logging
 import secrets
-from datetime import UTC, datetime
+import time
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 import httpx
@@ -22,14 +23,19 @@ logger = logging.getLogger("app")
 
 router = APIRouter(prefix="/api/internal", include_in_schema=False)
 
-DISPATCH_URL = (
-    "https://api.github.com/repos/Kildrese/mobile-systems-assignment"
-    "/actions/workflows/tracker.yml/dispatches"
+WORKFLOW_URL = (
+    "https://api.github.com/repos/Kildrese/mobile-systems-assignment/actions/workflows/tracker.yml"
 )
+DISPATCH_URL = f"{WORKFLOW_URL}/dispatches"
+RUNS_URL = f"{WORKFLOW_URL}/runs"
+# A failed dispatch is retried once in the same request, after a pause that also gives a
+# dispatch GitHub did accept (a timeout proves nothing) time to show up as a run. Worst case
+# 10 s + 5 s + 10 s + 20 s, well inside the function timeout and the 5-minute claim.
+RETRY_WAIT = 5
 
 # One statement, so the lock on the primary key decides which call owns the day: a new day,
 # a failed one, or a claim left by a call that died more than 5 minutes ago (the GitHub call
-# times out after 10 s, so a live claim is never taken over). No row back: someone has it.
+# calls take under a minute, so a live claim is never taken over). No row back: someone has it.
 CLAIM = text("""
     insert into tracker_dispatches (day, status, claimed_at, attempts)
     values (:day, 'claimed', now(), 1)
@@ -50,21 +56,19 @@ def _is_cron(authorization: str | None) -> bool:
     return secrets.compare_digest(authorization.encode(), f"Bearer {secret}".encode())
 
 
-def _dispatch() -> str | None:
+def _headers(token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+
+def _dispatch(token: str, timeout: float) -> str | None:
     """Start the workflow on GitHub. None on success, else what went wrong (never the token)."""
-    token = get_settings().github_dispatch_token
-    if not token:
-        return "GITHUB_DISPATCH_TOKEN is not set"
     try:
         response = httpx.post(
-            DISPATCH_URL,
-            json={"ref": "master"},
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-            timeout=10,
+            DISPATCH_URL, json={"ref": "master"}, headers=_headers(token), timeout=timeout
         )
     except httpx.HTTPError as err:
         return f"{type(err).__name__}: {err}"
@@ -77,6 +81,25 @@ def _dispatch() -> str | None:
     return f"{response.status_code}: {message}"
 
 
+def _ran_on(token: str, day: date) -> bool | None:
+    """Whether a dispatched tracker run exists for the UTC day; None if GitHub can't say."""
+    try:
+        response = httpx.get(
+            RUNS_URL,
+            params={
+                "event": "workflow_dispatch",
+                "created": f">={day.isoformat()}T00:00:00Z",
+                "per_page": 1,
+            },
+            headers=_headers(token),
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()["total_count"] > 0
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return None
+
+
 @router.get("/tracker-dispatch")
 def tracker_dispatch(db: Db, authorization: Annotated[str | None, Header()] = None) -> JSONResponse:
     if not _is_cron(authorization):
@@ -87,8 +110,22 @@ def tracker_dispatch(db: Db, authorization: Annotated[str | None, Header()] = No
     if claimed is None:
         return JSONResponse({"status": "already_dispatched"})
 
-    error = _dispatch()
     dispatch = db.get_one(models.TrackerDispatch, day)
+    token = get_settings().github_dispatch_token
+    error = _dispatch(token, timeout=10) if token else "GITHUB_DISPATCH_TOKEN is not set"
+    if error and token:
+        # Retry once, but only once GitHub confirms no run started today: a timed-out
+        # dispatch may still have been accepted, and a second run spends twice on paid APIs.
+        logger.warning("Tracker dispatch for %s failed, retrying: %s", day, error)
+        time.sleep(RETRY_WAIT)
+        ran = _ran_on(token, day)
+        if ran:
+            error = None
+        elif ran is None:
+            error = f"{error} (not retried: could not list today's runs)"
+        else:
+            dispatch.attempts += 1
+            error = _dispatch(token, timeout=20)
     dispatch.status = "failed" if error else "dispatched"
     dispatch.error = error
     db.commit()
