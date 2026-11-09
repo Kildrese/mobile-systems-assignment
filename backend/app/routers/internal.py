@@ -93,20 +93,24 @@ def _dispatch(token: str, read: float) -> str | None:
 
 
 def _ran_on(token: str, day: date) -> bool | None:
-    """Whether a dispatched tracker run exists for the UTC day; None if GitHub can't say."""
+    """Whether a cron-started tracker run, not cancelled, exists for the UTC day; None if
+    GitHub can't say. Manual runs don't count: they never stand in for the day's cron run."""
     try:
         response = httpx.get(
             RUNS_URL,
             params={
                 "event": "workflow_dispatch",
                 "created": f">={day.isoformat()}T00:00:00Z",
-                "per_page": 1,
+                "per_page": 100,
             },
             headers=_headers(token),
             timeout=_timeout(RUNS_READ),
         )
         response.raise_for_status()
-        return response.json()["total_count"] > 0
+        return any(
+            run["display_title"].endswith("(cron)") and run.get("conclusion") != "cancelled"
+            for run in response.json()["workflow_runs"]
+        )
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
         return None
 
@@ -126,7 +130,7 @@ def tracker_dispatch(db: Db, authorization: Annotated[str | None, Header()] = No
     token = get_settings().github_dispatch_token
     error = _dispatch(token, DISPATCH_READ) if token else "GITHUB_DISPATCH_TOKEN is not set"
     if error and token:
-        # Retry once, but only once GitHub confirms no run started today: a timed-out
+        # Retry once, but only once GitHub confirms no cron run started today: a timed-out
         # dispatch may still have been accepted, and a second run spends twice on paid APIs.
         logger.warning("Tracker dispatch for %s failed, retrying: %s", day, error)
         time.sleep(RETRY_WAIT)

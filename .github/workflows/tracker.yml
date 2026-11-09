@@ -36,8 +36,9 @@ permissions:
   contents: read
 
 jobs:
-  # Another cron run already started today, earlier than this one: skip. Run numbers only
-  # grow, so of two cron runs created together exactly one goes on. If GitHub can't be
+  # Another cron run already started today, earlier than this one: skip. A cancelled one
+  # doesn't count (it never did the day's work). Run numbers only grow, so of two cron runs
+  # created together exactly one goes on. If GitHub can't be
   # asked, the job fails and nothing runs (never risk a second paid run).
   guard:
     runs-on: ubuntu-latest
@@ -55,8 +56,9 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           earlier=$(gh api -X GET "repos/$REPO/actions/workflows/tracker.yml/runs" \
-            -f event=workflow_dispatch -f created=">=$(date -u +%F)" -F per_page=100 \
+            -f event=workflow_dispatch -f created=">=$(date -u +%FT00:00:00Z)" -F per_page=100 \
             --jq "[.workflow_runs[] | select(.display_title | endswith(\"(cron)\"))
+                   | select(.conclusion != \"cancelled\")
                    | select(.run_number < $RUN_NUMBER)] | length")
           echo "Earlier cron runs today: $earlier"
           echo "skip=$([ "$earlier" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"

@@ -80,4 +80,22 @@ Evidence (prod check 2026-11-09): on Nov 6 the cron's dispatch call to GitHub fa
 - decision: implementer, 2026-11-09: (a) A, (b) A, (c) A
 - landed: .github/workflows/tracker.yml (guard job); specs/report-publishing#Requirement: Daily scheduled run
 
+## D9 Guard ignores cancelled runs
+- class: cheap
+- source: reviewer
+- status: resolved
+- question: The guard's jq filter (.github/workflows/tracker.yml:58-59) doesn't look at `.conclusion`. If GitHub cancels a pending cron run in the concurrency group (e.g. a manual run in progress plus a double dispatch), the next cron run's guard still finds the cancelled run and skips, and that day has no cron run at all.
+- options: A add `select(.conclusion != "cancelled")` / B leave it
+- decision: orchestrator, 2026-11-09: A. It fits D5's "already started". Also make the date filter explicit UTC (`>=YYYY-MM-DDT00:00:00Z`, like the route).
+- landed: .github/workflows/tracker.yml (guard job: `select(.conclusion != "cancelled")`, `created=>=%FT00:00:00Z`); specs/report-publishing#Requirement: Daily scheduled run, #Scenario: Second cron run on one day, #Scenario: Earlier cron run was cancelled; docs/deployment.md step 6. jq filter checked by hand on a sample list (cancelled cron run ignored, live one counted).
+
+## D10 Route's run check counts only cron runs
+- class: cheap
+- source: reviewer
+- status: resolved
+- question: `_ran_on` (backend/app/routers/internal.py:95-111) counts any workflow_dispatch run today (per_page 1). After a manual run earlier that day, a dispatch that really failed looks like it went through, and the cron run for that day is lost. docs/deployment.md step 5 assumes the same.
+- options: A count only cron-tagged runs (display_title ends in "(cron)", per_page 100), as the guard does, and fix docs step 5 / B leave it
+- decision: orchestrator, 2026-11-09: A. D5's guard already rules out a double cron run, so retrying past a manual run is safe. Add a test: a manual run today plus a failed dispatch → retry.
+- landed: backend/app/routers/internal.py (_ran_on: per_page 100, `(cron)` runs not cancelled, matching D9's guard); specs/tracker-dispatch#Requirement: Retry a failed dispatch once, #Scenario: Timeout, but the run started, #Scenario: Only a manual or cancelled run today; docs/deployment.md step 5; backend/tests/test_tracker_dispatch.py::test_a_manual_or_cancelled_run_today_does_not_stop_the_retry
+
 Constraints: keep the whole cron request well inside the function timeout. CI tests fake GitHub, with no network: cover a timeout followed by a successful retry, a timeout where a run already exists (no second dispatch), and a timeout then a failed retry (row `failed`, attempts=2). Update openspec/specs/tracker-dispatch/spec.md with a requirement and scenarios for the retry. If this needs a migration, stop and log it as `expensive`.

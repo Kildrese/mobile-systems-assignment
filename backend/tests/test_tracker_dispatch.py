@@ -42,7 +42,18 @@ def github(mock_github):
 @pytest.fixture
 def runs(mock_github):
     """Today's tracker runs, which the route lists before it retries. None by default."""
-    return mock_github.get(url__startswith=RUNS_URL).respond(json={"total_count": 0})
+    return mock_github.get(url__startswith=RUNS_URL).respond(json=_runs())
+
+
+def _runs(*runs: tuple[str, str | None]) -> dict:
+    """A runs list from (source, conclusion) pairs, named as tracker.yml's run-name does."""
+    return {
+        "total_count": len(runs),
+        "workflow_runs": [
+            {"display_title": f"Internship tracker ({source})", "conclusion": conclusion}
+            for source, conclusion in runs
+        ],
+    }
 
 
 def _rows(sql) -> list:
@@ -123,16 +134,32 @@ def test_a_timeout_is_retried_once(client, sql, github, runs) -> None:
     params = runs.calls.last.request.url.params
     assert params["event"] == "workflow_dispatch"
     assert params["created"].endswith("T00:00:00Z")
+    assert params["per_page"] == "100"
     assert runs.calls.last.request.headers["Authorization"] == f"Bearer {TOKEN}"
     assert _rows(sql) == [("dispatched", 2, None)]
 
 
 def test_a_timeout_with_a_run_today_is_not_dispatched_again(client, sql, github, runs) -> None:
     github.side_effect = httpx.ReadTimeout("timed out")
-    runs.respond(json={"total_count": 1})
+    runs.respond(json=_runs(("cron", None)))
     assert client.get(PATH, headers=CRON).status_code == 202
     assert github.call_count == 1
     assert _rows(sql) == [("dispatched", 1, None)]
+
+
+@pytest.mark.parametrize(
+    "today",
+    [[("manual", "success")], [("cron", "cancelled")], [("manual", None), ("cron", "cancelled")]],
+    ids=["manual run", "cancelled cron run", "both"],
+)
+def test_a_manual_or_cancelled_run_today_does_not_stop_the_retry(
+    client, sql, github, runs, today
+) -> None:
+    github.side_effect = [httpx.ReadTimeout("timed out"), httpx.Response(204)]
+    runs.respond(json=_runs(*today))
+    assert client.get(PATH, headers=CRON).status_code == 202
+    assert github.call_count == 2
+    assert _rows(sql) == [("dispatched", 2, None)]
 
 
 def test_a_timeout_then_a_failed_retry_fails_the_day(client, sql, github, runs) -> None:

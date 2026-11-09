@@ -4,7 +4,7 @@
 The daily scheduled tracker run on GitHub Actions, the SQLite state carried between runs, and publishing each finished run into Postgres as one `tracker_runs` row and one `internship_offers` row per offer.
 ## Requirements
 ### Requirement: Daily scheduled run
-The tracker SHALL run once a day. A Vercel Cron Job on the backend project SHALL call the internal dispatch route (see `tracker-dispatch`) daily between 09:00 and 09:59 UTC, and that route SHALL start the workflow through GitHub's `workflow_dispatch` endpoint. The workflow SHALL NOT have a `schedule` trigger, so GitHub's scheduler can't add a second run on the same day. Repository writers MAY also start a run manually from the Actions tab. The workflow SHALL take a `source` input (default `manual`; the dispatch route sends `cron`) and show it in the run's name. Its first job SHALL, for a `cron` run only, list the day's (UTC) `workflow_dispatch` runs of `tracker.yml` with the job's `GITHUB_TOKEN` limited to `actions: read`, and skip all of the run's work when another `cron` run with a lower run number started that day. If the runs can't be listed, the cron run SHALL fail without running the tracker. A `manual` run SHALL never be skipped. At most one run SHALL be in progress at a time. The job's timeout SHALL exceed the policy's `limits.max_wall_seconds` by enough for setup, saving state and publishing (at least 5 minutes), so a run is never cut off by the job before its own wall-clock budget ends. The run's SQLite state SHALL be restored before the run and saved after it, so each run continues from the previous one. After publishing, the workflow SHALL run `python -m app.draft_new`, and a failure of that step SHALL NOT fail the job.
+The tracker SHALL run once a day. A Vercel Cron Job on the backend project SHALL call the internal dispatch route (see `tracker-dispatch`) daily between 09:00 and 09:59 UTC, and that route SHALL start the workflow through GitHub's `workflow_dispatch` endpoint. The workflow SHALL NOT have a `schedule` trigger, so GitHub's scheduler can't add a second run on the same day. Repository writers MAY also start a run manually from the Actions tab. The workflow SHALL take a `source` input (default `manual`; the dispatch route sends `cron`) and show it in the run's name. Its first job SHALL, for a `cron` run only, list the `workflow_dispatch` runs of `tracker.yml` created since 00:00 UTC that day with the job's `GITHUB_TOKEN` limited to `actions: read`, and skip all of the run's work when another `cron` run with a lower run number, not cancelled, started that day. If the runs can't be listed, the cron run SHALL fail without running the tracker. A `manual` run SHALL never be skipped. At most one run SHALL be in progress at a time. The job's timeout SHALL exceed the policy's `limits.max_wall_seconds` by enough for setup, saving state and publishing (at least 5 minutes), so a run is never cut off by the job before its own wall-clock budget ends. The run's SQLite state SHALL be restored before the run and saved after it, so each run continues from the previous one. After publishing, the workflow SHALL run `python -m app.draft_new`, and a failure of that step SHALL NOT fail the job.
 
 #### Scenario: Daily run
 - **WHEN** the cron calls the dispatch route and it claims the day
@@ -15,8 +15,12 @@ The tracker SHALL run once a day. A Vercel Cron Job on the backend project SHALL
 - **THEN** its only trigger is `workflow_dispatch`
 
 #### Scenario: Second cron run on one day
-- **WHEN** a `cron` run starts and an earlier `cron` run of `tracker.yml` was created the same UTC day
+- **WHEN** a `cron` run starts and an earlier `cron` run of `tracker.yml`, not cancelled, was created the same UTC day (since 00:00 UTC)
 - **THEN** the guard skips the run: the tracker doesn't run and nothing is published or drafted
+
+#### Scenario: Earlier cron run was cancelled
+- **WHEN** a `cron` run starts and the only earlier `cron` run that UTC day was cancelled
+- **THEN** the guard doesn't skip it, and the run does the day's work
 
 #### Scenario: Two cron runs created together
 - **WHEN** two `cron` runs were created the same UTC day
