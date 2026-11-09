@@ -25,7 +25,7 @@ Apply after `report-top-k-changes`.
 
 - [x] 4.1 Add `webUrl()` (the URL if http(s), else null) with a Vitest test (`javascript:`, `data:`, relative and https URLs), and use it for Apply (design D5)
 - [x] 4.2 Let `InternshipReport` take an optional run id. Add `/internships/history` and `/internships/runs/:id` behind the login guard, with the links from `/internships`
-- [ ] 4.3 (needs a browser; `web-url.test.ts` covers the `javascript:` URL) Check in the browser with a published run whose log holds the test injection page (`tests_tracker/fixtures/injection.html`) and a rejected `javascript:` URL: nothing runs, and both show as text
+- [x] 4.3 (needs a browser; `web-url.test.ts` covers the `javascript:` URL) Check in the browser with a published run whose log holds the test injection page (`tests_tracker/fixtures/injection.html`) and a rejected `javascript:` URL: nothing runs, and both show as text
 
 ## 5. Docs
 

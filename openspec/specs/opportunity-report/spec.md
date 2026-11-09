@@ -4,10 +4,10 @@
 Ranking in code, the checks on the Editor's summaries, and the report that compares this run's top K with the last run's: New since last run, Still in top K, Dropped and Also open.
 ## Requirements
 ### Requirement: Ranking in code
-Code SHALL score every open opportunity from config weights over role type, term match, location match, recency (first seen, posting date), focus and fit. Focus is whether the title names a role the search is for, by whole-word match against `ranking.focus_keywords` (software, ML, data, ...). Fit is the opportunity's stored fit rating divided by 3, weighted by `ranking.weights.fit` (default 3); an opportunity without a rating scores 0.5, like any unknown field. Ties are broken by first-seen time, then company name. The score SHALL be deterministic for the same records, ratings and config. Work-authorization wording SHALL NOT affect it. The top K are the K highest-scoring open opportunities.
+Code SHALL score every open opportunity from config weights over role type, term match, location match, recency (first seen, posting date), focus and fit. Focus is whether the title names a role the search is for, by whole-word match against `ranking.focus_keywords` (software, ML, data, ...). Fit is the opportunity's stored fit rating divided by 3, weighted by `ranking.weights.fit` (default 3); an opportunity without a rating scores 0.5, like any unknown field. A field whose stored verdict is `unsupported` SHALL score as `unknown`. `unreachable` and `unverified` SHALL NOT change a score. Ties are broken by first-seen time, then company name. The score SHALL be deterministic for the same records, ratings, verdicts and config. Work-authorization wording SHALL NOT affect it. The top K are the K highest-scoring open opportunities.
 
 #### Scenario: Deterministic ranking
-- **WHEN** ranking runs twice on unchanged records, ratings and config
+- **WHEN** ranking runs twice on unchanged records, ratings, verdicts and config
 - **THEN** both produce the same order
 
 #### Scenario: Off-focus internship
@@ -21,6 +21,14 @@ Code SHALL score every open opportunity from config weights over role type, term
 #### Scenario: Unrated opportunity
 - **WHEN** an opportunity has no fit rating
 - **THEN** its fit criterion scores half of `ranking.weights.fit`
+
+#### Scenario: Unsupported term
+- **WHEN** an opportunity's term "Summer 2027" is verified `unsupported`
+- **THEN** its term criterion scores half of `ranking.weights.term`
+
+#### Scenario: Unreachable page
+- **WHEN** an opportunity's claims are all `unreachable`
+- **THEN** its score is the same as without verification
 
 ### Requirement: Editor agent
 The Editor agent SHALL write, for each opportunity whose summary the report shows (the first K new opportunities by rank, and the current top K), a summary of at most 3 sentences on what the role is and why it matches the configured criteria. Its tools SHALL be `get_opportunities` and `finish(summaries)`. It SHALL NOT change ranks, statuses, sources or records. A summary SHALL be accepted only when it cites the opportunity's id. If the Editor stage is skipped or runs out of budget, the report SHALL show the record's fields without a summary.
@@ -68,4 +76,15 @@ Each opportunity in the report SHALL show at least one source URL, and every quo
 #### Scenario: Summary adds a salary
 - **WHEN** the Editor's summary mentions "$45/hour", but the record has no compensation
 - **THEN** the summary is rejected, and the report shows the fields without a summary for that opportunity
+
+### Requirement: Verdicts in the report
+For each opportunity in the top K, the report SHALL list its claims with their label: `supported`, `unsupported`, `unreachable` or `unverified`. A supported claim SHALL show its evidence as a quote. When the Verify stage failed or was skipped, the report header SHALL say so and name the failed service.
+
+#### Scenario: Supported claim
+- **WHEN** the pay claim is supported with the evidence "$55/hour"
+- **THEN** the report shows the claim, the label `supported` and the quoted evidence
+
+#### Scenario: Verifier down
+- **WHEN** the Verify stage failed
+- **THEN** the header says the report is partial because `verifier` failed, and every claim shows `unverified`
 
