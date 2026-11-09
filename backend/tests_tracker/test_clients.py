@@ -85,7 +85,7 @@ def test_chat_daily_429_is_terminal_without_retry(policy, trace):
         chat_client(policy, trace).chat([], None, step=1)
     assert err.value.kind == "quota"
     assert route.call_count == 1
-    # The trace says what ran out, not only that something did (AGENT.md quotes it).
+    # The trace says what ran out, not only that something did (the Homework 1B write-up quotes it).
     (event,) = read_trace(trace.path)
     assert event["reason"] == "quota"
     assert event["detail"] == err.value.message

@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-FastAPI backend (`backend/app`), agentic tracker (`backend/tracker`), verifier and CV/cover-letter drafter services (`services/verifier`, `services/drafter`), Vite/React frontend (`frontend`). Deployed on Vercel with Neon Postgres. Setup and layout: [docs/development.md](docs/development.md). The tracker's design: [AGENT.md](AGENT.md).
+FastAPI backend (`backend/app`), agentic tracker (`backend/tracker`), verifier and CV/cover-letter drafter services (`services/verifier`, `services/drafter`), Vite/React frontend (`frontend`). Deployed on Vercel with Neon Postgres. Setup and layout: [docs/development.md](docs/development.md). The tracker's design, as submitted for Homework 1B: [docs/archive/assignment-homework-1b.md](docs/archive/assignment-homework-1b.md).
 
 ## Commands (the same ones CI runs, see `.github/workflows/ci.yml`)
 
@@ -22,6 +22,39 @@ npm run api:check && npm run typecheck && npm test && npm run lint
 3. Before the PR: the `checker` agent runs CI's commands, then the `reviewer` (correctness vs. the OpenSpec change, plus over-engineering) and, when the diff touches auth, prompts, fetching, secrets or paid API calls, the `security-reviewer`.
 4. Shipping is `/ship <PR>` in the main session, never a subagent: migration order, secrets, merge, post-deploy checks. Production migrations, GitHub secrets and the merge are the user's steps.
 5. After it's live: `/opsx:archive`.
+
+`claude --agent orchestrator` runs steps 1–3 delegated: grilling → `spec-writer` → `implementer`(s) → `checker` → `reviewer` (+ `security-reviewer`) → second grilling on the flags → fresh implementers apply the answers → draft PR. Step 4 stays yours.
+
+## Decisions
+
+Every decision on a change goes in `openspec/changes/<name>/decisions.md` (for a small fix, `openspec/changes/fix-<topic>/decisions.md` alone): the user's grilling answers, choices the spec-writer made, and flags raised during implementation or review. Subagents read it before working and append to it; nothing about a decision lives only in a chat.
+
+**The user's decisions (class `mine`).** Never defaulted by a subagent:
+- Anything that changes what the tracker ranks or reports: ranking weights, K, budgets, caps and thresholds in `config.yaml`, the tracker's, verifier's and drafter's model prompts, the profile. (Claude Code's `.claude/agents/` are not in this list.)
+- Who can trigger a paid API call (Groq, Tavily, Anthropic), and any new path to one.
+- A new pip or npm dependency, data source, job board or external service.
+- Production: Neon migrations, Vercel projects and env vars, GitHub secrets and workflows' triggers, deploys, merges, emailing anyone. (Commits, pushing `feat/*`/`fix/*` and draft PRs are fine.)
+- Reversing a decision recorded in `openspec/specs/` or `docs/`.
+
+**Classes and what they trigger:**
+- `mine`: stop that branch of work (commit what is done), write the entry with `status: open`, report `blocked: D<n>`. Other work continues.
+- `expensive` (not the user's, but later work builds on it: module layout, a table's shape, an API contract): same stop; the orchestrator decides.
+- `cheap`: pick the default, write the entry with `status: resolved`, keep going.
+- Unsure between two classes: take the higher one.
+
+Entry format:
+
+```md
+## D4 Fit weight
+- class: mine              # mine | expensive | cheap
+- source: implementer, task 2.1   # grilling | spec-writer | implementer | reviewer
+- status: open             # open | decided (user) | resolved (orchestrator or subagent)
+- question: Fit 3 lets an unrated offer outrank a rated one on 2 test fixtures. Lower it?
+- options: A keep 3 / B 2 / C rate before ranking
+- built: A                 # what the branch does now; never shown to the user before they choose
+- decision:                # who, what, date
+- landed: backend/tracker/ranking.py:40; specs/internship-pipeline#Scenario: fit
+```
 
 ## Gotchas
 

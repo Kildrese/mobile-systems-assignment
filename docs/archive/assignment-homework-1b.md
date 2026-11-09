@@ -1,4 +1,4 @@
-# AGENT.md
+# Assignment Homework 1B: the agentic tracker
 
 The tracker follows Summer 2027 software and ML internships at NYC startups (K = 5). It is a fixed pipeline of four hand-written agents and five code stages, plus a verifier agent that runs as its own service and is reached only over HTTP:
 
@@ -11,7 +11,7 @@ Scout (agent) -> Collect (code) -> Curate (agent) -> Liveness (code) -> Assess (
 
 The runs below predate the verifier. Their numbers describe the pipeline without the Verify stage.
 
-Unless a number says otherwise, it is from run 1, `20261005T170512Z-2187` ([report](reports/run1.md), [trace](traces/20261005T170512Z-2187.jsonl)). It was the first production run after the tracker's tables and state were reset, started by hand from the daily workflow with empty state. Run 2, `20261006T110639Z-da8c` ([report](reports/run2.md), [trace](traces/20261006T110639Z-da8c.jsonl)), is the next production run, 18 hours later, started the same way on top of run 1's state. Where run 2 differs, it shows what a day of carried-over state changes.
+Unless a number says otherwise, it is from run 1, `20261005T170512Z-2187` ([report](../../reports/run1.md), [trace](../../traces/20261005T170512Z-2187.jsonl)). It was the first production run after the tracker's tables and state were reset, started by hand from the daily workflow with empty state. Run 2, `20261006T110639Z-da8c` ([report](../../reports/run2.md), [trace](../../traces/20261006T110639Z-da8c.jsonl)), is the next production run, 18 hours later, started the same way on top of run 1's state. Where run 2 differs, it shows what a day of carried-over state changes.
 
 ## 1. Workflow vs. agent
 

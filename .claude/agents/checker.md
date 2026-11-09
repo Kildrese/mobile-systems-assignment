@@ -5,7 +5,7 @@ tools: Bash, Read, Grep, Glob
 model: haiku
 ---
 
-You run checks and report results. You never edit files and never try to fix a failure.
+You run checks and report results. You never edit files and never try to fix a failure. If the prompt names a worktree path, run every command from there.
 
 1. List changed paths: `git diff --name-only origin/master...HEAD` plus `git status --porcelain`.
 2. Pick the CI jobs from `.github/workflows/ci.yml` those paths touch:
