@@ -55,4 +55,13 @@ Archive the OpenSpec changes whose code is merged and whose production steps are
 - question: The 5 new specs (claim-verification, applicant-profile, application-drafter, application-drafts, tracker-dispatch) keep "Purpose: TBD - created by archiving change ...". Fill them?
 - options: A one-line purpose each, from the archived proposal / B leave TBD
 - decision: orchestrator, 2026-11-09: A.
+
+## D7 Archive despite production findings
+- class: mine
+- source: grilling
+- status: decided
+- question: Read-only prod check (2026-11-09): Nov 6 dispatch failed (ReadTimeout to GitHub, never retried, no run that day); runs ended partial on editor.max_steps (Nov 9) and scout.max_steps (Nov 3, 5); Scout ended complete on the last two runs; no "Waiting for review" backlog since Nov 2. Migration at head, drafter/verifier/backend deploys Ready. Hold tracker-daily-trigger and complete-daily-runs?
+- options: A archive anyway, follow up separately / B hold both
+- decision: Kilian, 2026-11-09: A. Follow-ups: fix-dispatch-retry (retry a failed day); read-only investigation of the step-cap partials before any config.yaml change. Curate-cheaper not needed (no backlog).
+- landed: PR #38
 - landed: openspec/specs/{claim-verification,applicant-profile,application-drafter,application-drafts,tracker-dispatch}/spec.md, ## Purpose
