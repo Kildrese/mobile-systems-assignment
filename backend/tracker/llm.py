@@ -108,6 +108,25 @@ def _is_model_output_error(response: httpx.Response) -> bool:
     return response.status_code == 400 and any(c in response.text for c in MODEL_OUTPUT_ERRORS)
 
 
+def _provider_error(response: httpx.Response, api_key: str) -> dict[str, str]:
+    """Only the error's code and message, for the trace: never the body's other fields.
+
+    Groq's body also carries `failed_generation`, the model's own output, which stays out.
+    The key is removed before truncating, so a cut can't leave part of it behind.
+    """
+    try:
+        error = response.json().get("error") or {}
+    except (ValueError, AttributeError):
+        return {}
+    if not isinstance(error, dict):
+        return {}
+    return {
+        k: str(error[k]).replace(api_key, "[redacted]")[:500]
+        for k in ("code", "message")
+        if error.get(k) is not None
+    }
+
+
 class ChatClient:
     def __init__(
         self,
@@ -126,6 +145,7 @@ class ChatClient:
         self.model = model or policy.model
         self.provider = policy.model_provider(self.model.provider)
         self.url = policy.providers[self.model.provider].base_url.rstrip("/") + "/chat/completions"
+        self._api_key = api_key
         self._headers = {"Authorization": f"Bearer {api_key}"}
         self._client = client or httpx.Client(timeout=self.model.timeout_seconds)
         self._sleep = sleep
@@ -180,6 +200,7 @@ class ChatClient:
                     "latency_ms": latency_ms,
                     "http_status": response.status_code,
                     "reason": "model_output_rejected",
+                    "provider_error": _provider_error(response, self._api_key),
                 }
             )
             raise ModelOutputError(response.text[:500])

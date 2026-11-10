@@ -38,7 +38,7 @@ search:
 
 # Hard caps for the whole run. The agents' own limits below must fit inside them.
 limits:
-  max_steps: 70  # agents 59, verifier 5 requests x 2
+  max_steps: 74  # agents 63, verifier 5 requests x 2
   max_searches: 6
   max_fetches: 70  # agents 30, verifier 5 requests x 6 (redirect hops count)
   max_tokens: 235000  # agents 170,000, verifier 5 requests x 12,000
@@ -99,7 +99,7 @@ agents:
     # All summaries go in one finish call, and gpt-oss's reasoning counts against the cap.
     model: {max_output_tokens: 2048}
     tools: [get_opportunities]
-    limits: {max_steps: 6, max_tokens: 25000}
+    limits: {max_steps: 10, max_tokens: 25000}
     instructions: |
       You write short, factual summaries of internship opportunities for a student
       searching for {topic}. Use only facts in the record. Never add pay, dates or
