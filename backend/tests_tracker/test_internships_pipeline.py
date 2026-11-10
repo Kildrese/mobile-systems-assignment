@@ -769,6 +769,10 @@ def test_committed_configs_load():
     # The Assessor has no tools besides finish, and rates against the committed profile.
     assert policy.agents["assessor"].tools == ()
     assert [s.name for s in wiring.stages(policy)][4:6] == ["assess", "rank"]
+    # The Editor's 10 steps fit the run's 74 with the other caps unchanged.
+    assert policy.agents["editor"].limits.max_steps == 10
+    assert policy.limits.max_steps == 74
+    wiring.validate(policy)
     # The smoke config never shares the graded runs' state.
     smoke = load_policy(root / "config.smoke.yaml")
     assert wiring.stages(smoke)[0].name == "scout"

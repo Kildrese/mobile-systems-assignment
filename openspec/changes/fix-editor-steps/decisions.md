@@ -14,7 +14,7 @@ Evidence (read-only look at prod runs on 2026-11-09: Neon tracker_runs/tracker_a
 - question: The Editor runs out of steps on Groq 400s, and those days publish no summaries. Raise its cap?
 - options: A 8 / B 10 / C 12 / D leave 6
 - decision: Kilian, 2026-11-09: B, 10. Stopgap until the 400s are understood (D2). Scout and run caps are unchanged.
-- landed: not landed, blocked on D3 (config.yaml still says 6)
+- landed: config.yaml agents.editor.limits.max_steps 10; backend/tests_tracker/test_internships_pipeline.py::test_committed_configs_load
 
 ## D2 Keep Groq's 400 reason in the trace
 - class: mine
@@ -28,9 +28,9 @@ Evidence (read-only look at prod runs on 2026-11-09: Neon tracker_runs/tracker_a
 ## D3 Editor at 10 doesn't fit the run's step cap
 - class: mine
 - source: implementer, D1
-- status: open
+- status: decided
 - question: The internship use case checks that the agents' step caps plus the verifier's (max_requests x max_steps) fit in limits.max_steps (wiring.validate). Today 12 + 35 + 6 + 6 + 5x2 = 69 of 70. With the Editor at 10 it is 73, so every run fails with "limits.max_steps: agents and verifier add up to 73, more than 70" before the first call. D1 said the run cap is unchanged. Which gives?
 - options: A run cap 70 -> 74 (the run's real step use stays the same; the cap only reserves room) / B Editor 7, the most that fits under 70 / C take 4 steps from another cap, e.g. Assessor 6 -> 2 or Curator 35 -> 31 (changes what gets curated or rated) / D verifier max_requests 5 -> 3 (fewer top-K claims checked)
-- built: none; config.yaml still has the Editor at 6
-- decision:
-- landed:
+- built: A
+- decision: Kilian, 2026-11-09: A. Run cap 70 -> 74, Editor 10; no other cap changes. This supersedes "run caps are unchanged" in D1.
+- landed: config.yaml limits.max_steps 74; backend/tests_tracker/test_internships_pipeline.py::test_committed_configs_load (runs wiring.validate on the shipped config)
