@@ -34,3 +34,21 @@ Evidence (read-only look at prod runs on 2026-11-09: Neon tracker_runs/tracker_a
 - built: A
 - decision: Kilian, 2026-11-09: A. Run cap 70 -> 74, Editor 10; no other cap changes. This supersedes "run caps are unchanged" in D1.
 - landed: config.yaml limits.max_steps 74; backend/tests_tracker/test_internships_pipeline.py::test_committed_configs_load (runs wiring.validate on the shipped config)
+
+## D4 Document provider_error
+- class: cheap
+- source: reviewer
+- status: resolved
+- question: docs/tracker.md:122 describes the Groq 400 handling but not the new provider_error trace field.
+- options: A add one sentence / B leave it
+- decision: orchestrator, 2026-11-09: A.
+- landed: docs/tracker.md (Groq 400 paragraph, after the error-class table)
+
+## D5 Follow-ups out of this fix's scope
+- class: cheap
+- source: reviewer, security-reviewer
+- status: resolved
+- question: Both pre-date this branch. (1) llm.py:206 raises ModelOutputError(response.text[:500]), which includes Groq's failed_generation; it reaches the agent retry prompt (agents.py:165) and the synthesis trace detail (loop.py:258-259). (2) trace.py truncates a field at 2000 chars before redacting the line, so a key cut across that limit could leave a prefix in a published trace. Fix here?
+- options: A separate fix after this one ships / B fold in here
+- decision: orchestrator, 2026-11-09: A. Keeps this diff to D1–D3; raised to Kilian as a proposed fix-trace-redaction.
+- landed:
