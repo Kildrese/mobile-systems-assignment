@@ -20,3 +20,10 @@
 - [x] 4.1 In `verifying.py`, `Client.send` takes the run's `budget` from `verify_top_k`. After an attempt that got `502` or `504` or timed out, charge a full share with `_charge`. Before each retry, stop with `VerifierFailed("no_budget_share", ..., stop_all=True)` when `_fits` says another full share doesn't fit. `VerifierFailed.lost` counts the charged attempts, so `verify_top_k` adds the "never answered" share only when `lost` is 0 (D9).
 - [x] 4.2 Tests: "Timeout then stored copy" and "Gateway error then success" (502 and 504) charge one share plus the answer's usage; three lost copies are charged three shares and no more; "No share left for a retry" (502 and 504): one attempt, no sleep, no request for the next opportunity, claims `unverified`.
 - [x] 4.3 Spec: the requirement's charging sentence, the two scenarios above, and the new scenario "No share left for a retry". Docs: `ORCHESTRATION.md` Q2 and Q3, `docs/tracker.md` "Verification".
+
+## 5. Charge every failed attempt that reached the verifier (D11, D12)
+
+- [x] 5.1 In `verifying.py`, charge a full share after every attempt that reached the verifier and got no valid answer, the last one included. Exempt `400`, `401`, `409`, `httpx.ConnectError` and a `503` with error code `in_progress`. Drop `VerifierFailed.lost` and the "never answered" fallback share in `verify_top_k`. `budget` is required in `Client.send` and `_send`.
+- [x] 5.2 Tests: timeout on every attempt = one share per attempt; connection refused on every attempt = nothing; `503` `in_progress` not charged; `400`/`409` free, `500` one share; "No share left for a retry" also for a timeout, a `503` `rate_limited` and a dropped connection.
+- [x] 5.3 Spec: the charging sentences and scenarios of "Verify stage calls the verifier"; a MODIFIED "Verifier budget share" with "Never answered" as one share per charged attempt and a new "Never connected".
+- [x] 5.4 Docs: `ORCHESTRATION.md` Q2 and Q3, `docs/tracker.md` "Verification", line refs.
