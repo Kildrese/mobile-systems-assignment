@@ -9,7 +9,7 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
 - question: Archive `add-claim-verifier` (all tasks checked) now?
 - options: A archive now, syncing its delta specs into `openspec/specs/` / B wait
 - decision: A. Kilian, relayed 2026-11-15. Use the OpenSpec archive workflow (`openspec archive add-claim-verifier`), so the delta specs land in `openspec/specs/`.
-- landed:
+- landed: add-orchestration-doc/proposal.md#What Changes; tasks.md 1.1-1.3 (by hand per D5, no CLI)
 
 ## D2 Scope of ORCHESTRATION.md for now
 - class: mine
@@ -22,7 +22,7 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
   2. Q2 "The network", cold start and timeouts only: what a cold start costs on this setup; how timeouts were chosen from `config.yaml` `options.verifier` and `openspec/changes/add-claim-verifier/design.md` D8: client timeout = `time_budget_ms` + `cold_start_ms` = 60 s + 15 s; `max_attempts` 4; backoff min(2^n, 30) s with ±20% jitter; `Retry-After` honored. Check each number against the code before writing it.
   3. Q3 "Duplicates": both cases, quoting the actual code from `services/verifier`: first copy finished → stored response returned, no new fetch and no model call; first copy still running → `503` with `Retry-After: 5`. Then "what changes if the platform restarted the verifier in between", for Vercel: a new instance has an empty in-memory store (design D7), so it verifies once more; cost one fetch plus one model call; the orchestrator still counts the `request_id` once.
   Stubs with a heading and "TODO": Q1 contract, Q4 injection, Q5 was it worth it.
-- landed:
+- landed: add-orchestration-doc/proposal.md#What Changes; tasks.md 2.2-2.5
 
 ## D3 Accuracy on cold starts, and placeholders instead of invented numbers
 - class: mine
@@ -36,7 +36,7 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
   - Never invent measured numbers. `VERIFIER_URL` is not set in the orchestrator's container (checked 2026-11-15). Use marked placeholders such as `<measure: first /healthz after 20 min idle>`, each with the one-line `curl` command that measures it.
   - The per-call latency list "from run 1 traces" is a placeholder table: no run with the verifier exists yet in `reports/` or `traces/` (only run1/run2, from before the verifier).
   - Prose is submitted under Kilian's name: short plain sentences, no em-dashes, no filler (apply the humanizer skill if it loads).
-- landed:
+- landed: add-orchestration-doc/proposal.md#What Changes; tasks.md 2.3, 2.4, 2.6
 
 ## D4 Archive the five changes with unchecked tasks?
 - class: mine
@@ -51,15 +51,47 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
 - options: A archive all five now and list the leftover tasks in this file / B archive only fully-checked changes (just `add-claim-verifier`) / C leave everything as is
 - built: B
 - decision:
-- landed:
+- landed: add-orchestration-doc/tasks.md 1.3 (builds B; proposal.md#Impact lists it as out of scope)
 
 ## D5 This session cannot spawn subagents
 - class: expensive
 - source: orchestrator
-- status: open
+- status: resolved
 - question: The orchestrator run of 2026-11-15 had no `Agent` tool (its frontmatter lists `Agent(spec-writer, implementer, checker, reviewer, security-reviewer, Explore)`, but the harness did not expose it) and no `openspec` CLI on PATH. The orchestrator may not write `ORCHESTRATION.md` or move spec files itself. So D1 to D3 are logged but not built. How should the work run?
 - options: A rerun with `claude --agent orchestrator` where `Agent` is available / B the main session spawns `spec-writer`, `implementer`, `checker`, `reviewer` directly with this file as the brief / C install the OpenSpec CLI in the container first (for `openspec archive`), then A or B
 - built: nothing beyond this file
-- decision:
-- landed:
+- decision: B. Main session (acting as orchestrator), 2026-11-15. The main session spawns spec-writer, implementer, checker and reviewer itself. Without the OpenSpec CLI, the archive follows the openspec-archive-change skill by hand: merge the delta specs into openspec/specs/, then move the change to openspec/changes/archive/2026-11-15-add-claim-verifier/.
+- landed: add-orchestration-doc/tasks.md 1.1-1.3
 - note: evidence for `agentic-dev-cycle` task 4.1 ("note what broke").
+
+## D6 Section order in ORCHESTRATION.md
+- class: cheap
+- source: spec-writer
+- status: resolved
+- question: In which order do the sections go?
+- decision: "Why Vercel and Neon instead of Render" first, then Q1 to Q5 in the brief's order, the stubs in place. Spec-writer, 2026-11-15.
+- landed: add-orchestration-doc/tasks.md 2.2
+
+## D7 A number in D2 that the code contradicts
+- class: cheap
+- source: spec-writer
+- status: resolved
+- question: D2 says to check each number against the code. What if one differs?
+- decision: The document states what the code does, and the implementer adds an entry here naming the difference. The document describes the system as built. Spec-writer, 2026-11-15.
+- landed: add-orchestration-doc/tasks.md 2.1
+
+## D8 No links to ORCHESTRATION.md from other files
+- class: cheap
+- source: spec-writer
+- status: resolved
+- question: Link the new document from `CLAUDE.md`, `README` or `docs/`?
+- decision: No. The change stays to the files D1 to D3 name. A link can come with the full document. Spec-writer, 2026-11-15.
+- landed: add-orchestration-doc/proposal.md#Impact
+
+## D9 Purpose line of the new claim-verification spec
+- class: cheap
+- source: spec-writer
+- status: resolved
+- question: The archive skill gives a new spec a `## Purpose` section, and the delta spec has none. What goes there?
+- decision: One or two sentences taken from `add-claim-verifier/proposal.md` ("New Capabilities"), no new content. Requirements and scenarios are copied unchanged. Spec-writer, 2026-11-15.
+- landed: add-orchestration-doc/tasks.md 1.1
