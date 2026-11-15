@@ -19,7 +19,7 @@
 - built: A
 - note: a retry after a 504 can repeat a paid Groq call, because the first copy may have finished its model call before the gateway gave up.
 - decision: A. Kilian, 2026-11-15: add 502 and 504 to the spec's retried statuses, plus a tracker test.
-- landed: specs/internship-pipeline/spec.md#Requirement: Verify stage calls the verifier (first paragraph, with the paid-retry note); #Scenario: Gateway error then success; tasks.md 2.1, 3.2; backend/tracker/usecases/internships/verifying.py:212; backend/tests_tracker/test_internships_verifying.py test_gateway_error_then_success_is_charged_once; docs/tracker.md Verification; ORCHESTRATION.md Q2
+- landed: specs/internship-pipeline/spec.md#Requirement: Verify stage calls the verifier (first paragraph, with the paid-retry note); #Scenario: Gateway error then success; tasks.md 2.1, 3.2; backend/tracker/usecases/internships/verifying.py:212; backend/tests_tracker/test_internships_verifying.py test_gateway_error_then_success_charges_the_lost_copy_and_the_answer (renamed for D6); docs/tracker.md Verification; ORCHESTRATION.md Q2
 
 ## D3 Which deadline Verify reads
 - class: cheap
@@ -59,7 +59,7 @@
 - options: A leave as is (totals count the answer's usage) / B charge a full share for each attempt that got 502/504 / C charge once per request but a full share when any attempt got 502/504
 - built: A (status quo; the scenario "Gateway error then success" and test_gateway_error_then_success_is_charged_once assert it, so answering B or C changes both)
 - decision: B. Kilian, 2026-11-15: lost copies count. Each attempt that got a 502 or 504 (or timed out) is charged a full per-request share on top of the answer's usage, as the brief requires for a worker that never answers. A retry is only sent if another full share still fits the run's remaining totals; otherwise Verify stops and the remaining claims are unverified.
-- landed:
+- landed: specs/internship-pipeline/spec.md#Requirement: Verify stage calls the verifier (first paragraph, charging sentences); #Scenario: Timeout then stored copy; #Scenario: Gateway error then success; #Scenario: No share left for a retry; tasks.md 4.1-4.3; backend/tracker/usecases/internships/verifying.py:179-186 (share check before a retry), :245-248 (charge a lost copy), :327-334 (budget passed in; no extra share when `lost`); backend/tests_tracker/test_internships_verifying.py test_timeout_then_stored_copy_charges_the_lost_copy_and_the_answer, test_gateway_error_then_success_charges_the_lost_copy_and_the_answer, test_lost_copies_are_each_charged_a_share_and_no_more, test_no_retry_without_a_full_share_left, test_no_share_left_for_a_retry_is_a_partial_run; ORCHESTRATION.md Q2 "What is retried", Q3; docs/tracker.md Verification
 
 ## D7 How the client tells Verify a request was never sent
 - class: cheap
@@ -80,3 +80,23 @@
 - built: A
 - decision: A. Not changed here; the margin covers it.
 - landed: ORCHESTRATION.md Q2 (wall-time paragraph)
+
+## D9 How lost copies and the "never answered" share combine
+- class: cheap
+- source: implementer, D6
+- status: resolved (implementer)
+- question: D6 charges a full share per attempt that got 502/504 or timed out. A request that then never gets a valid answer was charged a full share under the existing rule. Charge both?
+- options: A the "never answered" share only when no attempt was charged as lost (so at least one share per sent request, one per lost copy) / B both, always
+- built: A
+- decision: A. A lost copy's share already covers what that request may have spent; B would charge one share too many when every attempt was lost. `VerifierFailed.lost` carries the count.
+- landed: backend/tracker/usecases/internships/verifying.py:115-134, :331-334; backend/tests_tracker/test_internships_verifying.py test_lost_copies_are_each_charged_a_share_and_no_more, test_never_answered_is_charged_its_full_share
+
+## D10 Which retries the share check covers, and how the stop is named
+- class: cheap
+- source: implementer, D6
+- status: resolved (implementer)
+- question: D6 says a retry is sent only if another full share fits. Check before every retry or only after a lost copy? What failure reason? D6 also names timeouts, which changes "Timeout then stored copy".
+- options: A check before every retry (503 and connection errors too), reason `no_budget_share`, `stop_all` like `max_wall_seconds`, update the timeout scenario and its test to charge the lost copy / B check only after a 502/504/timeout
+- built: A
+- decision: A. One check in one place, before every retry, using the existing `_fits`; it matches how a first request is gated. A 503 or connection-error attempt is not charged, so the check only fails there when the run was already short. No `config.yaml` value changes.
+- landed: backend/tracker/usecases/internships/verifying.py:179-186; specs/internship-pipeline/spec.md#Scenario: Timeout then stored copy

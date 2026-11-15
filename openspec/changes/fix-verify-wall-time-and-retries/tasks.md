@@ -14,3 +14,9 @@
 
 - [x] 3.1 `ORCHESTRATION.md` Q2 "How the timeouts were chosen": rewrite the "known gap" paragraph to say the gap is closed. Verify checks the run's remaining wall time (`max_wall_seconds`) before each attempt and stops when the wait plus 75 s would pass it, so the run ends before the 30-minute job limit and the report is still published. Update the line numbers it cites.
 - [x] 3.2 `docs/tracker.md` "Verification": name `502`, `503` and `504` as retried, add the note that a retry after `502` or `504` can repeat a paid Groq call, and add the wall-time stop.
+
+## 4. Charge copies lost to 502/504 or a timeout (D6)
+
+- [x] 4.1 In `verifying.py`, `Client.send` takes the run's `budget` from `verify_top_k`. After an attempt that got `502` or `504` or timed out, charge a full share with `_charge`. Before each retry, stop with `VerifierFailed("no_budget_share", ..., stop_all=True)` when `_fits` says another full share doesn't fit. `VerifierFailed.lost` counts the charged attempts, so `verify_top_k` adds the "never answered" share only when `lost` is 0 (D9).
+- [x] 4.2 Tests: "Timeout then stored copy" and "Gateway error then success" (502 and 504) charge one share plus the answer's usage; three lost copies are charged three shares and no more; "No share left for a retry" (502 and 504): one attempt, no sleep, no request for the next opportunity, claims `unverified`.
+- [x] 4.3 Spec: the requirement's charging sentence, the two scenarios above, and the new scenario "No share left for a retry". Docs: `ORCHESTRATION.md` Q2 and Q3, `docs/tracker.md` "Verification".

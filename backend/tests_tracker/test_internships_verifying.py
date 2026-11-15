@@ -123,7 +123,7 @@ def test_claims_skip_unknown_fields_and_never_carry_quotes(tmp_path):
 # Client
 
 
-def test_timeout_then_stored_copy_is_charged_once(env):
+def test_timeout_then_stored_copy_charges_the_lost_copy_and_the_answer(env):
     _, store, trace, budget = env
     o = opp(store)
     fake = FakeVerifier(httpx.ReadTimeout("slow"), "ok")
@@ -131,7 +131,9 @@ def test_timeout_then_stored_copy_is_charged_once(env):
     assert result.failure is None and result.requests == 1
     # The retry is the same request, byte for byte.
     assert len(fake.bodies) == 2 and fake.bodies[0] == fake.bodies[1]
-    assert budget.total_tokens == 900 and budget.steps == 1
+    assert len(store.verdicts(o["id"], store.record_hash(o))) == len(verifying.claims_for(o))
+    # A full share for the timed-out copy, plus the answer's usage once.
+    assert (budget.steps, budget.fetches, budget.total_tokens) == (2, 2, 1000 + 900)
     events = [e for e in read_trace(trace.path) if e["kind"] == "service"]
     assert [(e["attempt"], e["status"]) for e in events] == [(1, "timeout"), (2, 200)]
     assert len({e["request_id"] for e in events}) == 1
@@ -208,7 +210,7 @@ def test_retry_after_is_honoured(env):
 
 
 @pytest.mark.parametrize("status", [502, 504])
-def test_gateway_error_then_success_is_charged_once(env, status):
+def test_gateway_error_then_success_charges_the_lost_copy_and_the_answer(env, status):
     _, store, trace, budget = env
     o = opp(store)
     fake = FakeVerifier(httpx.Response(status), "ok")
@@ -216,10 +218,40 @@ def test_gateway_error_then_success_is_charged_once(env, status):
     assert result.failure is None and result.requests == 1
     assert len(fake.bodies) == 2 and fake.bodies[0] == fake.bodies[1]
     assert len(store.verdicts(o["id"], store.record_hash(o))) == len(verifying.claims_for(o))
-    assert budget.total_tokens == 900 and budget.steps == 1
+    # A full share for the copy lost to the gateway, plus the answer's usage once.
+    assert (budget.steps, budget.fetches, budget.total_tokens) == (2, 2, 1000 + 900)
     events = [e for e in read_trace(trace.path) if e["kind"] == "service"]
     assert [(e["attempt"], e["status"]) for e in events] == [(1, status), (2, 200)]
     assert len({e["request_id"] for e in events}) == 1
+
+
+def test_lost_copies_are_each_charged_a_share_and_no_more(env):
+    _, store, trace, budget = env
+    fake = FakeVerifier(*[httpx.Response(504)] * 3)
+    result = verifying.verify_top_k(
+        store, RUN1, [opp(store)], client(trace, fake), SETTINGS, budget
+    )
+    assert result.failure.reason == "no_answer" and result.failure.lost == 3
+    # One share per lost copy; no extra share for "never answered".
+    assert (budget.steps, budget.fetches, budget.total_tokens) == (3, 3, 3000)
+
+
+@pytest.mark.parametrize("status", [502, 504])
+def test_no_retry_without_a_full_share_left(env, status):
+    _, store, trace, budget = env
+    a = opp(store)
+    b = {**a, "id": a["id"] + 100}  # a second top-K entry
+    # Room in the run's steps for exactly one share.
+    budget.count(steps=budget.policy.limits.max_steps - SETTINGS.max_steps)
+    fake, sleeps = FakeVerifier(httpx.Response(status), "ok"), []
+    c = client(trace, fake, sleep=sleeps.append)
+    result = verifying.verify_top_k(store, RUN1, [a, b], c, SETTINGS, budget)
+    # The lost copy took the last share: no retry, no wait, no request for b.
+    assert len(fake.requests) == 1 and sleeps == []
+    assert result.failure.reason == "no_budget_share" and result.failure.stop_all
+    assert result.requests == 1 and result.failure.lost == 1
+    assert budget.steps_left() == 0 and budget.total_tokens == SETTINGS.max_tokens
+    assert {c["verdict"] for c in verifying.claims_view(store, a)} == {"unverified"}
 
 
 TIMEOUT = (SETTINGS.time_budget_ms + SETTINGS.cold_start_ms) / 1000
@@ -419,6 +451,27 @@ def test_verify_stops_at_the_run_wall_time(tmp_path):
     assert "verifier" in report and "unverified" in report
     stages = {s["name"]: s for s in read_trace(result.trace_path)[-1]["stages"]}
     assert stages["verify"]["outcome"] == "partial"
+    assert stages["verify"]["reason"] == "service:verifier"
+    state, store = open_store(policy.state_file)
+    assert store.failed_services("run-1") == ["verifier"]
+    state.close()
+
+
+@respx.mock
+@pytest.mark.parametrize("status", [502, 504])
+def test_no_share_left_for_a_retry_is_a_partial_run(tmp_path, status):
+    # The verifier's share takes 6 of the run's 10 fetches, so a lost copy leaves no
+    # room for another share.
+    opts = {"verifier": {**VERIFIER_OPTIONS["verifier"], "max_requests": 1, "max_fetches": 6}}
+    limits = {"max_fetches": 10, "max_steps": 25, "max_tokens": 40000}
+    policy = policy_from_dict(policy_data(options=opts, limits=limits), tmp_path)
+    mock_run()
+    fake = FakeVerifier(httpx.Response(status), "ok")
+    result = run(policy, keys(), fake, "run-1")
+    assert len(fake.requests) == 1
+    assert result.status == "partial" and result.exit_code == 2
+    assert "unverified" in result.report_path.read_text()
+    stages = {s["name"]: s for s in read_trace(result.trace_path)[-1]["stages"]}
     assert stages["verify"]["reason"] == "service:verifier"
     state, store = open_store(policy.state_file)
     assert store.failed_services("run-1") == ["verifier"]
