@@ -2,7 +2,6 @@
 
 ## Purpose
 The verifier service's contract, auth, request and response validation, idempotency, budget and deadline, how verdicts are reached and checked by code, its fetch rules and its log lines.
-
 ## Requirements
 ### Requirement: Verifier service
 The verifier SHALL be a separate HTTP service, deployed as its own Vercel project, with `GET /healthz` and `POST /verify`. It SHALL have no database and no access to the tracker's state, and it SHALL import nothing from the tracker except through `packages/agentkit`. `GET /healthz` SHALL need no auth and return `{"status": "ok"}`.

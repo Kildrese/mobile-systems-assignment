@@ -10,6 +10,7 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
 - options: A archive now, syncing its delta specs into `openspec/specs/` / B wait
 - decision: A. Kilian, relayed 2026-11-15. Use the OpenSpec archive workflow (`openspec archive add-claim-verifier`), so the delta specs land in `openspec/specs/`.
 - landed: add-orchestration-doc/proposal.md#What Changes; tasks.md 1.1-1.3 (by hand per D5, no CLI); openspec/specs/claim-verification/spec.md (new); openspec/specs/{internship-pipeline,internship-report-view,opportunity-report,report-publishing,trace-log}/spec.md; openspec/changes/archive/2026-11-15-add-claim-verifier/
+- note: the method changed per D5: merged by hand, not with `openspec archive`. The outcome is the same.
 
 ## D2 Scope of ORCHESTRATION.md for now
 - class: mine
@@ -113,5 +114,26 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
 - question: `openspec/specs/internship-pipeline` ("Verify stage calls the verifier") says connection errors, timeouts and `503` are retried. `verifying.py:189` also retries `502` and `504`. Every other number in D2 matches the code (timeout 60 s + 15 s, `max_attempts` 4, backoff `min(2^attempt, 30)` s x 0.8-1.2, wait = max(backoff, `Retry-After`)).
 - options: A the document states the code (502, 503, 504) and the spec is left as archived / B change the code or the spec
 - built: A
-- decision: A (per D7). Implementer, 2026-11-15. Whether the spec or the code should change is left to the reviewer; it is out of this change's scope.
+- decision: A (per D7). Implementer, 2026-11-15. Whether the spec or the code should change is open in D13.
+- landed: ORCHESTRATION.md#Q2 The network#How the timeouts were chosen
+
+## D12 Verify stage ignores max_wall_seconds
+- class: mine
+- source: reviewer
+- status: open
+- question: Verifier hangs can push a run past GitHub's 30-minute job limit (`.github/workflows/tracker.yml:30`), so nothing is published. `config.yaml:47` sets `max_wall_seconds: 1500`, but `_fits` (`verifying.py:299-306`) never checks wall time. Make Verify stop at the run's wall-time budget?
+- options: A Verify checks remaining wall time before each request and marks the rest unverified / B lower `max_attempts` or `cold_start_ms` / C leave it and document
+- built: C
+- decision:
+- landed: ORCHESTRATION.md#Q2 The network#How the timeouts were chosen (documented as a known gap)
+
+## D13 Retried statuses
+- class: mine
+- source: reviewer
+- status: open
+- question: The client retries 502, 503 and 504 (`verifying.py:189`); the spec (`openspec/specs/internship-pipeline`, "Verify stage calls the verifier") names only 503. Add 502/504 to the spec (Vercel gateway errors for crashed or timed-out functions) plus a tracker test, or narrow the code to 503?
+- options: A spec + test (reviewer recommends) / B code to 503 only
+- built: neither (the document states the code, per D11)
+- note: a retry after a 504 can repeat a paid Groq call, because the first copy may have finished its model call before the gateway gave up.
+- decision:
 - landed: ORCHESTRATION.md#Q2 The network#How the timeouts were chosen

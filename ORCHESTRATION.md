@@ -85,7 +85,11 @@ All values come from `config.yaml` `options.verifier` (lines 129-136) and are re
                 self.sleep(max(backoff, wait or 0))
 ```
 
-Worst case for one request, computed from these settings and not measured: 4 attempts of 75 s plus about 14 s of backoff, so a bit over 5 minutes. A `Retry-After` can make it longer. With 5 requests a run, a verifier that hangs every time could add about 26 minutes to the run. A verifier that refuses connections fails much faster. In both cases the run goes on: the claims show `unverified`, and the report is marked partial and names `verifier`.
+Worst case for one request, computed from these settings and not measured: 4 attempts of 75 s plus about 14 s of backoff, so a bit over 5 minutes. A `Retry-After` can make it longer. With 5 requests a run, a verifier that hangs every time could add about 26 minutes to the run.
+
+That is a known gap. The GitHub Actions job has `timeout-minutes: 30` (`.github/workflows/tracker.yml:30`), and the run already has its own wall-time budget, `max_wall_seconds: 1500` (`config.yaml:47`). The Verify stage does not check wall time: before each request it only checks steps, tokens and fetches (`_fits`, `verifying.py:299-306`). So in the worst case the job's 30-minute limit kills the run before Report and the publish step (`tracker.yml:74-75`), and that day's report is lost.
+
+A verifier that refuses connections fails much faster. Then the run goes on: the claims show `unverified`, and the report is marked partial and names `verifier`.
 
 ## Q3 Duplicates
 
@@ -124,7 +128,7 @@ The stored `200` response is sent back as it is. There is no new fetch and no mo
         return reply(200, stored)
 ```
 
-Only a `200` is stored (`service.py:164-165`). A `503` or `500` removes the entry, so a retry can do the work again. The test `test_same_request_twice_costs_nothing` (`services/verifier/tests/test_verifier.py:339`) checks that two identical requests make one fetch and one model call.
+Only a `200` is stored (`service.py:164-165`). A `503` from a rate-limited provider or a `500` removes the entry, so a retry can do the work again. The test `test_same_request_twice_costs_nothing` (`services/verifier/tests/test_verifier.py:339`) checks that two identical requests make one fetch and one model call.
 
 ### The first copy is still running
 
