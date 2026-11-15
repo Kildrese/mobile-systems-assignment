@@ -118,5 +118,5 @@
 - question: How much is a request charged when every attempt fails? This rewrites the base spec scenario "Never answered" (one share) in "Verifier budget share". Replaces D9.
 - options: A one share per charged attempt, no extra share on top / B one share total
 - built: D9's rule (one share per lost attempt, plus one share only when none was lost)
-- decision: A. Kilian, 2026-11-15. The final failing attempt is charged like any other under D11; drop D9's separate fallback share, except when no attempt was charged at all and the request still never got an answer (keep one share then).
+- decision: A. Kilian, 2026-11-15. The final failing attempt is charged like any other under D11; drop D9's separate fallback share. An attempt that never reached the verifier (exempt under D11) costs nothing, so a request whose attempts all failed to connect costs nothing.
 - landed:
