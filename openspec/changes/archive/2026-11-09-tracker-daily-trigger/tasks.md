@@ -33,8 +33,8 @@
 
 ## 6. Rollout (repository owner)
 
-- [ ] 6.1 Create the fine-grained token: only `mobile-systems-assignment`, Actions read and write, expiry at most a year
-- [ ] 6.2 Set `CRON_SECRET` and `GITHUB_DISPATCH_TOKEN` on the Vercel backend project (Production)
-- [ ] 6.3 Apply the migration to Neon, then merge and deploy
-- [ ] 6.4 Call the route once with the secret: `202` and a new run in the Actions tab; a second call returns `already_dispatched`
-- [ ] 6.5 The next morning: a run started between 09:00 and 10:00 UTC, and that day's row is `dispatched`
+- [x] 6.1 Create the fine-grained token: only `mobile-systems-assignment`, Actions read and write, expiry at most a year
+- [x] 6.2 Set `CRON_SECRET` and `GITHUB_DISPATCH_TOKEN` on the Vercel backend project (Production)
+- [x] 6.3 Apply the migration to Neon, then merge and deploy
+- [x] 6.4 Call the route once with the secret: `202` and a new run in the Actions tab; a second call returns `already_dispatched`
+- [x] 6.5 The next morning: a run started between 09:00 and 10:00 UTC, and that day's row is `dispatched`
