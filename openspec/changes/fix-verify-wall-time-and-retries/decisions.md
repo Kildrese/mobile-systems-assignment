@@ -84,7 +84,8 @@
 ## D9 How lost copies and the "never answered" share combine
 - class: cheap
 - source: implementer, D6
-- status: superseded by D12
+- status: resolved (implementer)
+- note: superseded by D12
 - question: D6 charges a full share per attempt that got 502/504 or timed out. A request that then never gets a valid answer was charged a full share under the existing rule. Charge both?
 - options: A the "never answered" share only when no attempt was charged as lost (so at least one share per sent request, one per lost copy) / B both, always
 - built: A
@@ -108,9 +109,9 @@
 - status: decided (user)
 - question: D6 charges only 502, 504 and timeouts. A 503 rate_limited or a dropped connection can follow a paid Groq call too. Which attempts cost a full share?
 - options: A every attempt that reached the verifier and got no valid answer, except 400, 401, 409, a connection error before sending (httpx.ConnectError) and 503 in_progress / B only 502, 504 and timeouts
-- built: B (fb1ee5d)
+- built: A
 - decision: A. Kilian, 2026-11-15.
-- landed: specs/internship-pipeline/spec.md#Requirement: Verify stage calls the verifier (charging sentences); #Scenario: Rate limited then success; #Scenario: Still in progress; #Scenario: No share left for a retry; tasks.md 5.1-5.4; backend/tracker/usecases/internships/verifying.py:129-130 (`FREE_STATUSES`), :206-209 (ConnectError vs dropped after sending), :218-223 (invalid 200), :227-229 (charge), :263-270 (`_error_code`); backend/tests_tracker/test_internships_verifying.py test_terminal_statuses_are_not_retried, test_in_progress_503_is_not_charged, test_no_retry_without_a_full_share_left (502, 504, timeout, 503_rate_limited, dropped); ORCHESTRATION.md Q2 "What a failed attempt costs", Q3; docs/tracker.md Verification
+- landed: specs/internship-pipeline/spec.md#Requirement: Verify stage calls the verifier (charging sentences); #Scenario: Rate limited then success; #Scenario: Still in progress; #Scenario: No share left for a retry; tasks.md 5.1-5.4; backend/tracker/usecases/internships/verifying.py:129-130 (`FREE_STATUSES`), :206-209 (ConnectError vs dropped after sending), :218-223 (invalid 200), :227-229 (charge), :263-270 (`_error_code`); backend/tests_tracker/test_internships_verifying.py test_terminal_statuses_are_not_retried, test_in_progress_503_is_not_charged, test_rate_limited_then_success_charges_the_attempt_and_the_answer, test_no_retry_without_a_full_share_left (502, 504, timeout, 503_rate_limited, dropped); ORCHESTRATION.md Q2 "What a failed attempt costs", Q3; docs/tracker.md Verification
 
 ## D12 A request that fails every attempt
 - class: mine
@@ -118,7 +119,7 @@
 - status: decided (user)
 - question: How much is a request charged when every attempt fails? This rewrites the base spec scenario "Never answered" (one share) in "Verifier budget share". Replaces D9.
 - options: A one share per charged attempt, no extra share on top / B one share total
-- built: D9's rule (one share per lost attempt, plus one share only when none was lost)
+- built: A
 - decision: A. Kilian, 2026-11-15. The final failing attempt is charged like any other under D11; drop D9's separate fallback share. An attempt that never reached the verifier (exempt under D11) costs nothing, so a request whose attempts all failed to connect costs nothing.
 - landed: specs/internship-pipeline/spec.md#Requirement: Verifier budget share (MODIFIED); #Scenario: Never answered; #Scenario: Never connected; tasks.md 5.1-5.2; backend/tracker/usecases/internships/verifying.py:241-245 (no_answer, no extra share), :328-330 (verify_top_k charges nothing on failure); backend/tests_tracker/test_internships_verifying.py test_timeout_on_every_attempt_is_charged_a_share_per_attempt, test_connection_refused_on_every_attempt_costs_nothing, test_lost_copies_are_each_charged_a_share_and_no_more; ORCHESTRATION.md Q2, Q3; docs/tracker.md Verification
 

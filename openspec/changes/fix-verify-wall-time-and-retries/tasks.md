@@ -2,6 +2,7 @@
 
 - [x] 1.1 In `backend/tracker/usecases/internships/verifying.py`, give `Client` the run's `deadline` and `clock` (as `usecases/internships/http.py` does). Before each attempt, stop when `clock() + wait + timeout > deadline`, where `wait` is the backoff or `Retry-After` before a retry (0 before the first attempt) and `timeout` is `time_budget_ms + cold_start_ms`. Do not sleep in that case.
 - [x] 1.2 Raise `VerifierFailed("max_wall_seconds", ..., stop_all=True)` so `verify_top_k` stops sending. A request with no attempt sent is not counted in `requests` and not charged; one stopped after some attempts is charged its full share, as today (D5).
+  - Superseded by 5.1 / D12: it is charged one share per attempt that reached the verifier, with no extra share.
 - [x] 1.3 In `VerifyStage.run` (`wiring.py`), pass `ctx.budget.deadline` and `ctx.budget.clock` to the client.
 
 ## 2. Tests (`backend/tests_tracker/test_internships_verifying.py`)
@@ -18,6 +19,7 @@
 ## 4. Charge copies lost to 502/504 or a timeout (D6)
 
 - [x] 4.1 In `verifying.py`, `Client.send` takes the run's `budget` from `verify_top_k`. After an attempt that got `502` or `504` or timed out, charge a full share with `_charge`. Before each retry, stop with `VerifierFailed("no_budget_share", ..., stop_all=True)` when `_fits` says another full share doesn't fit. `VerifierFailed.lost` counts the charged attempts, so `verify_top_k` adds the "never answered" share only when `lost` is 0 (D9).
+  - Superseded by 5.1 / D12: every failed attempt that reached the verifier is charged, and `lost` is gone.
 - [x] 4.2 Tests: "Timeout then stored copy" and "Gateway error then success" (502 and 504) charge one share plus the answer's usage; three lost copies are charged three shares and no more; "No share left for a retry" (502 and 504): one attempt, no sleep, no request for the next opportunity, claims `unverified`.
 - [x] 4.3 Spec: the requirement's charging sentence, the two scenarios above, and the new scenario "No share left for a retry". Docs: `ORCHESTRATION.md` Q2 and Q3, `docs/tracker.md` "Verification".
 

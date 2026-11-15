@@ -272,6 +272,17 @@ def rate_limited():
     )
 
 
+def test_rate_limited_then_success_charges_the_attempt_and_the_answer(env):
+    _, store, trace, budget = env
+    fake = FakeVerifier(rate_limited(), "ok")
+    result = verifying.verify_top_k(
+        store, RUN1, [opp(store)], client(trace, fake), SETTINGS, budget
+    )
+    assert result.failure is None and len(fake.requests) == 2
+    # A full share for the rate-limited attempt, plus the answer's usage once.
+    assert (budget.steps, budget.fetches, budget.total_tokens) == (2, 2, 1000 + 900)
+
+
 CHARGED_FAILURES = {
     "502": lambda: httpx.Response(502),
     "504": lambda: httpx.Response(504),
