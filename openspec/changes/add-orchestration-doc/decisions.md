@@ -42,7 +42,7 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
 ## D4 Archive the five changes with unchecked tasks?
 - class: mine
 - source: grilling (relayed by main session)
-- status: open
+- status: decided (user)
 - question: Five changes are done in code but still have unchecked tasks, mostly production steps that are yours. Archive them now?
   - `add-application-drafter`: 6.3 deploy `mobile-systems-drafter` (secrets, `DRAFTER_*` env, Neon migration), 6.4 first real draft checked in Word.
   - `agentic-dev-cycle`: 4.1 first real orchestrator run (decisions.md, hook payload check).
@@ -51,7 +51,7 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
   - `tracker-daily-trigger`: 6.1 GitHub token, 6.2 `CRON_SECRET` and `GITHUB_DISPATCH_TOKEN` on Vercel, 6.3 Neon migration then merge and deploy, 6.4 call the route once, 6.5 check the next morning's run. `docs/deployment.md` already describes it as live.
 - options: A archive all five now and list the leftover tasks in this file / B archive only fully-checked changes (just `add-claim-verifier`) / C leave everything as is
 - built: B
-- decision:
+- decision: A. Kilian, 2026-11-15: archive all five now and list their leftover tasks in this file. Done in a separate orchestrator session on its own branch.
 - landed: add-orchestration-doc/tasks.md 1.3 (builds B; proposal.md#Impact lists it as out of scope)
 
 ## D5 This session cannot spawn subagents
@@ -120,20 +120,20 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
 ## D12 Verify stage ignores max_wall_seconds
 - class: mine
 - source: reviewer
-- status: open
+- status: decided (user)
 - question: Verifier hangs can push a run past GitHub's 30-minute job limit (`.github/workflows/tracker.yml:30`), so nothing is published. `config.yaml:47` sets `max_wall_seconds: 1500`, but `_fits` (`verifying.py:299-306`) never checks wall time. Make Verify stop at the run's wall-time budget?
 - options: A Verify checks remaining wall time before each request and marks the rest unverified / B lower `max_attempts` or `cold_start_ms` / C leave it and document
 - built: C
-- decision:
+- decision: A. Kilian, 2026-11-15: Verify checks the run's remaining wall time before each request; claims it can't send are marked unverified. Built in a follow-up fix change.
 - landed: ORCHESTRATION.md#Q2 The network#How the timeouts were chosen (documented as a known gap)
 
 ## D13 Retried statuses
 - class: mine
 - source: reviewer
-- status: open
+- status: decided (user)
 - question: The client retries 502, 503 and 504 (`verifying.py:189`); the spec (`openspec/specs/internship-pipeline`, "Verify stage calls the verifier") names only 503. Add 502/504 to the spec (Vercel gateway errors for crashed or timed-out functions) plus a tracker test, or narrow the code to 503?
 - options: A spec + test (reviewer recommends) / B code to 503 only
 - built: neither (the document states the code, per D11)
 - note: a retry after a 504 can repeat a paid Groq call, because the first copy may have finished its model call before the gateway gave up.
-- decision:
+- decision: A. Kilian, 2026-11-15: add 502 and 504 to the spec's retried statuses, plus a tracker test. Built in a follow-up fix change.
 - landed: ORCHESTRATION.md#Q2 The network#How the timeouts were chosen
