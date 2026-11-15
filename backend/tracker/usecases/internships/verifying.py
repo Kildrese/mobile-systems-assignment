@@ -113,13 +113,17 @@ def claims_for(opp: dict[str, Any]) -> list[dict[str, str]]:
 
 
 class VerifierFailed(Exception):
-    """No valid answer for a request. `stop_all` when later requests would fail the same way."""
+    """No valid answer for a request. `stop_all` when later requests would fail the same way.
+    `attempts` is how many copies were sent; 0 means the request never left the tracker."""
 
-    def __init__(self, reason: str, detail: str, *, stop_all: bool = False) -> None:
+    def __init__(
+        self, reason: str, detail: str, *, stop_all: bool = False, attempts: int = 1
+    ) -> None:
         super().__init__(f"{reason}: {detail}")
         self.reason = reason
         self.detail = detail
         self.stop_all = stop_all
+        self.attempts = attempts
 
 
 @dataclass
@@ -130,6 +134,8 @@ class Client:
     trace: Trace
     transport: httpx.BaseTransport | None = None
     sleep: Callable[[float], None] = time.sleep
+    clock: Callable[[], float] = time.monotonic
+    deadline: float | None = None  # the run's wall-time deadline, on `clock`
 
     def send(self, request: VerifyRequest, step: int) -> VerifyResponse:
         """POST one request until it gets a valid answer or a terminal failure. Every
@@ -149,7 +155,19 @@ class Client:
         self, http: httpx.Client, request: VerifyRequest, content: bytes, ids: dict[str, Any]
     ) -> VerifyResponse:
         timeout = (self.settings.time_budget_ms + self.settings.cold_start_ms) / 1000
+        pause = 0.0  # the wait before this attempt: backoff or Retry-After
         for attempt in range(1, self.settings.max_attempts + 1):
+            if self.deadline is not None and self.clock() + pause + timeout > self.deadline:
+                # Stop before the wait: sleeping and then giving up would waste it.
+                raise VerifierFailed(
+                    "max_wall_seconds",
+                    f"waiting {pause:.0f} s plus the {timeout:.0f} s timeout"
+                    " would pass the run's deadline",
+                    stop_all=True,
+                    attempts=attempt - 1,
+                )
+            if pause:
+                self.sleep(pause)
             began = time.monotonic()
             wait: float | None = None
             try:
@@ -177,22 +195,28 @@ class Client:
                     response.check_against(request)
                 except (ValidationError, ValueError) as err:
                     self._event(ids, attempt, "invalid_response", latency, None)
-                    raise VerifierFailed("invalid_response", str(err)[:300]) from None
+                    raise VerifierFailed(
+                        "invalid_response", str(err)[:300], attempts=attempt
+                    ) from None
                 tokens = response.usage.tokens
                 self._event(ids, attempt, status, latency, tokens)
                 return response
             self._event(ids, attempt, status, latency, tokens)
             if status == 401:
                 raise VerifierFailed(
-                    "unauthorized", "the verifier refused the token", stop_all=True
+                    "unauthorized",
+                    "the verifier refused the token",
+                    stop_all=True,
+                    attempts=attempt,
                 )
             if isinstance(status, int) and status not in (502, 503, 504):
-                raise VerifierFailed(f"http_{status}", _error_message(r))
-            if attempt < self.settings.max_attempts:
-                backoff = min(2**attempt, 30) * (0.8 + 0.4 * random.random())
-                self.sleep(max(backoff, wait or 0))
+                raise VerifierFailed(f"http_{status}", _error_message(r), attempts=attempt)
+            backoff = min(2**attempt, 30) * (0.8 + 0.4 * random.random())
+            pause = max(backoff, wait or 0)
         raise VerifierFailed(
-            "no_answer", f"no valid answer after {self.settings.max_attempts} attempts"
+            "no_answer",
+            f"no valid answer after {self.settings.max_attempts} attempts",
+            attempts=self.settings.max_attempts,
         )
 
     def _event(
@@ -266,8 +290,11 @@ def verify_top_k(
         try:
             response = client.send(request, step=result.requests)
         except VerifierFailed as err:
-            # No valid answer: we can't know what it spent, so charge its full share.
-            _charge(budget, settings.max_steps, settings.max_fetches, settings.max_tokens)
+            if err.attempts == 0:
+                result.requests -= 1  # never sent: not counted, not charged
+            else:
+                # No valid answer: we can't know what it spent, so charge its full share.
+                _charge(budget, settings.max_steps, settings.max_fetches, settings.max_tokens)
             result.failure = err
             if err.stop_all:
                 break

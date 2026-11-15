@@ -8,7 +8,7 @@
 - options: A Verify checks remaining wall time before each request and marks the rest unverified / B lower `max_attempts` or `cold_start_ms` / C leave it and document
 - built: none yet (spec only)
 - decision: A. Kilian, 2026-11-15: Verify checks the run's remaining wall time before each request; claims it can't send are marked unverified.
-- landed: specs/internship-pipeline/spec.md#Requirement: Verify stage calls the verifier (second paragraph); #Scenario: Not enough wall time left; tasks.md 1.1-1.3, 2.2, 2.3, 3.1
+- landed: specs/internship-pipeline/spec.md#Requirement: Verify stage calls the verifier (second paragraph); #Scenario: Not enough wall time left; tasks.md 1.1-1.3, 2.2, 2.3, 3.1; backend/tracker/usecases/internships/verifying.py:160 (check), :293 (not sent: not counted); backend/tests_tracker/test_internships_verifying.py test_no_request_when_wall_time_is_short, test_no_retry_when_the_wait_would_pass_the_deadline, test_verify_stops_at_the_run_wall_time; ORCHESTRATION.md Q2; docs/tracker.md Verification
 
 ## D2 Retried statuses
 - class: mine
@@ -19,7 +19,7 @@
 - built: none yet (spec only; the code already retries all three)
 - note: a retry after a 504 can repeat a paid Groq call, because the first copy may have finished its model call before the gateway gave up.
 - decision: A. Kilian, 2026-11-15: add 502 and 504 to the spec's retried statuses, plus a tracker test.
-- landed: specs/internship-pipeline/spec.md#Requirement: Verify stage calls the verifier (first paragraph, with the paid-retry note); #Scenario: Gateway error then success; tasks.md 2.1, 3.2
+- landed: specs/internship-pipeline/spec.md#Requirement: Verify stage calls the verifier (first paragraph, with the paid-retry note); #Scenario: Gateway error then success; tasks.md 2.1, 3.2; backend/tracker/usecases/internships/verifying.py:212; backend/tests_tracker/test_internships_verifying.py test_gateway_error_then_success_is_charged_once; docs/tracker.md Verification; ORCHESTRATION.md Q2
 
 ## D3 Which deadline Verify reads
 - class: cheap
@@ -29,7 +29,7 @@
 - options: A `Budget.deadline` and `Budget.clock`, passed to the client like `http.py`, `llm.py` and `search.py` do / B a new setting
 - built: A
 - decision: A. Reuses the existing deadline; no new config.
-- landed: proposal.md#What Changes; tasks.md 1.1, 1.3
+- landed: proposal.md#What Changes; tasks.md 1.1, 1.3; backend/tracker/usecases/internships/wiring.py:820-821
 
 ## D4 The check before a retry includes the wait
 - class: cheap
@@ -39,7 +39,7 @@
 - options: A yes: stop when wait plus timeout would pass the deadline, without sleeping / B check only the timeout, after sleeping
 - built: A
 - decision: A. Sleeping first and then giving up would waste the wait; `http.py` also checks the wait against the deadline.
-- landed: specs/internship-pipeline/spec.md#Scenario: Not enough wall time left; tasks.md 1.1
+- landed: specs/internship-pipeline/spec.md#Scenario: Not enough wall time left; tasks.md 1.1; backend/tracker/usecases/internships/verifying.py:158-169
 
 ## D5 How a wall-time stop is reported and charged
 - class: cheap
@@ -49,7 +49,7 @@
 - options: A failure reason `max_wall_seconds`, stop all requests, stage `partial` naming `verifier` (as D1 says, like a verifier that's down); a request with no attempt sent is not counted or charged; one stopped after some attempts is charged its full share under the existing "never got a valid answer" rule / B something else
 - built: A
 - decision: A. Follows D1 and the existing "Verifier budget share" requirement; `max_wall_seconds` is the reason name `http.py` and `report.py` already use.
-- landed: tasks.md 1.2
+- landed: tasks.md 1.2; backend/tracker/usecases/internships/verifying.py:115-130 (`VerifierFailed.attempts`), :292-297
 
 ## D6 Charge the run for copies lost to 502/504
 - class: mine
@@ -60,3 +60,13 @@
 - built: none (the spec says only what is true today: per-request share, `max_attempts`, wall time)
 - decision:
 - landed:
+
+## D7 How the client tells Verify a request was never sent
+- class: cheap
+- source: implementer, task 1.2
+- status: resolved (implementer)
+- question: D5 says a request with no attempt sent is not counted or charged. How does `verify_top_k` know?
+- options: A `VerifierFailed` carries `attempts` (copies sent; 0 = never sent) / B a separate exception class
+- built: A
+- decision: A. One field on the existing exception; every raise site sets it.
+- landed: backend/tracker/usecases/internships/verifying.py:115-130, :292-297

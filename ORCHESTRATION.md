@@ -73,21 +73,20 @@ All values come from `config.yaml` `options.verifier` (lines 129-136) and are re
     max_attempts: 4
 ```
 
-- **Client timeout: 75 s.** It is `time_budget_ms` plus `cold_start_ms`, 60 s plus 15 s (`verifying.py:151`). The 60 s is the work: one fetch (up to 6 with redirects) and one or two model calls. The 15 s is for a cold start. A Vercel Python cold start takes seconds, so 15 s leaves room. If the cold start runs longer, the attempt times out, and the next attempt may find the instance warm.
+- **Client timeout: 75 s.** It is `time_budget_ms` plus `cold_start_ms`, 60 s plus 15 s (`verifying.py:157`). The 60 s is the work: one fetch (up to 6 with redirects) and one or two model calls. The 15 s is for a cold start. A Vercel Python cold start takes seconds, so 15 s leaves room. If the cold start runs longer, the attempt times out, and the next attempt may find the instance warm.
 - **Attempts: 4** (`max_attempts`). The same body and the same `request_id` are sent each time.
-- **What is retried.** A timeout, a connection error, and `502`, `503` or `504` (`verifying.py:189`). `401` stops the whole Verify stage. `400`, `409`, `500` and an invalid `200` are not retried.
-- **Backoff.** Before attempt n+1 the client waits `min(2^n, 30)` seconds times a factor between 0.8 and 1.2, so ±20% jitter (`verifying.py:191-193`). With 4 attempts that is about 2 s, 4 s and 8 s. The 30 s cap is never reached at this setting.
+- **What is retried.** A timeout, a connection error, and `502`, `503` or `504` (`verifying.py:212`). A retry after `502` or `504` can repeat the verifier's paid Groq call, because the first copy may have made its model call before the gateway gave up. `401` stops the whole Verify stage. `400`, `409`, `500` and an invalid `200` are not retried.
+- **Backoff.** Before attempt n+1 the client waits `min(2^n, 30)` seconds times a factor between 0.8 and 1.2, so ±20% jitter (`verifying.py:214-215`). With 4 attempts that is about 2 s, 4 s and 8 s. The 30 s cap is never reached at this setting.
 - **`Retry-After` is honored.** The client reads the header (`agentkit.fetch.parse_retry_after`, `packages/agentkit/src/agentkit/fetch.py:26`) and waits the longer of the backoff and the header.
 
 ```python
-            if attempt < self.settings.max_attempts:
-                backoff = min(2**attempt, 30) * (0.8 + 0.4 * random.random())
-                self.sleep(max(backoff, wait or 0))
+            backoff = min(2**attempt, 30) * (0.8 + 0.4 * random.random())
+            pause = max(backoff, wait or 0)
 ```
 
-Worst case for one request, computed from these settings and not measured: 4 attempts of 75 s plus about 14 s of backoff, so a bit over 5 minutes. A `Retry-After` can make it longer. With 5 requests a run, a verifier that hangs every time could add about 26 minutes to the run.
+Worst case for one request, computed from these settings and not measured: 4 attempts of 75 s plus about 14 s of backoff, so a bit over 5 minutes. A `Retry-After` can make it longer. With 5 requests a run, a verifier that hangs every time could add about 26 minutes to the run, if nothing stopped it.
 
-That is a known gap. The GitHub Actions job has `timeout-minutes: 30` (`.github/workflows/tracker.yml:30`), and the run already has its own wall-time budget, `max_wall_seconds: 1500` (`config.yaml:47`). The Verify stage does not check wall time: before each request it only checks steps, tokens and fetches (`_fits`, `verifying.py:299-306`). So in the worst case the job's 30-minute limit kills the run before Report and the publish step (`tracker.yml:74-75`), and that day's report is lost.
+The wall-time check stops it. The GitHub Actions job has `timeout-minutes: 30` (`.github/workflows/tracker.yml:30`). The run has its own wall-time budget, `max_wall_seconds: 1500` (`config.yaml:47`), which ends earlier. Before each attempt, including each retry, the client checks the run's remaining wall time (`verifying.py:160`). If the wait before the attempt plus 75 s would pass it, the client sends nothing more and does not sleep. The rest of the claims stay `unverified`, the stage is partial, and the run names `verifier` as the failed service. So the run ends before the job's 30-minute limit, and Report and the publish step (`tracker.yml:74-75`) still run. The deadline is the run's own (`Budget.deadline`), passed in by the Verify stage (`wiring.py:820-821`). A request that was never sent is not counted or charged.
 
 A verifier that refuses connections fails much faster. Then the run goes on: the claims show `unverified`, and the report is marked partial and names `verifier`.
 
@@ -163,7 +162,7 @@ The store is in process memory. The class says so (`service.py:43-44`):
 On Vercel that does not take a crash. A retry can land on a different instance, or the old one can have been shut down. Either way the new instance has an empty store. It sees the `request_id` for the first time and verifies again.
 
 - **Cost:** one more page fetch and one more Groq call for that request.
-- **The result is still counted once.** The tracker keeps the first valid `200` it gets for a `request_id` and stops retrying (`verifying.py:174-183`). It stores those verdicts and charges that response's `usage` once (`verifying.py:275-276`). A request that never gets a valid answer is charged its full share instead (`verifying.py:268-270`).
+- **The result is still counted once.** The tracker keeps the first valid `200` it gets for a `request_id` and stops retrying (`verifying.py:192-203`). It stores those verdicts and charges that response's `usage` once (`verifying.py:302-303`). A request that never gets a valid answer is charged its full share instead (`verifying.py:295-297`).
 - **What the run's budget misses.** If the first copy kept running on the old instance after the client timed out, its fetch and model call were spent but never reported. The tracker only sees the `usage` of the answer it got.
 
 A shared store such as Redis would close this gap. We left it out on purpose (non-goal in the `add-claim-verifier` design). At 5 requests a day the cost of a repeat is one fetch and one small model call.

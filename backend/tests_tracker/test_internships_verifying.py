@@ -206,6 +206,73 @@ def test_retry_after_is_honoured(env):
     assert waits and waits[0] >= 9
 
 
+@pytest.mark.parametrize("status", [502, 504])
+def test_gateway_error_then_success_is_charged_once(env, status):
+    _, store, trace, budget = env
+    o = opp(store)
+    fake = FakeVerifier(httpx.Response(status), "ok")
+    result = verifying.verify_top_k(store, RUN1, [o], client(trace, fake), SETTINGS, budget)
+    assert result.failure is None and result.requests == 1
+    assert len(fake.bodies) == 2 and fake.bodies[0] == fake.bodies[1]
+    assert len(store.verdicts(o["id"], store.record_hash(o))) == len(verifying.claims_for(o))
+    assert budget.total_tokens == 900 and budget.steps == 1
+    events = [e for e in read_trace(trace.path) if e["kind"] == "service"]
+    assert [(e["attempt"], e["status"]) for e in events] == [(1, status), (2, 200)]
+    assert len({e["request_id"] for e in events}) == 1
+
+
+class Clock:
+    def __init__(self, now: float = 0.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+
+TIMEOUT = (SETTINGS.time_budget_ms + SETTINGS.cold_start_ms) / 1000
+
+
+def timed_client(trace, fake, clock, deadline, sleeps):
+    return verifying.Client(
+        VERIFIER,
+        TOKEN,
+        SETTINGS,
+        trace,
+        transport=httpx.MockTransport(fake),
+        sleep=sleeps.append,
+        clock=clock,
+        deadline=deadline,
+    )
+
+
+def test_no_request_when_wall_time_is_short(env):
+    _, store, trace, budget = env
+    o = opp(store)
+    fake, sleeps = FakeVerifier(), []
+    c = timed_client(trace, fake, Clock(), TIMEOUT - 1, sleeps)
+    result = verifying.verify_top_k(store, RUN1, [o], c, SETTINGS, budget)
+    assert fake.requests == [] and sleeps == []
+    assert result.failure.reason == "max_wall_seconds" and result.failure.stop_all
+    # Never sent: not counted, not charged.
+    assert result.requests == 0 and budget.total_tokens == 0 and budget.steps == 0
+    assert {c["verdict"] for c in verifying.claims_view(store, o)} == {"unverified"}
+
+
+def test_no_retry_when_the_wait_would_pass_the_deadline(env):
+    _, store, trace, budget = env
+    a = opp(store)
+    b = {**a, "id": a["id"] + 100}  # a second top-K entry
+    fake, sleeps = FakeVerifier(httpx.Response(503, headers={"Retry-After": "9"})), []
+    # Room for the first attempt, not for a 9 s wait plus the timeout.
+    c = timed_client(trace, fake, Clock(), TIMEOUT + 5, sleeps)
+    result = verifying.verify_top_k(store, RUN1, [a, b], c, SETTINGS, budget)
+    assert len(fake.requests) == 1 and sleeps == []
+    assert result.failure.reason == "max_wall_seconds" and result.failure.attempts == 1
+    # Sent once without a valid answer: charged its full share, as today.
+    assert result.requests == 1
+    assert (budget.steps, budget.fetches, budget.total_tokens) == (1, 1, 1000)
+
+
 def test_no_request_past_the_run_budget(env):
     _, store, trace, budget = env
     budget.count(steps=budget.policy.limits.max_steps)
@@ -353,6 +420,27 @@ def test_verifier_down_is_a_partial_run(vpolicy):
     stages = {s["name"]: s for s in read_trace(result.trace_path)[-1]["stages"]}
     assert stages["verify"]["outcome"] == "partial" and stages["edit"]["outcome"] == "complete"
     state, store = open_store(vpolicy.state_file)
+    assert store.failed_services("run-1") == ["verifier"]
+    state.close()
+
+
+@respx.mock
+def test_verify_stops_at_the_run_wall_time(tmp_path):
+    # The client timeout (60 s + 61 s) is longer than the run's 120 s wall time.
+    opts = {"verifier": {**VERIFIER_OPTIONS["verifier"], "cold_start_ms": 61_000}}
+    limits = {"max_fetches": 10, "max_steps": 25, "max_tokens": 40000}
+    policy = policy_from_dict(policy_data(options=opts, limits=limits), tmp_path)
+    mock_run()
+    fake = FakeVerifier()
+    result = run(policy, keys(), fake, "run-1")
+    assert fake.requests == []
+    assert result.status == "partial" and result.exit_code == 2
+    report = result.report_path.read_text()
+    assert "verifier" in report and "unverified" in report
+    stages = {s["name"]: s for s in read_trace(result.trace_path)[-1]["stages"]}
+    assert stages["verify"]["outcome"] == "partial"
+    assert stages["verify"]["reason"] == "service:verifier"
+    state, store = open_store(policy.state_file)
     assert store.failed_services("run-1") == ["verifier"]
     state.close()
 
