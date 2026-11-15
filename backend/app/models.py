@@ -79,7 +79,8 @@ class Session(Timestamps, Base):
 
 class TrackerRun(Base):
     """One internship tracker run, published from the tracker's state file by the daily
-    job (`python -m app.publish_report`). The API only reads it."""
+    job (`python -m app.publish_report`), or, locally only, one orchestrated run
+    (`python -m tracker.orchestrate`, whose id is its wire `run_id`). The API only reads it."""
 
     __tablename__ = "tracker_runs"
 

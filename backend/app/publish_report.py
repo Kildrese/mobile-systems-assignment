@@ -3,10 +3,11 @@
     uv run python -m app.publish_report
 
 The daily tracker workflow (`.github/workflows/tracker.yml`) runs this right after
-`python -m tracker run`. It is the only writer of `tracker_runs`, `internship_offers` and
-`tracker_articles`: the API only reads them, and no user can start the tracker through it
-(the one route that starts the workflow is the cron-only dispatch in
-`app/routers/internal.py`). Publishing a run again replaces its rows, so a retried job is
+`python -m tracker run`. Its `publish()` writes `tracker_runs`, `internship_offers` and
+`tracker_articles`; the only other caller is `python -m tracker.orchestrate`, run by hand
+against a local database only. The API only reads these tables, and no user can start
+the tracker through it (the one route that starts the workflow is the cron-only dispatch
+in `app/routers/internal.py`). Publishing a run again replaces its rows, so a retried job is
 safe.
 """
 

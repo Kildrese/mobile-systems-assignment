@@ -67,6 +67,9 @@ class InternshipOptions(BaseModel):
     profile: str = ""
     # The remote verifier. None: no Verify stage, and every claim shows as unverified.
     verifier: verifying.VerifierSettings | None = None
+    # The researcher's share, used only by `python -m tracker.orchestrate` (its
+    # `max_requests` is ignored: one /research per run). The daily run never reads it.
+    researcher: verifying.VerifierSettings | None = None
 
 
 def fit_enabled(policy: Policy) -> bool:

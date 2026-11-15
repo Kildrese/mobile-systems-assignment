@@ -26,7 +26,6 @@ from tracker.usecases.internships.curation import UNKNOWN
 from tracker.usecases.internships.store import OpportunityStore
 
 SERVICE = "verifier"
-ENDPOINT = "verifier:/verify"
 # Fields that become claims, in the order they are sent.
 FIELDS = (
     "title",
@@ -140,8 +139,14 @@ class Client:
     sleep: Callable[[float], None] = time.sleep
     clock: Callable[[], float] = time.monotonic
     deadline: float | None = None  # the run's wall-time deadline, on `clock`
+    # The worker this client calls. The defaults are the tracker's Verify stage;
+    # `python -m tracker.orchestrate` also calls the researcher through this client.
+    path: str = "/verify"
+    worker: str = SERVICE
+    response_model: type = VerifyResponse
+    caller: str = "tracker"  # the trace's `service`
 
-    def send(self, request: VerifyRequest, step: int, budget: Budget) -> VerifyResponse:
+    def send(self, request: Any, step: int, budget: Budget) -> Any:
         """POST one request until it gets a valid answer or a terminal failure. Every
         attempt sends the same bytes with the same `request_id`. Each attempt that reached
         the verifier and got no valid answer is charged a full share to `budget`, since its
@@ -160,16 +165,16 @@ class Client:
     def _send(
         self,
         http: httpx.Client,
-        request: VerifyRequest,
+        request: Any,
         content: bytes,
         ids: dict[str, Any],
         budget: Budget,
-    ) -> VerifyResponse:
+    ) -> Any:
         s = self.settings
         timeout = (s.time_budget_ms + s.cold_start_ms) / 1000
         pause = 0.0  # the wait before this attempt: backoff or Retry-After
         for attempt in range(1, s.max_attempts + 1):
-            if attempt > 1 and not _fits(budget, s):
+            if attempt > 1 and not fits(budget, s):
                 raise VerifierFailed(
                     "no_budget_share",
                     "another full share would not fit the run's budget",
@@ -193,7 +198,7 @@ class Client:
             r: httpx.Response | None = None
             try:
                 r = http.post(
-                    f"{self.url.rstrip('/')}/verify",
+                    f"{self.url.rstrip('/')}{self.path}",
                     content=content,
                     headers={
                         "Authorization": f"Bearer {self.token}",
@@ -213,11 +218,11 @@ class Client:
             latency = round((time.monotonic() - began) * 1000)
             if status == 200:
                 try:
-                    response = VerifyResponse.model_validate_json(r.content)
+                    response = self.response_model.model_validate_json(r.content)
                     response.check_against(request)
                 except (ValidationError, ValueError) as err:
                     self._event(ids, attempt, "invalid_response", latency, None)
-                    _charge(budget, s.max_steps, s.max_fetches, s.max_tokens)
+                    charge(budget, s.max_steps, s.max_fetches, s.max_tokens)
                     raise VerifierFailed(
                         "invalid_response", str(err)[:300], attempts=attempt
                     ) from None
@@ -226,11 +231,11 @@ class Client:
             self._event(ids, attempt, status, latency, None)
             if reached and status not in FREE_STATUSES and _error_code(r) != "in_progress":
                 # No valid answer, but the copy may have made its paid model call.
-                _charge(budget, s.max_steps, s.max_fetches, s.max_tokens)
+                charge(budget, s.max_steps, s.max_fetches, s.max_tokens)
             if status == 401:
                 raise VerifierFailed(
                     "unauthorized",
-                    "the verifier refused the token",
+                    f"the {self.worker} refused the token",
                     stop_all=True,
                     attempts=attempt,
                 )
@@ -249,9 +254,9 @@ class Client:
     ) -> None:
         self.trace.event(
             "service",
-            service="tracker",
+            service=self.caller,
             direction="out",
-            endpoint_or_tool=ENDPOINT,
+            endpoint_or_tool=f"{self.worker}:{self.path}",
             status=status,
             latency_ms=latency,
             attempt=attempt,
@@ -309,7 +314,7 @@ def verify_top_k(
         ]
         if not claims:
             continue
-        if result.requests >= settings.max_requests or not _fits(budget, settings):
+        if result.requests >= settings.max_requests or not fits(budget, settings):
             result.skipped_for_budget += 1
             continue
         request = VerifyRequest.model_validate(
@@ -333,7 +338,7 @@ def verify_top_k(
                 break
             continue
         usage = response.usage  # the answer, counted once, on top of any failed attempts
-        _charge(budget, usage.steps, usage.fetches, usage.tokens)
+        charge(budget, usage.steps, usage.fetches, usage.tokens)
         texts = {c["claim_id"]: c["text"] for c in claims}
         rows = [
             {
@@ -356,7 +361,7 @@ def verify_top_k(
     return result
 
 
-def _fits(budget: Budget, s: VerifierSettings) -> bool:
+def fits(budget: Budget, s: VerifierSettings) -> bool:
     """Whether a request's full share still fits the run's budget."""
     limits = budget.policy.limits
     return (
@@ -366,7 +371,7 @@ def _fits(budget: Budget, s: VerifierSettings) -> bool:
     )
 
 
-def _charge(budget: Budget, steps: int, fetches: int, tokens: int) -> None:
+def charge(budget: Budget, steps: int, fetches: int, tokens: int) -> None:
     budget.count(steps=steps, fetches=fetches)
     budget.charge_tokens(tokens, 0)
 
