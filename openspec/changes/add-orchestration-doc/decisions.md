@@ -52,7 +52,18 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
 - options: A archive all five now and list the leftover tasks in this file / B archive only fully-checked changes (just `add-claim-verifier`) / C leave everything as is
 - built: B
 - decision: A. Kilian, 2026-11-15: archive all five now and list their leftover tasks in this file. Done in a separate orchestrator session on its own branch.
-- landed: add-orchestration-doc/tasks.md 1.3 (builds B; proposal.md#Impact lists it as out of scope)
+- landed: openspec/changes/archive/2026-11-15-{complete-daily-runs,show-run-history,tracker-daily-trigger,add-application-drafter,agentic-dev-cycle}/; openspec/specs/{agent-orchestration,internship-pipeline,report-publishing,internship-report-view,tracker-state}/spec.md (updated); openspec/specs/{tracker-dispatch,applicant-profile,application-drafter,application-drafts,dev-cycle}/spec.md (new)
+- leftover tasks (unchecked when archived):
+  - `openspec/changes/archive/2026-11-15-complete-daily-runs/tasks.md` 4.1: "After merging, check the next two scheduled runs: the Scout ends `complete`, and note Curate's outcome and the "Waiting for review" count to decide on making Curate cheaper per posting"
+  - `openspec/changes/archive/2026-11-15-show-run-history/tasks.md` 4.3: "(needs a browser; `web-url.test.ts` covers the `javascript:` URL) Check in the browser with a published run whose log holds the test injection page (`tests_tracker/fixtures/injection.html`) and a rejected `javascript:` URL: nothing runs, and both show as text"
+  - `openspec/changes/archive/2026-11-15-tracker-daily-trigger/tasks.md` 6.1: "Create the fine-grained token: only `mobile-systems-assignment`, Actions read and write, expiry at most a year"
+  - `openspec/changes/archive/2026-11-15-tracker-daily-trigger/tasks.md` 6.2: "Set `CRON_SECRET` and `GITHUB_DISPATCH_TOKEN` on the Vercel backend project (Production)"
+  - `openspec/changes/archive/2026-11-15-tracker-daily-trigger/tasks.md` 6.3: "Apply the migration to Neon, then merge and deploy"
+  - `openspec/changes/archive/2026-11-15-tracker-daily-trigger/tasks.md` 6.4: "Call the route once with the secret: `202` and a new run in the Actions tab; a second call returns `already_dispatched`"
+  - `openspec/changes/archive/2026-11-15-tracker-daily-trigger/tasks.md` 6.5: "The next morning: a run started between 09:00 and 10:00 UTC, and that day's row is `dispatched`"
+  - `openspec/changes/archive/2026-11-15-add-application-drafter/tasks.md` 6.3: "Deploy: create `mobile-systems-drafter` (root `services/drafter`, connected to git), set `DRAFTER_TOKEN` and `ANTHROPIC_API_KEY` (Kilian adds the key himself), set `DRAFTER_URL`, `DRAFTER_TOKEN` and `DRAFTING_USERS=kiliandresse` on the backend project and `DRAFTER_URL`, `DRAFTER_TOKEN` and `DRAFTING_USERS` in GitHub, and run the migration on Neon"
+  - `openspec/changes/archive/2026-11-15-add-application-drafter/tasks.md` 6.4: "Kilian uploads his profile, run `python -m app.share_drafts kiliandresse nyugrader` against production, draft one real offer, and check the `.docx` in Word: one page, layout unchanged"
+  - `openspec/changes/archive/2026-11-15-agentic-dev-cycle/tasks.md` 4.1: "First real orchestrator run on a small feature: `decisions.md` gets grilling entries with `landed:`, an implementer stops on a `mine` choice, the reviewer runs Pass 3. Also confirm with one real payload that the frontmatter hook fires in `--agent` main-thread mode and that its payload has no `agent_id`. Note what broke in this change's `decisions.md`."
 
 ## D5 This session cannot spawn subagents
 - class: expensive
@@ -146,4 +157,14 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
 - options: A apply in creation order, and for the drafter's stale copy keep tracker-daily-trigger's text and add only the drafter's new content (the `app.draft_new` sentence and any new scenario) / B apply literally in order / C stop and ask
 - built: A
 - decision: A. Orchestrator, 2026-11-15. Code agrees: `.github/workflows/tracker.yml` has only `workflow_dispatch`, `backend/vercel.json` has the cron, and the workflow runs `python -m app.draft_new`. Merge order: complete-daily-runs, show-run-history, tracker-daily-trigger, add-application-drafter, agentic-dev-cycle.
-- landed:
+- landed: openspec/specs/report-publishing/spec.md#Requirement: Daily scheduled run (tracker-daily-trigger's text plus the drafter's `python -m app.draft_new` sentence; scenarios "Daily run" and "Nothing ran" also name the draft step, "Drafting fails" added; the 09:17 "Scheduled run" scenario is replaced by "Daily run"); openspec/specs/internship-report-view/spec.md#Requirement: No user can start the tracker (show-run-history's MODIFIED applied, then tracker-daily-trigger's RENAMED and MODIFIED)
+
+## D15 show-run-history's "Internship page" copy is older than the main spec
+- class: cheap
+- source: implementer (archive of D4)
+- status: resolved
+- question: show-run-history (2026-10-05) MODIFIES `internship-report-view` "Internship page". add-claim-verifier, archived earlier the same day, wrote the main text from a base that already held show-run-history's version, and added the claims bullet, "Claim text and evidence SHALL render as text, never as HTML.", and the scenarios "Claims shown" and "Markup in evidence". Replacing the block would delete those. D14 covers only "Daily scheduled run".
+- options: A apply D14's rule: keep the newer text and add only what the stale copy adds / B replace literally / C stop and ask
+- built: A. The stale copy adds nothing (diffed: every line of it is in the main text), so the main "Internship page" block is unchanged.
+- decision: A. Implementer, 2026-11-15, by analogy with D14; no spec content changes.
+- landed: openspec/specs/internship-report-view/spec.md#Requirement: Internship page (unchanged); commit "Archive show-run-history"
