@@ -11,7 +11,7 @@ The daily tracker (`backend/tracker`, on GitHub Actions) is unchanged. It is its
 Where the numbers come from:
 
 - **Run 1**: the first orchestrate run with all three services, 2026-11-15 22:20:04 to 22:20:36 UTC (17:20 ET), run id `cccc30bb-f8e3-45c8-a51c-ecce46e6e09a`. Researcher on :8101, the deployed verifier, local Postgres. Its report, trace, researcher log and the verifier's Vercel log lines are kept outside the repo. The numbers are quoted here.
-- **Daily runs**: the GitHub Actions artifacts of the 13 daily tracker runs from 2026-11-03 to 2026-11-15 (traces and reports). Six of them sent `/verify` calls, 13 calls in total.
+- **Daily runs**: the GitHub Actions artifacts of the 13 daily tracker runs from 2026-11-02 to 2026-11-15 (traces and reports). Six of them sent `/verify` calls, 13 calls in total. There is no 11-06 run, so the 13 runs cover 14 days.
 - **Production database**: a read-only count over `tracker_runs` and `internship_offers` on Neon, 2026-11-15.
 - **`/healthz` timings**: measured with `curl` on 2026-11-15 at about 16:30 ET.
 
@@ -114,11 +114,11 @@ Run 1 was `complete` (exit 0, no failed worker), and took 31.4 s in total.
 
 The researcher's log has one line for its request `c8d03158-13e0-4ed0-8401-664bf31d066c`: `in /research` 200 in 523 ms, with the same `run_id`.
 
-**Where the time went.** Of 31.4 s, the eight calls took 10.3 s together. The other 21 s were two waits before a retry. Groq was busy twice, so the verifier answered `503` with a `Retry-After`. The client waited 5.0 s and 16.0 s (from the trace timestamps). Its own backoff would have been 1.6 to 2.4 s, so the header set the wait. Inside a `200` `/verify`, the Groq call took 1.26 to 1.48 s and the page fetch 0.17 to 0.51 s (verifier log). The network and Vercel's routing added 130 to 230 ms per call (orchestrator latency minus the verifier's own). The researcher's 525 ms is its stub delay: 100 ms for each of the 5 developments (`DELAY_MS` in `services/researcher/main.py`).
+**Where the time went.** Of 31.4 s, the eight calls took 10.3 s together. The other 21 s were two waits before a retry. Groq was busy twice, so the verifier answered `503` with a `Retry-After`. The client waited 5.0 s and 16.0 s (from the trace timestamps). Its own backoff would have been 1.6 to 2.4 s, so the header set the wait. Inside a `200` `/verify`, the Groq call took 1.26 to 1.48 s and the page fetch 0.04 to 0.51 s (verifier log). The network and Vercel's routing added 130 to 230 ms per call (orchestrator latency minus the verifier's own). The researcher's 525 ms is its stub delay: 100 ms for each of the 5 developments (`DELAY_MS` in `services/researcher/main.py`).
 
 The 13 `/verify` calls of the daily runs give the same picture: latency 495 ms minimum, 1,978 ms median, 4,169 ms maximum. The two short ones (702 and 495 ms) were `503`s from a busy Groq on 2026-11-02, followed by a waited retry, as in run 1.
 
-**What the cold start cost.** The `/healthz` numbers in the table above put the cold start at about 1.55 s (1.75 s cold minus about 0.19 s warm). Run 1 did not pay it: a `/healthz` sent by hand at 22:19:40 UTC, 24 s before the run, took 2.01 s and left a warm instance. The run's first `/verify` took 2,020 ms, in line with the warm calls. The daily runs, after a day idle, show it: their first `/verify` took 3.26 to 4.17 s, against 1.37 to 1.98 s for the later `200`s in the same runs.
+**What the cold start cost.** The `/healthz` numbers in the table above put the cold start at about 1.55 s (1.75 s cold minus about 0.19 s warm). Run 1 did not pay it: a `/healthz` sent by hand at 22:19:40 UTC, 24 s before the run, took 2.01 s and left a warm instance (that timing was measured by hand with `curl` and is in no log file). The run's first `/verify` took 2,020 ms, in line with the warm calls. The daily runs, after a day idle, show it: their first `/verify` took 3.26 to 4.17 s, against 1.37 to 1.98 s for the later `200`s in the same runs.
 
 ### How the timeouts were chosen
 
@@ -330,5 +330,7 @@ Set checked: the 3 unsupported claims, plus 10 supported ones drawn with `random
 | IMC Machine Learning Engineer Intern, location New York, United States (daily) | supported | "New York, United States" | yes |
 
 **Wrong verdicts: 0 of 13.** Two notes. The coinbase.com page answered `403` to the agent's plain fetch, so the agent read the same posting from Greenhouse's public job API (`boards-api.greenhouse.io/v1/boards/coinbase/jobs/8175510`); the verifier itself got a `200` from coinbase.com in run 1. And the three unsupported verdicts are "right" in the strict sense the claim states: the job exists, but not under the title the tracker had.
+
+One more verdict, noticed outside the random sample and not counted in the 13: Genius AI's location claim "NYC or San Francisco or Remote" is marked `supported` with only "Location: NYC" as evidence, so the evidence covers just part of the claim. It shows the limit of checking that the excerpt is on the page: the code confirms the quote exists, not that it proves the whole claim.
 
 **Was it worth it?** For about 5 % more tokens and 1 % more time per run, the verifier checked 45 distinct claims across the daily runs and 26 in run 1. It found 3 wrong titles, and the 13 verdicts checked again were all right. It found no unreachable page. The cost that matters is Groq's rate limit: two busy answers in run 1 tripled its time, from about 10 s of calls to 31 s.
