@@ -100,3 +100,23 @@
 - built: A
 - decision: A. One check in one place, before every retry, using the existing `_fits`; it matches how a first request is gated. A 503 or connection-error attempt is not charged, so the check only fails there when the run was already short. No `config.yaml` value changes.
 - landed: backend/tracker/usecases/internships/verifying.py:179-186; specs/internship-pipeline/spec.md#Scenario: Timeout then stored copy
+
+## D11 Which failed attempts cost a share
+- class: mine
+- source: reviewer + security-reviewer (review of fb1ee5d)
+- status: decided (user)
+- question: D6 charges only 502, 504 and timeouts. A 503 rate_limited or a dropped connection can follow a paid Groq call too. Which attempts cost a full share?
+- options: A every attempt that reached the verifier and got no valid answer, except 400, 401, 409, a connection error before sending (httpx.ConnectError) and 503 in_progress / B only 502, 504 and timeouts
+- built: B (fb1ee5d)
+- decision: A. Kilian, 2026-11-15.
+- landed:
+
+## D12 A request that fails every attempt
+- class: mine
+- source: reviewer (review of fb1ee5d)
+- status: decided (user)
+- question: How much is a request charged when every attempt fails? This rewrites the base spec scenario "Never answered" (one share) in "Verifier budget share". Replaces D9.
+- options: A one share per charged attempt, no extra share on top / B one share total
+- built: D9's rule (one share per lost attempt, plus one share only when none was lost)
+- decision: A. Kilian, 2026-11-15. The final failing attempt is charged like any other under D11; drop D9's separate fallback share, except when no attempt was charged at all and the request still never got an answer (keep one share then).
+- landed:
