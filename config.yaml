@@ -134,6 +134,17 @@ options:
     max_tokens: 12000
     cold_start_ms: 15000   # added to the client timeout: a cold start happens before the clock
     max_attempts: 4
+  # The stub researcher (services/researcher), called only by `python -m tracker.orchestrate`
+  # (one /research per run; the daily run ignores this). With the verifier's 5 requests it
+  # takes the agents' share of `limits` (D10). An attempt that times out or gets a 5xx is
+  # charged this whole share, so no retry fits after it (a refused connection is retried).
+  researcher:
+    time_budget_ms: 60000
+    max_steps: 63
+    max_fetches: 30
+    max_tokens: 170000
+    cold_start_ms: 5000
+    max_attempts: 4
   profile: |
     An experienced engineer, not a typical intern: about three years of full-time
     fullstack and integration work (Java/Spring, TypeScript, PostgreSQL, Kafka,

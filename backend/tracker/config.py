@@ -367,6 +367,9 @@ class TrackerSecrets:
     # The verifier's URL and token, when set. Optional: without them, Verify fails soft.
     verifier_url: str | None = None
     verifier_token: str | None = None
+    # The researcher's, read only by `python -m tracker.orchestrate`.
+    researcher_url: str | None = None
+    researcher_token: str | None = None
 
     @classmethod
     def load(
@@ -404,11 +407,19 @@ class TrackerSecrets:
             others,
             read("VERIFIER_URL"),
             read("VERIFIER_TOKEN"),
+            read("RESEARCHER_URL"),
+            read("RESEARCHER_TOKEN"),
         )
 
     def key_for(self, provider: str) -> str:
         return self.provider_keys.get(provider, self.model_key)
 
     def values(self) -> list[str]:
-        keys = (self.model_key, self.search_key, *self.provider_keys.values(), self.verifier_token)
+        keys = (
+            self.model_key,
+            self.search_key,
+            *self.provider_keys.values(),
+            self.verifier_token,
+            self.researcher_token,
+        )
         return [v for v in keys if v]
