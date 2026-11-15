@@ -277,3 +277,26 @@ Gap being closed: the researcher is not its own HTTP service; only the verifier 
 - status: resolved
 - decision: implementer, 2026-11-15. (a) backend/.env has VERIFIER_TOKEN but no VERIFIER_URL; run 1 used the production alias https://mobile-systems-verifier.vercel.app (its /healthz answered 200 just before), a fresh random RESEARCHER_TOKEN for that process only, and the local DATABASE_URL. One paid run, complete, exit 0. (b) The implementer may not query Neon, so the Q5 claim set came from the 13 D7 reports' "Claims checked (top K)" sections, latest verdict per (opportunity, field). They give exactly D25's numbers (322/7/4/0 rows; 43 supported, 2 unsupported latest), so they are the same set. (c) Sample order for random.Random(2630).sample: the 45 latest daily claims sorted by (company, title, field), then run 1's 26 in report order; supported only, 68. (d) coinbase.com answered 403 to the agent's curl, so that posting was read from Greenhouse's public job API for the same job id. Result: 0 of 13 verdicts wrong.
 - landed: ORCHESTRATION.md (intro, Q2, Q5)
+
+## D34 Stale line numbers in ORCHESTRATION.md Q2/Q3
+- class: cheap
+- source: reviewer
+- status: resolved
+- question: Every `verifying.py:` line number is 5 short (e4b1a0d moved the code), and three Q2 references were already stale on master. Fix to: 169→174, 172→177, 179→184, 206-207→211-212, 214-225→219-230, 227-229→232-234 (twice, Q2 and Q3), 237→243, 239-240→244-245, 335-336→340-341. Also `tracker.yml:30`→`:70`, `tracker.yml:74-75`→`:114-115`, and `wiring.py:820-821`→`backend/tracker/usecases/internships/wiring.py:824`.
+- options: A fix the numbers / B drop the line numbers
+- decision: orchestrator, A, 2026-11-15. Re-verify every file:line in ORCHESTRATION.md against the current HEAD (a9fdc42 touched orchestrate.py after the doc was written), not just the list above.
+- landed: ORCHESTRATION.md Q1-Q4 (all file:line references re-checked against HEAD; only the listed ones plus `verifying.py:48-59` (was 49-60, class starts at 48) changed)
+
+## D35 Two numbers in ORCHESTRATION.md don't match their source
+- class: cheap
+- source: reviewer
+- status: resolved
+- decision: orchestrator, 2026-11-15. (a) The intro's date range becomes 2026-11-02 to 2026-11-15, noting there's no 11-06 run. (b) Q2's page-fetch range becomes 0.04 to 0.51 s (the Vercel log's fetch for 96ca49e3 attempt 2 took 36 ms). (c) The 2.01 s pre-run /healthz is in no log file: say it was measured by hand with curl and not logged.
+- landed: ORCHESTRATION.md intro (daily runs), Q2 (page fetch range, /healthz note)
+
+## D36 Possibly wrong supported verdict outside the Q5 sample
+- class: cheap
+- source: reviewer
+- status: resolved
+- decision: orchestrator, 2026-11-15. Genius AI's location claim "NYC or San Francisco or Remote" is marked supported with only "Location: NYC" as evidence. Q5 adds one sentence: noticed outside the random sample, the evidence covers only part of the claim, and it's not counted in the 13. That shows the limit of excerpt-contains checking. No code change.
+- landed: ORCHESTRATION.md Q5, after the two notes
