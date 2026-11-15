@@ -33,16 +33,20 @@ Read-only access to published tracker runs: the latest report and a run's Markdo
 - **WHEN** the request has no valid bearer token
 - **THEN** the response is `401`
 
-### Requirement: The API cannot start the tracker
-The API SHALL expose no route that starts, re-runs or changes a tracker run or its published data.
+### Requirement: No user can start the tracker
+The API SHALL expose no route through which a user, signed in or not, can start, re-run or change a tracker run or its published data. The only route that can start a run SHALL be the cron-only dispatch route (`tracker-dispatch`), which answers `404` to any request without the cron secret and is not in the OpenAPI document.
 
 #### Scenario: Write attempt
 - **WHEN** a signed-in user sends `POST`, `PUT`, `PATCH` or `DELETE` to any `/api/internships` path
 - **THEN** the response is `405` and nothing runs
 
+#### Scenario: User calls the dispatch route
+- **WHEN** a signed-in user calls `/api/internal/tracker-dispatch` with their session token
+- **THEN** the response is `404` and nothing runs
+
 #### Scenario: Documented routes
 - **WHEN** the OpenAPI document is read
-- **THEN** its only internship paths are these, each with `GET` only:
+- **THEN** its only internship paths are these, each with `GET` only, and it has no `/api/internal` path:
   - `/api/internships/latest`
   - `/api/internships/runs`
   - `/api/internships/runs/{id}`
