@@ -113,13 +113,21 @@ def claims_for(opp: dict[str, Any]) -> list[dict[str, str]]:
 
 
 class VerifierFailed(Exception):
-    """No valid answer for a request. `stop_all` when later requests would fail the same way."""
+    """No valid answer for a request. `stop_all` when later requests would fail the same way.
+    `attempts` is how many copies were sent; 0 means the request never left the tracker."""
 
-    def __init__(self, reason: str, detail: str, *, stop_all: bool = False) -> None:
+    def __init__(
+        self, reason: str, detail: str, *, stop_all: bool = False, attempts: int = 1
+    ) -> None:
         super().__init__(f"{reason}: {detail}")
         self.reason = reason
         self.detail = detail
         self.stop_all = stop_all
+        self.attempts = attempts
+
+
+# Statuses that come back before the verifier does any paid work.
+FREE_STATUSES = (400, 401, 409)
 
 
 @dataclass
@@ -130,10 +138,14 @@ class Client:
     trace: Trace
     transport: httpx.BaseTransport | None = None
     sleep: Callable[[float], None] = time.sleep
+    clock: Callable[[], float] = time.monotonic
+    deadline: float | None = None  # the run's wall-time deadline, on `clock`
 
-    def send(self, request: VerifyRequest, step: int) -> VerifyResponse:
+    def send(self, request: VerifyRequest, step: int, budget: Budget) -> VerifyResponse:
         """POST one request until it gets a valid answer or a terminal failure. Every
-        attempt sends the same bytes with the same `request_id`."""
+        attempt sends the same bytes with the same `request_id`. Each attempt that reached
+        the verifier and got no valid answer is charged a full share to `budget`, since its
+        copy may have spent; a retry is sent only if another full share still fits."""
         body = request.model_dump(mode="json")
         content = json.dumps(body, separators=(",", ":")).encode()
         # The verifier's logs carry the wire run id; the trace keeps both.
@@ -143,15 +155,42 @@ class Client:
             "step": step,
         }
         with httpx.Client(transport=self.transport, trust_env=False) as http:
-            return self._send(http, request, content, ids)
+            return self._send(http, request, content, ids, budget)
 
     def _send(
-        self, http: httpx.Client, request: VerifyRequest, content: bytes, ids: dict[str, Any]
+        self,
+        http: httpx.Client,
+        request: VerifyRequest,
+        content: bytes,
+        ids: dict[str, Any],
+        budget: Budget,
     ) -> VerifyResponse:
-        timeout = (self.settings.time_budget_ms + self.settings.cold_start_ms) / 1000
-        for attempt in range(1, self.settings.max_attempts + 1):
+        s = self.settings
+        timeout = (s.time_budget_ms + s.cold_start_ms) / 1000
+        pause = 0.0  # the wait before this attempt: backoff or Retry-After
+        for attempt in range(1, s.max_attempts + 1):
+            if attempt > 1 and not _fits(budget, s):
+                raise VerifierFailed(
+                    "no_budget_share",
+                    "another full share would not fit the run's budget",
+                    stop_all=True,
+                    attempts=attempt - 1,
+                )
+            if self.deadline is not None and self.clock() + pause + timeout > self.deadline:
+                # Stop before the wait: sleeping and then giving up would waste it.
+                raise VerifierFailed(
+                    "max_wall_seconds",
+                    f"waiting {pause:.0f} s plus the {timeout:.0f} s timeout"
+                    " would pass the run's deadline",
+                    stop_all=True,
+                    attempts=attempt - 1,
+                )
+            if pause:
+                self.sleep(pause)
             began = time.monotonic()
             wait: float | None = None
+            reached = True  # whether the attempt got to the verifier
+            r: httpx.Response | None = None
             try:
                 r = http.post(
                     f"{self.url.rstrip('/')}/verify",
@@ -164,35 +203,45 @@ class Client:
                 )
             except httpx.TimeoutException:
                 status: Any = "timeout"
+            except httpx.ConnectError:
+                status, reached = "connection_error", False
             except httpx.HTTPError:
-                status = "connection_error"
+                status = "connection_error"  # dropped after the request went out
             else:
                 status = r.status_code
                 wait = parse_retry_after(r.headers)
             latency = round((time.monotonic() - began) * 1000)
-            tokens = None
             if status == 200:
                 try:
                     response = VerifyResponse.model_validate_json(r.content)
                     response.check_against(request)
                 except (ValidationError, ValueError) as err:
                     self._event(ids, attempt, "invalid_response", latency, None)
-                    raise VerifierFailed("invalid_response", str(err)[:300]) from None
-                tokens = response.usage.tokens
-                self._event(ids, attempt, status, latency, tokens)
+                    _charge(budget, s.max_steps, s.max_fetches, s.max_tokens)
+                    raise VerifierFailed(
+                        "invalid_response", str(err)[:300], attempts=attempt
+                    ) from None
+                self._event(ids, attempt, status, latency, response.usage.tokens)
                 return response
-            self._event(ids, attempt, status, latency, tokens)
+            self._event(ids, attempt, status, latency, None)
+            if reached and status not in FREE_STATUSES and _error_code(r) != "in_progress":
+                # No valid answer, but the copy may have made its paid model call.
+                _charge(budget, s.max_steps, s.max_fetches, s.max_tokens)
             if status == 401:
                 raise VerifierFailed(
-                    "unauthorized", "the verifier refused the token", stop_all=True
+                    "unauthorized",
+                    "the verifier refused the token",
+                    stop_all=True,
+                    attempts=attempt,
                 )
             if isinstance(status, int) and status not in (502, 503, 504):
-                raise VerifierFailed(f"http_{status}", _error_message(r))
-            if attempt < self.settings.max_attempts:
-                backoff = min(2**attempt, 30) * (0.8 + 0.4 * random.random())
-                self.sleep(max(backoff, wait or 0))
+                raise VerifierFailed(f"http_{status}", _error_message(r), attempts=attempt)
+            backoff = min(2**attempt, 30) * (0.8 + 0.4 * random.random())
+            pause = max(backoff, wait or 0)
         raise VerifierFailed(
-            "no_answer", f"no valid answer after {self.settings.max_attempts} attempts"
+            "no_answer",
+            f"no valid answer after {s.max_attempts} attempts",
+            attempts=s.max_attempts,
         )
 
     def _event(
@@ -209,6 +258,16 @@ class Client:
             tokens=tokens,
             **ids,
         )
+
+
+def _error_code(r: httpx.Response | None) -> str | None:
+    """The verifier's error code; `in_progress` means another copy is doing the work."""
+    if r is None or r.status_code != 503:
+        return None
+    try:
+        return str(r.json()["error"]["code"])
+    except (ValueError, KeyError, TypeError):
+        return None
 
 
 def _error_message(r: httpx.Response) -> str:
@@ -264,15 +323,16 @@ def verify_top_k(
         )
         result.requests += 1
         try:
-            response = client.send(request, step=result.requests)
+            response = client.send(request, step=result.requests, budget=budget)
         except VerifierFailed as err:
-            # No valid answer: we can't know what it spent, so charge its full share.
-            _charge(budget, settings.max_steps, settings.max_fetches, settings.max_tokens)
+            if err.attempts == 0:
+                result.requests -= 1  # never sent: not counted, not charged
+            # The client charged a full share for each attempt that may have spent.
             result.failure = err
             if err.stop_all:
                 break
             continue
-        usage = response.usage
+        usage = response.usage  # the answer, counted once, on top of any failed attempts
         _charge(budget, usage.steps, usage.fetches, usage.tokens)
         texts = {c["claim_id"]: c["text"] for c in claims}
         rows = [
