@@ -86,9 +86,10 @@ class FakeVerifier:
         )
 
 
-def client(trace, fake, settings=SETTINGS):
+def client(trace, fake, settings=SETTINGS, **kw):
+    kw.setdefault("sleep", lambda _: None)
     return verifying.Client(
-        VERIFIER, TOKEN, settings, trace, transport=httpx.MockTransport(fake), sleep=lambda _: None
+        VERIFIER, TOKEN, settings, trace, transport=httpx.MockTransport(fake), **kw
     )
 
 
@@ -221,35 +222,14 @@ def test_gateway_error_then_success_is_charged_once(env, status):
     assert len({e["request_id"] for e in events}) == 1
 
 
-class Clock:
-    def __init__(self, now: float = 0.0) -> None:
-        self.now = now
-
-    def __call__(self) -> float:
-        return self.now
-
-
 TIMEOUT = (SETTINGS.time_budget_ms + SETTINGS.cold_start_ms) / 1000
-
-
-def timed_client(trace, fake, clock, deadline, sleeps):
-    return verifying.Client(
-        VERIFIER,
-        TOKEN,
-        SETTINGS,
-        trace,
-        transport=httpx.MockTransport(fake),
-        sleep=sleeps.append,
-        clock=clock,
-        deadline=deadline,
-    )
 
 
 def test_no_request_when_wall_time_is_short(env):
     _, store, trace, budget = env
     o = opp(store)
     fake, sleeps = FakeVerifier(), []
-    c = timed_client(trace, fake, Clock(), TIMEOUT - 1, sleeps)
+    c = client(trace, fake, sleep=sleeps.append, clock=lambda: 0.0, deadline=TIMEOUT - 1)
     result = verifying.verify_top_k(store, RUN1, [o], c, SETTINGS, budget)
     assert fake.requests == [] and sleeps == []
     assert result.failure.reason == "max_wall_seconds" and result.failure.stop_all
@@ -264,7 +244,7 @@ def test_no_retry_when_the_wait_would_pass_the_deadline(env):
     b = {**a, "id": a["id"] + 100}  # a second top-K entry
     fake, sleeps = FakeVerifier(httpx.Response(503, headers={"Retry-After": "9"})), []
     # Room for the first attempt, not for a 9 s wait plus the timeout.
-    c = timed_client(trace, fake, Clock(), TIMEOUT + 5, sleeps)
+    c = client(trace, fake, sleep=sleeps.append, clock=lambda: 0.0, deadline=TIMEOUT + 5)
     result = verifying.verify_top_k(store, RUN1, [a, b], c, SETTINGS, budget)
     assert len(fake.requests) == 1 and sleeps == []
     assert result.failure.reason == "max_wall_seconds" and result.failure.attempts == 1

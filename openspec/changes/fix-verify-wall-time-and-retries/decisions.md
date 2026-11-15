@@ -6,7 +6,7 @@
 - status: decided (user)
 - question: Verifier hangs can push a run past GitHub's 30-minute job limit (`.github/workflows/tracker.yml:30`), so nothing is published. `config.yaml:47` sets `max_wall_seconds: 1500`, but `_fits` (`verifying.py:299-306`) never checks wall time. Make Verify stop at the run's wall-time budget?
 - options: A Verify checks remaining wall time before each request and marks the rest unverified / B lower `max_attempts` or `cold_start_ms` / C leave it and document
-- built: none yet (spec only)
+- built: A
 - decision: A. Kilian, 2026-11-15: Verify checks the run's remaining wall time before each request; claims it can't send are marked unverified.
 - landed: specs/internship-pipeline/spec.md#Requirement: Verify stage calls the verifier (second paragraph); #Scenario: Not enough wall time left; tasks.md 1.1-1.3, 2.2, 2.3, 3.1; backend/tracker/usecases/internships/verifying.py:160 (check), :293 (not sent: not counted); backend/tests_tracker/test_internships_verifying.py test_no_request_when_wall_time_is_short, test_no_retry_when_the_wait_would_pass_the_deadline, test_verify_stops_at_the_run_wall_time; ORCHESTRATION.md Q2; docs/tracker.md Verification
 
@@ -16,7 +16,7 @@
 - status: decided (user)
 - question: The client retries 502, 503 and 504 (`verifying.py:189`); the spec names only 503. Add 502/504 to the spec plus a tracker test, or narrow the code to 503?
 - options: A spec + test / B code to 503 only
-- built: none yet (spec only; the code already retries all three)
+- built: A
 - note: a retry after a 504 can repeat a paid Groq call, because the first copy may have finished its model call before the gateway gave up.
 - decision: A. Kilian, 2026-11-15: add 502 and 504 to the spec's retried statuses, plus a tracker test.
 - landed: specs/internship-pipeline/spec.md#Requirement: Verify stage calls the verifier (first paragraph, with the paid-retry note); #Scenario: Gateway error then success; tasks.md 2.1, 3.2; backend/tracker/usecases/internships/verifying.py:212; backend/tests_tracker/test_internships_verifying.py test_gateway_error_then_success_is_charged_once; docs/tracker.md Verification; ORCHESTRATION.md Q2
@@ -49,7 +49,7 @@
 - options: A failure reason `max_wall_seconds`, stop all requests, stage `partial` naming `verifier` (as D1 says, like a verifier that's down); a request with no attempt sent is not counted or charged; one stopped after some attempts is charged its full share under the existing "never got a valid answer" rule / B something else
 - built: A
 - decision: A. Follows D1 and the existing "Verifier budget share" requirement; `max_wall_seconds` is the reason name `http.py` and `report.py` already use.
-- landed: tasks.md 1.2; backend/tracker/usecases/internships/verifying.py:115-130 (`VerifierFailed.attempts`), :292-297
+- landed: tasks.md 1.2; backend/tracker/usecases/internships/verifying.py:115-126 (`VerifierFailed.attempts`), :292-297
 
 ## D6 Charge the run for copies lost to 502/504
 - class: mine
@@ -57,7 +57,7 @@
 - status: open
 - question: The brief says a repeated Groq call after 502/504 is bounded by "the run's budget". The run's totals count each `request_id` once, with the usage of the answer it got, so a copy lost to a 502/504 is not counted in the run's token totals. Each copy is held to the per-request share by the verifier, and the copies to `max_attempts` and wall time. Should the run's totals also charge the lost copies?
 - options: A leave as is (totals count the answer's usage) / B charge a full share for each attempt that got 502/504 / C charge once per request but a full share when any attempt got 502/504
-- built: none (the spec says only what is true today: per-request share, `max_attempts`, wall time)
+- built: A (status quo; the scenario "Gateway error then success" and test_gateway_error_then_success_is_charged_once assert it, so answering B or C changes both)
 - decision:
 - landed:
 
@@ -69,4 +69,14 @@
 - options: A `VerifierFailed` carries `attempts` (copies sent; 0 = never sent) / B a separate exception class
 - built: A
 - decision: A. One field on the existing exception; every raise site sets it.
-- landed: backend/tracker/usecases/internships/verifying.py:115-130, :292-297
+- landed: backend/tracker/usecases/internships/verifying.py:115-126, :292-297
+
+## D8 One attempt can run past the client timeout
+- class: cheap
+- source: reviewer
+- status: resolved (reviewer)
+- question: httpx's numeric timeout applies per phase (connect, read, write, pool), not to the whole attempt. A response that streams slowly can keep one attempt past `time_budget_ms + cold_start_ms`, so the wall-time check can undercount. Bound it?
+- options: A leave it; the 300 s margin between `max_wall_seconds` (1500) and the 30-minute job limit absorbs it / B add a whole-attempt deadline
+- built: A
+- decision: A. Not changed here; the margin covers it.
+- landed: ORCHESTRATION.md Q2 (wall-time paragraph)
