@@ -103,6 +103,59 @@ class VerifyResponse(_Strict):
             raise ValueError("a claim has more than one verdict")
 
 
+class ResearchPayload(_Strict):
+    topic: str = Field(min_length=1, max_length=200)
+    k: int = Field(ge=1, le=20)
+
+
+class ResearchRequest(_Strict):
+    request_id: UUID
+    run_id: UUID
+    time_budget_ms: int = Field(gt=0)
+    budget: Budget
+    payload: ResearchPayload
+
+
+class Development(_Strict):
+    id: str = Field(min_length=1, max_length=100)
+    title: str = Field(min_length=1, max_length=300)
+    summary: str = Field(max_length=2000)
+    claims: list[Claim] = Field(min_length=1, max_length=20)
+
+    @field_validator("claims")
+    @classmethod
+    def unique_ids(cls, claims: list[Claim]) -> list[Claim]:
+        return VerifyPayload.unique_ids(claims)
+
+
+class ResearchResult(_Strict):
+    developments: list[Development]
+
+
+class ResearchResponse(_Strict):
+    request_id: UUID
+    run_id: UUID
+    status: Literal["complete", "partial", "failed"]
+    result: ResearchResult
+    usage: Usage
+    error: WorkerError | None
+
+    def check_against(self, request: ResearchRequest) -> None:
+        """Raise ValueError unless this answers `request`: same ids, at most k developments,
+        unique development ids, each claim_id once across the response."""
+        if self.request_id != request.request_id or self.run_id != request.run_id:
+            raise ValueError("response is for another request")
+        devs = self.result.developments
+        if len(devs) > request.payload.k:
+            raise ValueError("more developments than k")
+        ids = [d.id for d in devs]
+        if len(ids) != len(set(ids)):
+            raise ValueError("two developments share an id")
+        claim_ids = [c.claim_id for d in devs for c in d.claims]
+        if len(claim_ids) != len(set(claim_ids)):
+            raise ValueError("a claim_id appears twice")
+
+
 class ModelVerdict(_Strict):
     """What the verifier's model proposes for one claim, before code checks it."""
 

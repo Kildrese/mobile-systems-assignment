@@ -6,6 +6,8 @@ from agentkit.contract import (
     MAX_TEXT_BYTES,
     DraftRequest,
     DraftResponse,
+    ResearchRequest,
+    ResearchResponse,
     VerifyRequest,
     VerifyResponse,
     body_hash,
@@ -135,3 +137,57 @@ def test_draft_size_limits():
         DraftRequest.model_validate(_draft(rules_md="é" * (MAX_TEXT_BYTES // 2 + 1)))
     with pytest.raises(ValidationError):
         DraftRequest.model_validate(_draft(checks_yaml=""))
+
+
+def _research(**payload):
+    body = _request(payload={"topic": "t", "k": 2, **payload})
+    return ResearchRequest.model_validate(body)
+
+
+def _dev(i, *claim_ids):
+    cl = [{"claim_id": c, "text": "t", "source_url": "https://a.io"} for c in claim_ids]
+    return {"id": f"d{i}", "title": "T", "summary": "", "claims": cl}
+
+
+def _answer(req, devs, **over):
+    body = {
+        "request_id": str(req.request_id),
+        "run_id": str(req.run_id),
+        "status": "complete",
+        "result": {"developments": devs},
+        "usage": {"steps": 0, "fetches": 0, "tokens": 0},
+        "error": None,
+    }
+    body.update(over)
+    return ResearchResponse.model_validate(body)
+
+
+@pytest.mark.parametrize("k", [0, 21])
+def test_research_k_bounds(k):
+    with pytest.raises(ValidationError):
+        _research(k=k)
+
+
+def test_research_extra_payload_field_rejected():
+    with pytest.raises(ValidationError):
+        _research(extra=1)
+
+
+def test_development_needs_a_claim():
+    with pytest.raises(ValidationError):
+        _answer(_research(), [_dev(1)])
+
+
+def test_research_check_against():
+    req = _research()
+    _answer(req, [_dev(1, "a"), _dev(2, "b")]).check_against(req)
+    bad = [
+        _answer(req, [_dev(1, "a")], request_id=str(uuid.uuid4())),
+        _answer(req, [_dev(1, "a")], run_id=str(uuid.uuid4())),
+        _answer(req, [_dev(1, "a"), _dev(2, "b"), _dev(3, "c")]),
+        _answer(req, [_dev(1, "a"), _dev(1, "b")]),
+        _answer(req, [_dev(1, "a"), _dev(2, "a")]),
+    ]
+    for r in bad:
+        with pytest.raises(ValueError):
+            r.check_against(req)
