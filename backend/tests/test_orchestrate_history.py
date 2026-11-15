@@ -5,9 +5,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from sqlalchemy.engine import make_url
 
 from app.config import get_settings
-from app.db import get_sessionmaker
+from app.db import get_engine, get_sessionmaker
 from app.publish_report import publish
 from tracker import config, orchestrate
 from tracker.orchestrate import Outcome, find_last_top_k
@@ -45,6 +46,23 @@ def test_non_local_database_refuses_to_start(env, capsys):
     finally:
         env.undo()
         get_settings.cache_clear()
+    assert "refusing to write to a non-local database" in capsys.readouterr().err
+
+
+def test_host_override_in_the_url_refuses_to_start(env, capsys):
+    # D41: `?host=` replaces the URL's host. The real case is
+    # postgresql://u:p@localhost/db?host=ep-x.neon.tech; 0.0.0.0 reaches the local test
+    # database without any network, and is not one of the allowed hosts.
+    url = make_url(get_settings().database_url).update_query_dict({"host": "0.0.0.0"})
+    env.setenv("DATABASE_URL", url.render_as_string(hide_password=False))
+    for cached in (get_settings, get_engine, get_sessionmaker):
+        cached.cache_clear()
+    try:
+        assert orchestrate.main(["--config", str(ROOT_CONFIG)]) == 1
+    finally:
+        env.undo()
+        for cached in (get_settings, get_engine, get_sessionmaker):
+            cached.cache_clear()
     assert "refusing to write to a non-local database" in capsys.readouterr().err
 
 

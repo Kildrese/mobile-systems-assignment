@@ -125,7 +125,7 @@ def orchestrate(
         try:
             answer = researcher.send(request, step=1, budget=budget)
         except VerifierFailed as err:
-            failed["researcher"] = f"{err.reason}: {err.detail}"
+            failed["researcher"] = _failure(err)
         else:
             verifying.charge(budget, answer.usage.steps, answer.usage.fetches, answer.usage.tokens)
             developments = answer.result.developments
@@ -153,7 +153,7 @@ def orchestrate(
             try:
                 answer = verifier.send(request, step=1 + requests, budget=budget)
             except VerifierFailed as err:
-                failed.setdefault("verifier", f"{err.reason}: {err.detail}")
+                failed.setdefault("verifier", _failure(err))
                 if err.stop_all:
                     break  # the rest stay unverified; `verifier` is already named
                 continue
@@ -185,6 +185,11 @@ def orchestrate(
     urls = [[c.source_url for c in d.claims] for d in developments]
     markdown = _report(run, failed, budget, offers, urls, down, last_top_k)
     return Outcome(run, offers, markdown, 0 if status == "complete" else 2)
+
+
+def _failure(err: VerifierFailed) -> str:
+    # An invalid answer's detail quotes the worker's input values (D31): name the reason only.
+    return err.reason if err.reason == "invalid_response" else f"{err.reason}: {err.detail}"
 
 
 def _worker_error(answer: Any) -> str:
@@ -353,6 +358,11 @@ def main(argv: list[str] | None = None) -> int:
         print("refusing to write to a non-local database", file=sys.stderr)
         return 1
     with get_sessionmaker()() as db:
+        # `?host=` or `?service=` in the URL can override its host (D41): check the real one.
+        host = db.connection().connection.driver_connection.info.host
+        if host not in LOCAL_HOSTS and not host.startswith("/"):
+            print("refusing to write to a non-local database", file=sys.stderr)
+            return 1
         outcome = orchestrate(policy, secrets, find_last_top_k(db))
         report = policy.reports_path / f"orchestrate-{outcome.run['id']}.md"
         report.parent.mkdir(parents=True, exist_ok=True)

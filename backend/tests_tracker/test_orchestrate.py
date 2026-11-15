@@ -173,6 +173,18 @@ def test_more_developments_than_k_is_researcher_down(tmp_path):
     assert "/verify" not in w.paths()
 
 
+def test_invalid_answer_detail_stays_out_of_report_and_trace(tmp_path):
+    # D31: pydantic's error quotes the worker's input; only the reason is reported.
+    def research(b):
+        r = answer(b, {"developments": [dev(1)]})
+        return httpx.Response(200, json={**json.loads(r.content), "extra": "MARKER-xyz"})
+
+    out = run(tmp_path, Workers(research=research))
+    trace = (tmp_path / "traces" / f"orchestrate-{out.run['id']}.jsonl").read_text()
+    assert "researcher (invalid_response)" in out.markdown
+    assert "MARKER-xyz" not in out.markdown and "MARKER-xyz" not in trace
+
+
 def test_researcher_401_is_not_retried(tmp_path):
     w = Workers(research=lambda b: httpx.Response(401))
     out = run(tmp_path, w)

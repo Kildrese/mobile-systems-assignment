@@ -243,3 +243,30 @@ Gap being closed: the researcher is not its own HTTP service; only the verifier 
 - built: A (config.yaml as D10 says; nothing else depends on it)
 - decision:
 - landed: config.yaml options.researcher (comment states it)
+
+## D41 The local-database check can be bypassed with a `host=` query parameter
+- class: cheap
+- source: reviewer (security)
+- status: resolved
+- question: `main()` checks only `make_url(...).host` (backend/tracker/orchestrate.py, the LOCAL_HOSTS check). SQLAlchemy's psycopg dialect lets `?host=` replace the host (`?hostaddr=` and `?service=` also go straight to libpq), so `postgresql://u:p@localhost/db?host=ep-x.neon.tech` passes and writes to Neon, breaking D4/D19. Only someone who hand-edits backend/.env can do this.
+- options: A after connecting, check `db.connection().connection.info.host` is in LOCAL_HOSTS or a Unix socket path starting with "/", else exit 1 before orchestrate() / B also refuse host, hostaddr or service keys in url.query / C keep as is
+- built: C
+- decision: orchestrator, A, 2026-11-15, plus a test with `DATABASE_URL=postgresql://u:p@localhost/db?host=ep-x.neon.tech` in backend/tests/test_orchestrate_history.py.
+- landed: backend/tracker/orchestrate.py main() (driver_connection.info.host after connecting); backend/tests/test_orchestrate_history.py::test_host_override_in_the_url_refuses_to_start (uses `?host=0.0.0.0` on the local test database instead of ep-x.neon.tech, so the test needs no network and never reaches Neon)
+
+## D31 Invalid worker answers leak into the report
+- class: cheap
+- source: reviewer
+- status: resolved
+- question: On an invalid 200, the client's failure detail is str(ValidationError)[:300], which quotes the worker's input values (pydantic's input_value=...). orchestrate.py (around :128/:156) puts it in "Failed workers" in the report and in tracker_runs.report_markdown, against brief §5 and the spec's "Responses are validated". Fix how?
+- options: A in orchestrate.py, record only "invalid_response" (no detail) for that reason / B in verifying.py, build the detail from err.errors(include_input=False) (also changes the daily tracker's failure text) / C set hide_input_in_errors on agentkit _Strict
+- built: neither (detail is passed through)
+- decision: orchestrator, A, 2026-11-15, so the daily tracker's output is unchanged. Add a test: a /research 200 with an extra field holding a marker string, and assert the marker is in neither outcome.markdown nor the trace. Note for a later fix branch (not this one): the daily tracker's verifier path may have the same leak.
+- landed: backend/tracker/orchestrate.py _failure(); backend/tests_tracker/test_orchestrate.py::test_invalid_answer_detail_stays_out_of_report_and_trace
+
+## D32 run-orchestration spec's over-allocation cap
+- class: cheap
+- source: reviewer
+- status: resolved
+- decision: orchestrator, 2026-11-15. Update the run-orchestration spec's over-allocation message to say the cap is the limit minus reserve_tokens, matching the code (D28a; orchestrate.py:66; test "more than 59,000").
+- landed: specs/run-orchestration/spec.md (Requirement: One budget split between the workers)
