@@ -54,11 +54,11 @@
 ## D6 Charge the run for copies lost to 502/504
 - class: mine
 - source: spec-writer
-- status: open
+- status: decided (user)
 - question: The brief says a repeated Groq call after 502/504 is bounded by "the run's budget". The run's totals count each `request_id` once, with the usage of the answer it got, so a copy lost to a 502/504 is not counted in the run's token totals. Each copy is held to the per-request share by the verifier, and the copies to `max_attempts` and wall time. Should the run's totals also charge the lost copies?
 - options: A leave as is (totals count the answer's usage) / B charge a full share for each attempt that got 502/504 / C charge once per request but a full share when any attempt got 502/504
 - built: A (status quo; the scenario "Gateway error then success" and test_gateway_error_then_success_is_charged_once assert it, so answering B or C changes both)
-- decision:
+- decision: B. Kilian, 2026-11-15: lost copies count. Each attempt that got a 502 or 504 (or timed out) is charged a full per-request share on top of the answer's usage, as the brief requires for a worker that never answers. A retry is only sent if another full share still fits the run's remaining totals; otherwise Verify stops and the remaining claims are unverified.
 - landed:
 
 ## D7 How the client tells Verify a request was never sent
