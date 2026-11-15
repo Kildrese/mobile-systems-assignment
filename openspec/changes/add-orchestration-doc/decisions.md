@@ -137,3 +137,13 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
 - note: a retry after a 504 can repeat a paid Groq call, because the first copy may have finished its model call before the gateway gave up.
 - decision: A. Kilian, 2026-11-15: add 502 and 504 to the spec's retried statuses, plus a tracker test. Built in a follow-up fix change.
 - landed: ORCHESTRATION.md#Q2 The network#How the timeouts were chosen
+
+## D14 Three changes rewrite "Daily scheduled run", one from a stale base
+- class: expensive
+- source: orchestrator (archive of D4)
+- status: resolved
+- question: `report-publishing` "Daily scheduled run" is MODIFIED by complete-daily-runs (2026-10-04: 09:17 UTC, job timeout > `max_wall_seconds`), tracker-daily-trigger (2026-10-06: Vercel cron + `workflow_dispatch`, no `schedule`, keeps the timeout) and add-application-drafter (2026-11-02). The drafter's copy was written against the old main text (scheduled GitHub workflow at 09:00 UTC) and only adds the `app.draft_new` step. Replacing in order would revert the cron dispatch and the timeout. Also, show-run-history MODIFIES "The API cannot start the tracker", which tracker-daily-trigger then RENAMES to "No user can start the tracker".
+- options: A apply in creation order, and for the drafter's stale copy keep tracker-daily-trigger's text and add only the drafter's new content (the `app.draft_new` sentence and any new scenario) / B apply literally in order / C stop and ask
+- built: A
+- decision: A. Orchestrator, 2026-11-15. Code agrees: `.github/workflows/tracker.yml` has only `workflow_dispatch`, `backend/vercel.json` has the cron, and the workflow runs `python -m app.draft_new`. Merge order: complete-daily-runs, show-run-history, tracker-daily-trigger, add-application-drafter, agentic-dev-cycle.
+- landed:
