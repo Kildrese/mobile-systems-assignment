@@ -108,7 +108,7 @@ Gap being closed: the researcher is not its own HTTP service; only the verifier 
 - options: A you run it / B an agent runs it once
 - built: nothing; task 3.1 is blocked, 3.4 and 3.7 wait for its numbers
 - decision: user, B, 2026-11-15. An agent runs it once, on this machine, with VERIFIER_TOKEN read from backend/.env into the process env, never printed, logged or committed. Exactly one paid run; a failed run is reported and not retried without asking.
-- landed: tasks.md 3.1 (blocked)
+- landed: tasks.md 3.1 (run 1 done, see D31)
 
 ## D12 Command module layout
 - class: cheap
@@ -225,7 +225,7 @@ Gap being closed: the researcher is not its own HTTP service; only the verifier 
 - source: reviewer
 - status: resolved
 - decision: orchestrator, 2026-11-15. (a) The split check compares against what `fits()` really allows: the token total minus `reserve_tokens` (backend/tracker/budget.py:83-90). (b) The generalized `Client` takes its 401 message and endpoint from its worker fields, so a researcher 401 never reads "verifier" (verifying.py:29, :233). (c) Add tests for the "Missing researcher URL" (2.6) and "Invalid file" (1.5) scenarios. (d) Group 2 updates the TrackerRun docstring (backend/app/models.py:81) together with publish_report.py's. (e) Drop RESEARCHER_DELAY_MS as an env var and use a module constant `DELAY_MS`, which tests patch. Skip 2.5(e)/(f) if the existing client tests already cover them.
-- landed: (e) services/researcher/main.py `DELAY_MS = 100`. Still to update: design.md:17, specs/researcher-service/spec.md:51 and tasks.md 1.3–1.5 still name RESEARCHER_DELAY_MS. The group 3 implementer fixes that wording.
+- landed: (e) services/researcher/main.py `DELAY_MS = 100`. Wording fixed by the group 3 implementer: design.md#Decisions (Stub timing), specs/researcher-service/spec.md#Researcher time budget, tasks.md 1.3-1.5.
 
 ## D29 Stale offers keep their URL; small report wording
 - class: cheap
@@ -237,11 +237,11 @@ Gap being closed: the researcher is not its own HTTP service; only the verifier 
 ## D30 The researcher's D10 share leaves no room for a retry after a timeout
 - class: mine
 - source: implementer, task 2.8
-- status: open
+- status: decided
 - question: D10's split passes the check exactly (tokens 170,000 + 5 x 12,000 = 230,000 = 235,000 - 5,000 reserve). But the client charges a full share for each attempt that times out or gets a 5xx, and retries only if another full share fits: after one such researcher attempt only 60,000 tokens are left, so `max_attempts` 4 is effectively 1 for timeouts and 5xx (refused connections, never charged, are still retried 4 times). The run then reports the researcher down. Keep it?
 - options: A keep (one try on a timeout; the stub never times out in practice) / B lower the researcher's max_tokens so a retry fits (e.g. 80,000: 2 x 80,000 + 60,000 = 220,000) / C don't charge the researcher's failed attempts (it spends nothing), a code change in the client
 - built: A (config.yaml as D10 says; nothing else depends on it)
-- decision:
+- decision: user, A (keep one try on a researcher timeout or 5xx), 2026-11-15. ORCHESTRATION.md Q3 may discuss the trade-off.
 - landed: config.yaml options.researcher (comment states it)
 
 ## D41 The local-database check can be bypassed with a `host=` query parameter
@@ -270,3 +270,10 @@ Gap being closed: the researcher is not its own HTTP service; only the verifier 
 - status: resolved
 - decision: orchestrator, 2026-11-15. Update the run-orchestration spec's over-allocation message to say the cap is the limit minus reserve_tokens, matching the code (D28a; orchestrate.py:66; test "more than 59,000").
 - landed: specs/run-orchestration/spec.md (Requirement: One budget split between the workers)
+
+## D31 How run 1 and the Q5 check were done
+- class: cheap
+- source: implementer, tasks 3.1 and 3.7
+- status: resolved
+- decision: implementer, 2026-11-15. (a) backend/.env has VERIFIER_TOKEN but no VERIFIER_URL; run 1 used the production alias https://mobile-systems-verifier.vercel.app (its /healthz answered 200 just before), a fresh random RESEARCHER_TOKEN for that process only, and the local DATABASE_URL. One paid run, complete, exit 0. (b) The implementer may not query Neon, so the Q5 claim set came from the 13 D7 reports' "Claims checked (top K)" sections, latest verdict per (opportunity, field). They give exactly D25's numbers (322/7/4/0 rows; 43 supported, 2 unsupported latest), so they are the same set. (c) Sample order for random.Random(2630).sample: the 45 latest daily claims sorted by (company, title, field), then run 1's 26 in report order; supported only, 68. (d) coinbase.com answered 403 to the agent's curl, so that posting was read from Greenhouse's public job API for the same job id. Result: 0 of 13 verdicts wrong.
+- landed: ORCHESTRATION.md (intro, Q2, Q5)

@@ -14,7 +14,7 @@ The verifier (`services/verifier`) already shows the pattern: `agentkit.service.
 - **Command in `backend/tracker/orchestrate.py`** (D2's `python -m tracker.orchestrate`). The run logic is one function `orchestrate(policy, secrets, last_top_k, transport=None, sleep=..., clock=...) -> Outcome` with no database access, so `tests_tracker/` can test it with `httpx.MockTransport` and no Postgres. `main()` does the database part with function-local imports of `app.config`, `app.db`, `app.models` and `app.publish_report.publish`, so importing `tracker` still never needs `DATABASE_URL`. Tested in `backend/tests/` against Postgres.
 - **Run history in the existing tables** (D4). One `tracker_runs` row plus one `internship_offers` row per development, with the contract's fields mapped as the spec lists and the rest `unknown`/empty. No schema change. The run id is the wire `run_id` UUID, so one id follows a request across all three logs and the database.
 - **Stale = newest earlier run with top-K offers.** A researcher-down run writes no offers, so the next lookup skips it without a flag column.
-- **Stub timing.** `RESEARCHER_DELAY_MS` (default 100) per development gives the time-budget and duplicate-while-running cases something real to cut and overlap.
+- **Stub timing.** `DELAY_MS` (a module constant in `services/researcher/main.py`, 100 ms) per development gives the time-budget and duplicate-while-running cases something real to cut and overlap.
 - **Local only.** The command refuses a non-local `DATABASE_URL`, enforcing D4 in code rather than by habit.
 
 ## Risks / Trade-offs

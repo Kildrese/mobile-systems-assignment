@@ -48,7 +48,7 @@ The developments SHALL come from `services/researcher/developments.json`, a JSON
 - **THEN** it raises at import and does not serve
 
 ### Requirement: Researcher time budget
-The researcher's clock SHALL start when `work` is called. It SHALL spend `RESEARCHER_DELAY_MS` (default 100) per development to stand in for research work. Before taking each development it SHALL check whether elapsed time plus the delay would pass `time_budget_ms`; if so it SHALL stop and return `200`, status `partial`, the developments it took, and `error` `{code: "time_budget_exhausted", message: "stopped after <i> of <n> developments", retryable: false}`, where `n` is `min(k, file size)`. `max_steps`, `max_fetches` and `max_tokens` are accepted and never reached.
+The researcher's clock SHALL start when `work` is called. It SHALL spend `DELAY_MS` (a module constant, 100 ms; tests patch it) per development to stand in for research work. Before taking each development it SHALL check whether elapsed time plus the delay would pass `time_budget_ms`; if so it SHALL stop and return `200`, status `partial`, the developments it took, and `error` `{code: "time_budget_exhausted", message: "stopped after <i> of <n> developments", retryable: false}`, where `n` is `min(k, file size)`. `max_steps`, `max_fetches` and `max_tokens` are accepted and never reached.
 
 #### Scenario: Tiny time budget
 - **WHEN** a request has `time_budget_ms` 1 and the delay is 100 ms
