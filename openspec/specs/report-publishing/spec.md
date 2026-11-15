@@ -4,11 +4,11 @@
 The daily scheduled tracker run on GitHub Actions, the SQLite state carried between runs, and publishing each finished run into Postgres as one `tracker_runs` row and one `internship_offers` row per offer.
 ## Requirements
 ### Requirement: Daily scheduled run
-The tracker SHALL run once a day. A Vercel Cron Job on the backend project SHALL call the internal dispatch route (see `tracker-dispatch`) daily between 09:00 and 09:59 UTC, and that route SHALL start the workflow through GitHub's `workflow_dispatch` endpoint. The workflow SHALL NOT have a `schedule` trigger, so GitHub's scheduler can't add a second run on the same day. Repository writers MAY also start a run manually from the Actions tab. At most one run SHALL be in progress at a time. The job's timeout SHALL exceed the policy's `limits.max_wall_seconds` by enough for setup, saving state and publishing (at least 5 minutes), so a run is never cut off by the job before its own wall-clock budget ends. The run's SQLite state SHALL be restored before the run and saved after it, so each run continues from the previous one.
+The tracker SHALL run once a day. A Vercel Cron Job on the backend project SHALL call the internal dispatch route (see `tracker-dispatch`) daily between 09:00 and 09:59 UTC, and that route SHALL start the workflow through GitHub's `workflow_dispatch` endpoint. The workflow SHALL NOT have a `schedule` trigger, so GitHub's scheduler can't add a second run on the same day. Repository writers MAY also start a run manually from the Actions tab. At most one run SHALL be in progress at a time. The job's timeout SHALL exceed the policy's `limits.max_wall_seconds` by enough for setup, saving state and publishing (at least 5 minutes), so a run is never cut off by the job before its own wall-clock budget ends. The run's SQLite state SHALL be restored before the run and saved after it, so each run continues from the previous one. After publishing, the workflow SHALL run `python -m app.draft_new`, and a failure of that step SHALL NOT fail the job.
 
 #### Scenario: Daily run
 - **WHEN** the cron calls the dispatch route and it claims the day
-- **THEN** the workflow runs `python -m tracker run` with the state from the previous run, then publishes the result
+- **THEN** the workflow runs `python -m tracker run` with the state from the previous run, publishes the result, then drafts applications for new top-K offers
 
 #### Scenario: GitHub's scheduler can't add a run
 - **WHEN** the workflow file on `master` is read
@@ -20,7 +20,7 @@ The tracker SHALL run once a day. A Vercel Cron Job on the backend project SHALL
 
 #### Scenario: Nothing ran
 - **WHEN** the tracker exits `1` (invalid policy, missing key or locked state)
-- **THEN** the job fails and nothing is published
+- **THEN** the job fails and nothing is published or drafted
 
 #### Scenario: Partial run
 - **WHEN** the tracker exits `2` or `3`
@@ -29,6 +29,10 @@ The tracker SHALL run once a day. A Vercel Cron Job on the backend project SHALL
 #### Scenario: Run uses its full wall time
 - **WHEN** a run takes its full `max_wall_seconds`
 - **THEN** the job still saves the state and publishes the report before its timeout
+
+#### Scenario: Drafting fails
+- **WHEN** `python -m app.draft_new` exits non-zero
+- **THEN** the job still succeeds, and the step's log names the failure
 
 ### Requirement: Publish the latest finished run
 `python -m app.publish_report` SHALL copy the newest run with an end time from the tracker's state file into `tracker_runs`, with its Markdown report and the list of services that failed in it (`failed_services`, empty when none did). It SHALL add one `internship_offers` row for every opportunity in that run's report. Each row records:
