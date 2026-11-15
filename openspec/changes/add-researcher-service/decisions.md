@@ -271,7 +271,7 @@ Gap being closed: the researcher is not its own HTTP service; only the verifier 
 - decision: orchestrator, 2026-11-15. Update the run-orchestration spec's over-allocation message to say the cap is the limit minus reserve_tokens, matching the code (D28a; orchestrate.py:66; test "more than 59,000").
 - landed: specs/run-orchestration/spec.md (Requirement: One budget split between the workers)
 
-## D31 How run 1 and the Q5 check were done
+## D33 How run 1 and the Q5 check were done
 - class: cheap
 - source: implementer, tasks 3.1 and 3.7
 - status: resolved
