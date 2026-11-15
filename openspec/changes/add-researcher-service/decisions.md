@@ -93,11 +93,11 @@ Gap being closed: the researcher is not its own HTTP service; only the verifier 
 ## D10 The researcher's budget share in config.yaml
 - class: mine
 - source: spec-writer
-- status: open
+- status: decided
 - question: D2 says split the config.yaml budget between the workers but not how. What are `options.researcher`'s `time_budget_ms`, `max_steps`, `max_fetches`, `max_tokens`, `cold_start_ms` and `max_attempts`? The researcher's share plus 5 x the verifier's share must fit `limits` (today 74 steps, 70 fetches, 235,000 tokens; the verifier takes 10 / 30 / 60,000). The stub spends nothing, so only `time_budget_ms` (and the timeout) changes behaviour today.
 - options: values are yours; no default picked
 - built: code and tests read `options.researcher` from the policy, tests use fixture values; `config.yaml` is not edited, so the command exits 1 on the real config until this is decided
-- decision:
+- decision: user, the agents' share, 2026-11-15: time_budget_ms 60000, max_steps 63, max_fetches 30, max_tokens 170000, cold_start_ms 5000, max_attempts 4, so researcher + 5 × verifier = limits. If the reserve_tokens check (D28a) rejects this exact split, say so and stop; don't change the values. (User also asked about separate Groq accounts per agent; the orchestrator advised against it, since Groq's AUP reportedly forbids getting around rate limits with multiple accounts. Not pursued.)
 - landed: specs/run-orchestration/spec.md#One budget split between the workers (rule only, no values); tasks.md 2.8 (blocked), 3.1, 3.4
 
 ## D11 Who runs the orchestrate command for Q2 run 1 and Q5
