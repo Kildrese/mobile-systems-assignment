@@ -817,6 +817,8 @@ class VerifyStage:
             ctx.trace,
             transport=ctx.clients.service_transport,
             sleep=ctx.clients.sleep,
+            clock=ctx.budget.clock,
+            deadline=ctx.budget.deadline,
         )
         result = verifying.verify_top_k(store, ctx.run_id, top_k, client, settings, ctx.budget)
         self._ranked(ctx, store)  # unsupported fields now count as unknown
