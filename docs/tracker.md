@@ -119,7 +119,7 @@ Every failed call to the model or search provider is classified and the class is
 | Terminal `request` | Any other 4xx | Stop |
 | Terminal `unreachable` | Transient failures that used up all attempts | Stop |
 
-A terminal failure prints one line naming the provider, the class and the likely fix (no stack trace), writes a partial report and the trace, and exits `3`. After a model-provider failure no further model call is made. A Groq 400 `tool_use_failed` or `output_parse_failed` (the model emitted a malformed tool call, or output Groq could not parse) is not a provider failure: the model is told and the run continues.
+A terminal failure prints one line naming the provider, the class and the likely fix (no stack trace), writes a partial report and the trace, and exits `3`. After a model-provider failure no further model call is made. A Groq 400 `tool_use_failed` or `output_parse_failed` (the model emitted a malformed tool call, or output Groq could not parse) is not a provider failure: the model is told and the run continues. The `model_output_rejected` trace event carries `provider_error: {code, message}`: Groq's error code and message only, with the API key removed and each cut to 500 characters; `failed_generation` is never recorded.
 
 ## Fetch guardrails
 

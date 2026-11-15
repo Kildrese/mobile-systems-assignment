@@ -113,6 +113,32 @@ def test_chat_malformed_output_is_model_error(policy, trace, code):
 
 
 @respx.mock
+def test_chat_rejection_traces_only_the_providers_code_and_message(policy, trace):
+    body = {
+        "error": {
+            "code": "tool_use_failed",
+            # The key straddles the 500-char cut: it must not leave a prefix behind.
+            "message": "Failed to call a function " + "x" * 460 + MODEL_KEY,
+            "failed_generation": "SECRET MODEL OUTPUT",
+        }
+    }
+    respx.post(LLM_URL).respond(400, json=body, headers={"x-leak": "HEADER VALUE"})
+    with pytest.raises(ModelOutputError):
+        chat_client(policy, trace).chat([], None, step=1)
+    (event,) = read_trace(trace.path)
+    assert event["reason"] == "model_output_rejected"
+    error = event["provider_error"]
+    assert set(error) == {"code", "message"}
+    assert error["code"] == "tool_use_failed"
+    assert error["message"].startswith("Failed to call a function")
+    assert len(error["message"]) <= 500
+    text = trace.path.read_text()
+    assert MODEL_KEY[:10] not in text
+    assert "SECRET MODEL OUTPUT" not in text
+    assert "HEADER VALUE" not in text
+
+
+@respx.mock
 def test_chat_requires_a_tool_call_when_tools_are_offered(policy, trace):
     route = respx.post(LLM_URL).respond(json=chat_body(tool_call("finish", {})))
     tools = [{"type": "function", "function": {"name": "finish", "parameters": {}}}]
