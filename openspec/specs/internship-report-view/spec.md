@@ -49,11 +49,14 @@ The web app SHALL show the latest report at `/internships` to signed-in users. T
 - top-K offers are marked, and an offer under Still in top K shows its previous rank, or "entered the top K";
 - an offer under Dropped shows why: "Closed" with the evidence, or "Outranked, now #n";
 - a rated offer shows "Fit n/3" and the reason; an unrated one shows nothing about fit;
+- a top-K offer lists its claims, each with a label: Supported, Unsupported, Unreachable or Unverified; a supported claim shows its evidence excerpt as a quote;
 - each open offer has an "Apply" button (external-link icon) that opens its posting in a new tab, only when the posting URL is `http` or `https`;
 - an "Export" button (download icon) downloads the run's Markdown export;
 - a "Run history" link goes to `/internships/history`, and an "Articles in this run" link to the latest run's page;
 - work-authorization wording appears only as a quote;
 - an offer not checked in the run says so.
+
+Claim text and evidence SHALL render as text, never as HTML.
 
 #### Scenario: Dropped offers
 - **WHEN** the latest run dropped one offer as closed and one as outranked to 7th
@@ -79,3 +82,17 @@ The web app SHALL show the latest report at `/internships` to signed-in users. T
 - **WHEN** the latest run rated an offer 3 with the reason "ML infrastructure role at an early-stage startup, as the profile asks."
 - **THEN** its card shows "Fit 3/3" and that reason
 
+#### Scenario: Claims shown
+- **WHEN** a top-K offer has a supported pay claim with evidence and an unverified deadline claim
+- **THEN** its card shows the pay claim labeled "Supported" with the excerpt, and the deadline claim labeled "Unverified" without one
+
+#### Scenario: Markup in evidence
+- **WHEN** an evidence excerpt contains `<img src=x onerror=alert(1)>`
+- **THEN** the page shows those characters as text, and no element is created
+
+### Requirement: Run history names failed services
+Each run in `/internships/history` SHALL show whether it was complete or partial and, when `failed_services` is not empty, which services failed.
+
+#### Scenario: Verifier failed
+- **WHEN** a run's `failed_services` is `["verifier"]`
+- **THEN** its history entry shows "Partial" and "verifier failed"

@@ -9,7 +9,7 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
 - question: Archive `add-claim-verifier` (all tasks checked) now?
 - options: A archive now, syncing its delta specs into `openspec/specs/` / B wait
 - decision: A. Kilian, relayed 2026-11-15. Use the OpenSpec archive workflow (`openspec archive add-claim-verifier`), so the delta specs land in `openspec/specs/`.
-- landed: add-orchestration-doc/proposal.md#What Changes; tasks.md 1.1-1.3 (by hand per D5, no CLI)
+- landed: add-orchestration-doc/proposal.md#What Changes; tasks.md 1.1-1.3 (by hand per D5, no CLI); openspec/specs/claim-verification/spec.md (new); openspec/specs/{internship-pipeline,internship-report-view,opportunity-report,report-publishing,trace-log}/spec.md; openspec/changes/archive/2026-11-15-add-claim-verifier/
 
 ## D2 Scope of ORCHESTRATION.md for now
 - class: mine
@@ -22,7 +22,7 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
   2. Q2 "The network", cold start and timeouts only: what a cold start costs on this setup; how timeouts were chosen from `config.yaml` `options.verifier` and `openspec/changes/add-claim-verifier/design.md` D8: client timeout = `time_budget_ms` + `cold_start_ms` = 60 s + 15 s; `max_attempts` 4; backoff min(2^n, 30) s with ±20% jitter; `Retry-After` honored. Check each number against the code before writing it.
   3. Q3 "Duplicates": both cases, quoting the actual code from `services/verifier`: first copy finished → stored response returned, no new fetch and no model call; first copy still running → `503` with `Retry-After: 5`. Then "what changes if the platform restarted the verifier in between", for Vercel: a new instance has an empty in-memory store (design D7), so it verifies once more; cost one fetch plus one model call; the orchestrator still counts the `request_id` once.
   Stubs with a heading and "TODO": Q1 contract, Q4 injection, Q5 was it worth it.
-- landed: add-orchestration-doc/proposal.md#What Changes; tasks.md 2.2-2.5
+- landed: add-orchestration-doc/proposal.md#What Changes; tasks.md 2.2-2.5; ORCHESTRATION.md#Why Vercel and Neon instead of Render, #Q2 The network, #Q3 Duplicates, stubs #Q1 The contract, #Q4 Injection, #Q5 Was it worth it
 
 ## D3 Accuracy on cold starts, and placeholders instead of invented numbers
 - class: mine
@@ -36,7 +36,7 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
   - Never invent measured numbers. `VERIFIER_URL` is not set in the orchestrator's container (checked 2026-11-15). Use marked placeholders such as `<measure: first /healthz after 20 min idle>`, each with the one-line `curl` command that measures it.
   - The per-call latency list "from run 1 traces" is a placeholder table: no run with the verifier exists yet in `reports/` or `traces/` (only run1/run2, from before the verifier).
   - Prose is submitted under Kilian's name: short plain sentences, no em-dashes, no filler (apply the humanizer skill if it loads).
-- landed: add-orchestration-doc/proposal.md#What Changes; tasks.md 2.3, 2.4, 2.6
+- landed: add-orchestration-doc/proposal.md#What Changes; tasks.md 2.3, 2.4, 2.6; ORCHESTRATION.md#Why Vercel and Neon instead of Render (cold-start table), #Q2 The network (latency tables, placeholders with curl/jq), #Q3 Duplicates#If the platform restarted the verifier in between
 
 ## D4 Archive the five changes with unchecked tasks?
 - class: mine
@@ -61,7 +61,7 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
 - options: A rerun with `claude --agent orchestrator` where `Agent` is available / B the main session spawns `spec-writer`, `implementer`, `checker`, `reviewer` directly with this file as the brief / C install the OpenSpec CLI in the container first (for `openspec archive`), then A or B
 - built: nothing beyond this file
 - decision: B. Main session (acting as orchestrator), 2026-11-15. The main session spawns spec-writer, implementer, checker and reviewer itself. Without the OpenSpec CLI, the archive follows the openspec-archive-change skill by hand: merge the delta specs into openspec/specs/, then move the change to openspec/changes/archive/2026-11-15-add-claim-verifier/.
-- landed: add-orchestration-doc/tasks.md 1.1-1.3
+- landed: add-orchestration-doc/tasks.md 1.1-1.3; archive done by hand: openspec/changes/archive/2026-11-15-add-claim-verifier/ and openspec/specs/ as in D1
 - note: evidence for `agentic-dev-cycle` task 4.1 ("note what broke").
 
 ## D6 Section order in ORCHESTRATION.md
@@ -95,3 +95,23 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
 - question: The archive skill gives a new spec a `## Purpose` section, and the delta spec has none. What goes there?
 - decision: One or two sentences taken from `add-claim-verifier/proposal.md` ("New Capabilities"), no new content. Requirements and scenarios are copied unchanged. Spec-writer, 2026-11-15.
 - landed: add-orchestration-doc/tasks.md 1.1
+
+## D10 Duplicate handling is quoted from packages/agentkit, not services/verifier
+- class: cheap
+- source: implementer, task 2.5
+- status: resolved
+- question: D2.3 says to quote the duplicate handling "from `services/verifier`". The code lives in `packages/agentkit/src/agentkit/service.py` (`Store`, `serve`, `RUNNING_RETRY_AFTER = 5`), shared with the drafter; `services/verifier/main.py:23` only creates the store. What does Q3 quote?
+- options: A quote `service.py` with file:line, plus `main.py:23` and the verifier's tests / B quote only `services/verifier` files
+- built: A
+- decision: A (per D7: the document describes the code as built). Implementer, 2026-11-15.
+- landed: ORCHESTRATION.md#Q3 Duplicates
+
+## D11 The client retries 502 and 504 too, the spec says 503
+- class: cheap
+- source: implementer, task 2.1
+- status: resolved
+- question: `openspec/specs/internship-pipeline` ("Verify stage calls the verifier") says connection errors, timeouts and `503` are retried. `verifying.py:189` also retries `502` and `504`. Every other number in D2 matches the code (timeout 60 s + 15 s, `max_attempts` 4, backoff `min(2^attempt, 30)` s x 0.8-1.2, wait = max(backoff, `Retry-After`)).
+- options: A the document states the code (502, 503, 504) and the spec is left as archived / B change the code or the spec
+- built: A
+- decision: A (per D7). Implementer, 2026-11-15. Whether the spec or the code should change is left to the reviewer; it is out of this change's scope.
+- landed: ORCHESTRATION.md#Q2 The network#How the timeouts were chosen
