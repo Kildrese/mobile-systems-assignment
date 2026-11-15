@@ -50,7 +50,7 @@ Lean change: archive `add-claim-verifier`, and write the hosting parts of `ORCHE
   - `show-run-history`: 4.3 browser check with the injection page and a `javascript:` URL.
   - `tracker-daily-trigger`: 6.1 GitHub token, 6.2 `CRON_SECRET` and `GITHUB_DISPATCH_TOKEN` on Vercel, 6.3 Neon migration then merge and deploy, 6.4 call the route once, 6.5 check the next morning's run. `docs/deployment.md` already describes it as live.
 - options: A archive all five now and list the leftover tasks in this file / B archive only fully-checked changes (just `add-claim-verifier`) / C leave everything as is
-- built: B
+- built: A on claude/archive-finished-changes (B on the add-orchestration-doc branch before the decision)
 - decision: A. Kilian, 2026-11-15: archive all five now and list their leftover tasks in this file. Done in a separate orchestrator session on its own branch.
 - landed: openspec/changes/archive/2026-11-15-{complete-daily-runs,show-run-history,tracker-daily-trigger,add-application-drafter,agentic-dev-cycle}/; openspec/specs/{agent-orchestration,internship-pipeline,report-publishing,internship-report-view,tracker-state}/spec.md (updated); openspec/specs/{tracker-dispatch,applicant-profile,application-drafter,application-drafts,dev-cycle}/spec.md (new)
 - leftover tasks (unchecked when archived):
